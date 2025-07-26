@@ -20,6 +20,7 @@
   "status_cooldown_s": 5,
   "logs_cooldown_s": 10,
   "guild_id": "1308487291722797177",
+  "intentional_stop": true,
   "roles": {
     "1308503712012046466": [ 
 	"start",
