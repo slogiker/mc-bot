@@ -104,10 +104,11 @@ LOG_LINES_DEFAULT    = config['log_lines_default']
 STATUS_COOLDOWN      = config['status_cooldown_s']
 LOGS_COOLDOWN        = config['logs_cooldown_s']
 GUILD_ID             = config['guild_id']
+STATE_FILE           = config['intentional_stop']
 
 # --- State File Functions ---
 def load_server_state():
-    state_file = 'server_state.json'
+    state_file = STATE_FILE
     if os.path.exists(state_file):
         with open(state_file, 'r') as f:
             state = json.load(f)
