@@ -1,6 +1,6 @@
 #######TODO##########
 #
-#2. Add 1.21.5 carpet mod to help with tps and other things carpet mod is okay
+#
 #
 #
 #
