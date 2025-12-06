@@ -1,0 +1,7 @@
+discord.py
+psutil
+python-dotenv
+aiomcrcon
+aiofiles
+requests
+pytz
