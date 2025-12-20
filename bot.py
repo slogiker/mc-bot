@@ -30,7 +30,7 @@ class MinecraftBot(commands.Bot):
         
         # Initialize Server Manager
         if config.TEST_MODE:
-            self.server = MockServerManager()
+            self.server = MockServerManager(self)
         else:
             self.server = TmuxServerManager()
 
@@ -58,17 +58,50 @@ class MinecraftBot(commands.Bot):
                 except Exception as e:
                     logger.error(f"Failed to load cog {filename}: {e}")
 
-        # Sync commands
-        if config.TEST_MODE:
-             guild = discord.Object(id=config.GUILD_ID)
-             self.tree.copy_global_to(guild=guild)
-             await self.tree.sync(guild=guild)
-             logger.info("Synced commands to test guild")
-
     async def on_ready(self):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info("=== Bot Connected ===")
         
+        if config.TEST_MODE:
+            logger.info("🛠️ TEST MODE: Ensuring channels exist 🛠️")
+            # We assume the bot is in one server for testing or we use the first one
+            if not self.guilds:
+                logger.error("Test bot is not in any guilds!")
+                return
+            
+            guild = self.guilds[0] # Use the first guild found for testing
+            logger.info(f"Configuring for guild: {guild.name} ({guild.id})")
+            
+            # Channel names to look for or create
+            target_channels = {"main": None, "log": None, "debug": None}
+            
+            # Check existing channels
+            for channel in guild.text_channels:
+                if channel.name in target_channels:
+                    target_channels[channel.name] = channel
+            
+            # Create missing channels
+            for name in target_channels:
+                if target_channels[name] is None:
+                    try:
+                        logger.info(f"Creating channel: {name}")
+                        target_channels[name] = await guild.create_text_channel(name)
+                    except Exception as e:
+                        logger.error(f"Failed to create channel {name}: {e}")
+            
+            # Override config IDs
+            main_id = target_channels["main"].id if target_channels["main"] else 0
+            log_id = target_channels["log"].id if target_channels["log"] else 0
+            debug_id = target_channels["debug"].id if target_channels["debug"] else 0
+            
+            config.override_channel_ids(main_id, log_id, debug_id)
+            logger.info(f"Overridden Channel IDs :: Main: {main_id}, Log: {log_id}, Debug: {debug_id}")
+            
+            # Sync commands to this test guild
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info("Synced commands to test guild")
+
         # Update presence based on initial state
         if self.server.is_running():
              await self.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"), status=discord.Status.online)
@@ -77,8 +110,14 @@ class MinecraftBot(commands.Bot):
 
 async def main():
     bot = MinecraftBot()
+    token = config.TEST_BOT_TOKEN if config.TEST_MODE else config.DISCORD_TOKEN
+    
+    if not token:
+        logger.error("No token found! Check config.")
+        return
+
     async with bot:
-        await bot.start(config.DISCORD_TOKEN)
+        await bot.start(token)
 
 if __name__ == "__main__":
     try:

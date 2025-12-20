@@ -45,8 +45,14 @@ class Config:
         self.ROLES = data['roles']
         self.JAVA_PATH = data.get("java_path", "java")
         self.TIMEZONE = data.get("timezone", "Europe/Ljubljana")
+        self.TEST_BOT_TOKEN = data.get("test_bot_token", "")
 
     def set_test_mode(self, enabled: bool):
         self.TEST_MODE = enabled
+
+    def override_channel_ids(self, command_id: int, log_id: int, debug_id: int):
+        self.COMMAND_CHANNEL_ID = command_id
+        self.LOG_CHANNEL_ID = log_id
+        self.DEBUG_CHANNEL_ID = debug_id
 
 config = Config()
