@@ -5,3 +5,4 @@ git+https://github.com/Iapetus-11/aio-mc-rcon.git#egg=aio-mc-rcon
 aiofiles
 requests
 pytz
+aiohttp

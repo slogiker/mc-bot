@@ -20,7 +20,7 @@
 	"status_cooldown_s": 5,
 	"logs_cooldown_s": 10,
 	"guild_id": "1308487291722797177",
-	"intentional_stop": true,
+	"intentional_stop": "/app/mc-server/bot_state.json",
 	"roles": {
 		"1308503712012046466": [
 			"start",

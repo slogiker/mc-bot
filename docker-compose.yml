@@ -4,6 +4,10 @@ services:
     container_name: mc-bot
     restart: unless-stopped
 
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
     # Port mappings
     ports:
       - "25565:25565" # Minecraft server
