@@ -17,6 +17,7 @@ class Config:
         self.TOKEN = os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
         self.TEST_MODE = False # Default, can be overridden
+        self.DRY_RUN_MODE = False # Default, can be overridden
 
         with open('config.json', 'r') as f:
             data = json.load(f)
@@ -49,6 +50,9 @@ class Config:
 
     def set_test_mode(self, enabled: bool):
         self.TEST_MODE = enabled
+
+    def set_dry_run_mode(self, enabled: bool):
+        self.DRY_RUN_MODE = enabled
 
     def override_channel_ids(self, command_id: int, log_id: int, debug_id: int):
         self.COMMAND_CHANNEL_ID = command_id

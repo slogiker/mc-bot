@@ -1,0 +1,44 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+*.env
+
+# Logs
+bot.log
+logs/
+*.log
+
+# Persistent data (mounted as volumes)
+mc-server/
+backups/
+
+# Documentation
+*.md
+!README.md
+
+# Installation scripts
+install.sh
+install-dry-run.sh
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

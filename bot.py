@@ -13,10 +13,15 @@ from src.server_mock import MockServerManager
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
 parser.add_argument("--test", action="store_true", help="Run in Test Mode (Mock Server)")
+parser.add_argument("--dry-run", action="store_true", help="Run in Dry-Run Mode (Preview changes without applying)")
 args = parser.parse_args()
 
 # --- Configuration Setup ---
 config.set_test_mode(args.test)
+config.set_dry_run_mode(args.dry_run)
+
+if config.DRY_RUN_MODE:
+    logger.info("🌵 STARTING IN DRY-RUN MODE (PREVIEW ONLY) 🌵")
 if config.TEST_MODE:
     logger.info("⚠️ STARTING IN TEST MODE (MOCK SERVER) ⚠️")
 
