@@ -145,6 +145,18 @@ echo ""
 echo -e "${BLUE}[INFO] Starting Docker containers using $DOCKER_COMPOSE_CMD...${NC}"
 $DOCKER_COMPOSE_CMD up -d
 
+# Wait a moment for container to initialize
+echo -e "${BLUE}[INFO] Waiting for container to initialize...${NC}"
+sleep 5
+
+# Check if container is actually running
+if ! $DOCKER_COMPOSE_CMD ps | grep -q "Up"; then
+    echo -e "${RED}[ERROR] Container failed to start!${NC}"
+    echo -e "${YELLOW}[WARN] checking logs:${NC}"
+    $DOCKER_COMPOSE_CMD logs
+    exit 1
+fi
+
 echo ""
 echo -e "${GREEN}[SUCCESS] Bot started successfully!${NC}"
 echo ""
