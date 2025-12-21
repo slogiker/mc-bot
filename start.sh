@@ -5,23 +5,32 @@
 
 set -e
 
-echo "🚀 Minecraft Discord Bot - Docker Setup"
-echo "========================================"
+# ANSI Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+echo -e "${CYAN}----------------------------------------${NC}"
+echo -e "${CYAN}   Minecraft Discord Bot - Docker Setup ${NC}"
+echo -e "${CYAN}----------------------------------------${NC}"
 echo ""
 
 # Check if .env exists and is configured
 if [ ! -f .env ]; then
-    echo "⚠️  .env file not found! Let's set it up..."
+    echo -e "${YELLOW}[WARN] .env file not found! Starting setup...${NC}"
     echo ""
     
     # Prompt for Discord Bot Token
-    echo "📝 Please enter your Discord Bot Token:"
-    echo "   (Get it from: https://discord.com/developers/applications)"
-    read -p "BOT_TOKEN: " bot_token
+    echo -e "${BLUE}[INFO] Please enter your Discord Bot Token:${NC}"
+    echo "       (Get it from: https://discord.com/developers/applications)"
+    read -p "       > BOT_TOKEN: " bot_token
     
     # Validate token is not empty
     if [ -z "$bot_token" ]; then
-        echo "❌ Bot token cannot be empty!"
+        echo -e "${RED}[ERROR] Bot token cannot be empty!${NC}"
         exit 1
     fi
     
@@ -29,7 +38,7 @@ if [ ! -f .env ]; then
     rcon_password=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
     
     echo ""
-    echo "🔐 Auto-generated RCON password: $rcon_password"
+    echo -e "${GREEN}[OK] Auto-generated RCON password: ${NC}$rcon_password"
     echo ""
     
     # Create .env file
@@ -41,28 +50,29 @@ BOT_TOKEN=$bot_token
 RCON_PASSWORD=$rcon_password
 EOF
     
-    echo "✅ Created .env file with your configuration!"
+    echo -e "${GREEN}[OK] Created .env file with your configuration!${NC}"
     echo ""
 elif ! grep -q "BOT_TOKEN=." .env 2>/dev/null || ! grep -q "RCON_PASSWORD=." .env 2>/dev/null; then
-    echo "⚠️  .env file exists but appears incomplete!"
-    echo "📝 Please ensure .env contains:"
-    echo "   - BOT_TOKEN=your_discord_bot_token"
-    echo "   - RCON_PASSWORD=your_rcon_password"
+    echo -e "${YELLOW}[WARN] .env file exists but appears incomplete!${NC}"
+    echo -e "${BLUE}[INFO] Please ensure .env contains:${NC}"
+    echo "       - BOT_TOKEN=your_discord_bot_token"
+    echo "       - RCON_PASSWORD=your_rcon_password"
     echo ""
-    read -p "Do you want to reconfigure .env? (y/N): " reconfigure
+    read -p "       > Do you want to reconfigure .env? (y/N): " reconfigure
     
     if [[ $reconfigure =~ ^[Yy]$ ]]; then
         # Backup existing .env
-        cp .env .env.backup.$(date +%s)
-        echo "📦 Backed up existing .env"
+        mkdir -p .backups
+        cp .env .backups/.env.backup.$(date +%s)
+        echo -e "${CYAN}[INFO] Backed up existing .env to .backups/${NC}"
         
         # Prompt for Discord Bot Token
         echo ""
-        echo "📝 Please enter your Discord Bot Token:"
-        read -p "BOT_TOKEN: " bot_token
+        echo -e "${BLUE}[INFO] Please enter your Discord Bot Token:${NC}"
+        read -p "       > BOT_TOKEN: " bot_token
         
         if [ -z "$bot_token" ]; then
-            echo "❌ Bot token cannot be empty!"
+            echo -e "${RED}[ERROR] Bot token cannot be empty!${NC}"
             exit 1
         fi
         
@@ -70,7 +80,7 @@ elif ! grep -q "BOT_TOKEN=." .env 2>/dev/null || ! grep -q "RCON_PASSWORD=." .en
         rcon_password=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
         
         echo ""
-        echo "🔐 Auto-generated RCON password: $rcon_password"
+        echo -e "${GREEN}[OK] Auto-generated RCON password: ${NC}$rcon_password"
         echo ""
         
         # Create .env file
@@ -82,41 +92,47 @@ BOT_TOKEN=$bot_token
 RCON_PASSWORD=$rcon_password
 EOF
         
-        echo "✅ Updated .env file!"
+        echo -e "${GREEN}[OK] Updated .env file!${NC}"
         echo ""
     else
-        echo "⚠️  Please configure .env manually and run this script again."
+        echo -e "${YELLOW}[WARN] Please configure .env manually and run this script again.${NC}"
         exit 1
     fi
 fi
 
 # Create necessary directories
-echo "📁 Creating directories..."
+echo -e "${BLUE}[INFO] Creating directories...${NC}"
 mkdir -p mc-server backups logs
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
+    echo -e "${RED}[ERROR] Docker is not installed.${NC} Please install Docker first."
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+# Determine if we should use "docker-compose" or "docker compose"
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE_CMD="docker-compose"
+elif docker compose version &> /dev/null; then
+    DOCKER_COMPOSE_CMD="docker compose"
+else
+    echo -e "${RED}[ERROR] Docker Compose is not installed or not in PATH.${NC}"
+    echo "       Please install it or ensure 'docker compose' works."
     exit 1
 fi
 
 # Start with docker-compose
 echo ""
-echo "🐳 Starting Docker containers..."
-docker-compose up -d
+echo -e "${BLUE}[INFO] Starting Docker containers using $DOCKER_COMPOSE_CMD...${NC}"
+$DOCKER_COMPOSE_CMD up -d
 
 echo ""
-echo "✅ Bot started successfully!"
+echo -e "${GREEN}[SUCCESS] Bot started successfully!${NC}"
 echo ""
-echo "📊 Useful commands:"
-echo "   View logs:        docker-compose logs -f mc-bot"
-echo "   Stop bot:         docker-compose down"
-echo "   Restart bot:      docker-compose restart"
-echo "   Access shell:     docker-compose exec mc-bot bash"
-echo "   Rebuild:          docker-compose up -d --build"
+echo -e "${CYAN}Useful commands:${NC}"
+echo "   View logs:        $DOCKER_COMPOSE_CMD logs -f mc-bot"
+echo "   Stop bot:         $DOCKER_COMPOSE_CMD down"
+echo "   Restart bot:      $DOCKER_COMPOSE_CMD restart"
+echo "   Access shell:     $DOCKER_COMPOSE_CMD exec mc-bot bash"
+echo "   Rebuild:          $DOCKER_COMPOSE_CMD up -d --build"
 echo ""
