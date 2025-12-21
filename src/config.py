@@ -16,6 +16,7 @@ class Config:
     def load(self):
         self.TOKEN = os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
+        self.TEST_BOT_TOKEN = os.getenv("TEST_BOT_TOKEN")
         self.TEST_MODE = False # Default, can be overridden
         self.DRY_RUN_MODE = False # Default, can be overridden
 
@@ -46,7 +47,6 @@ class Config:
         self.ROLES = data['roles']
         self.JAVA_PATH = data.get("java_path", "java")
         self.TIMEZONE = data.get("timezone", "Europe/Ljubljana")
-        self.TEST_BOT_TOKEN = data.get("test_bot_token", "")
 
     def set_test_mode(self, enabled: bool):
         self.TEST_MODE = enabled
