@@ -106,8 +106,27 @@ mkdir -p mc-server backups logs
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}[ERROR] Docker is not installed.${NC} Please install Docker first."
-    exit 1
+    echo -e "${YELLOW}[WARN] Docker is not installed.${NC}"
+    echo -e "${BLUE}[INFO] Would you like to install Docker automatically? (y/N)${NC}"
+    read -p "       > " install_docker
+    
+    if [[ $install_docker =~ ^[Yy]$ ]]; then
+        echo -e "${BLUE}[INFO] Installing Docker... (This may require your password)${NC}"
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        rm get-docker.sh
+        
+        echo -e "${BLUE}[INFO] Adding current user to 'docker' group...${NC}"
+        sudo usermod -aG docker $USER
+        
+        echo -e "${GREEN}[SUCCESS] Docker installed successfully!${NC}"
+        echo -e "${YELLOW}[WARN] You may need to log out and back in for group changes to take effect.${NC}"
+        echo -e "${YELLOW}[WARN] If you get a permission error below, try restarting your session.${NC}"
+    else
+        echo -e "${RED}[ERROR] Docker is required to run this bot.${NC}"
+        echo "       Please install Docker manually and try again."
+        exit 1
+    fi
 fi
 
 # Determine if we should use "docker-compose" or "docker compose"

@@ -1,30 +1,28 @@
-version: '3.8'
-
 services:
   mc-bot:
     build: .
     container_name: mc-bot
     restart: unless-stopped
-    
+
     # Port mappings
     ports:
-      - "25565:25565"  # Minecraft server
-      - "25575:25575"  # RCON
-    
+      - "25565:25565" # Minecraft server
+      - "25575:25575" # RCON
+
     # Volume mappings for persistent data
     volumes:
       - ./mc-server:/app/mc-server
       - ./backups:/app/backups
       - ./logs:/app/logs
       - ./.env:/app/.env
-    
+
     # Environment variables from .env file
     env_file:
       - .env
-    
+
     # Memory limit
     mem_limit: 8g
-    
+
     # Keep container running
     tty: true
     stdin_open: true
