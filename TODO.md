@@ -12,3 +12,5 @@
    Server information - IP, Version, Seed, spawn typed manualy
    bot-commands - only channel bot listens
    logs
+
+7. automaticly allocate max and min ram when starting minecraft server jar instance
