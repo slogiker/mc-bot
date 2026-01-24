@@ -1,5 +1,54 @@
+# Environment variables (SECRETS!)
 .env
-Python
-__pythoncache__
-*.log
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+env/
+ENV/
+.venv
+
+# Minecraft Server Data
 mc-server/
+backups/
+
+# Bot State & Config (contains secrets!)
+bot_state.json
+*.json.backup
+config.json
+
+# Logs
+*.log
+logs/
+bot.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+world_tmp_backup/

@@ -29,8 +29,9 @@ COPY config.json .
 # Create necessary directories
 RUN mkdir -p /app/mc-server /app/backups /app/logs
 
-# Expose Minecraft and RCON ports
-EXPOSE 25565 25575
+# Expose only Minecraft port
+# RCON (25575) should NOT be exposed - only accessible within container network
+EXPOSE 25565
 
 # Run the bot
 CMD ["python", "bot.py"]

@@ -4,6 +4,8 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import json
+import asyncio
+import aiofiles
 from src.config import config
 from src.utils import get_uuid, map_key, display_key, has_role
 from src.logger import logger
@@ -13,34 +15,33 @@ async def stats_autocomplete(
     current: str,
 ) -> list[app_commands.Choice]:
     """Provide autocomplete suggestions for the category parameter."""
-    # Interaction.namespace.username is not always available depending on how arguments are filled
-    # We need to get the username argument value
     try:
         username = interaction.namespace.username
-    except:
+    except AttributeError:
         return []
         
     if not username:
         return []
 
-    # Get UUID and load stats
-    # We must call get_uuid which is synchronous? No, we made it sync in utils.py.
-    # But files ops are blocking. For autocomplete it's better to be fast.
-    # We'll stick to logic from main.py.bak
-    # get_uuid is imported from utils
-    
-    uuid = get_uuid(username)
+    # Get UUID (now async)
+    uuid = await get_uuid(username)
     if not uuid:
         return []
 
     stats_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'stats', f"{uuid}.json")
-    if not os.path.exists(stats_path):
+    
+    # Use asyncio.to_thread for os.path.exists
+    exists = await asyncio.to_thread(os.path.exists, stats_path)
+    if not exists:
         return []
 
     try:
-        with open(stats_path, 'r') as f:
-            stats_data = json.load(f)
-    except:
+        # Use aiofiles for reading
+        async with aiofiles.open(stats_path, 'r') as f:
+            content = await f.read()
+            stats_data = json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load stats for autocomplete: {e}")
         return []
 
     # Extract and filter categories
@@ -110,21 +111,25 @@ class Stats(commands.Cog):
     async def stats(self, interaction: discord.Interaction, username: str, category: str = None, item: str = None):
         """Display statistics for a specific player dynamically."""
         try:
-            # Get UUID from username
-            uuid = get_uuid(username)
+            # Get UUID from username (now async)
+            uuid = await get_uuid(username)
             if not uuid:
                 await interaction.response.send_message(f"❌ Player {username} not found.", ephemeral=True)
                 return
 
             # Construct and check stats file path
             stats_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'stats', f"{uuid}.json")
-            if not os.path.exists(stats_path):
+            
+            # Use asyncio.to_thread for os.path.exists
+            exists = await asyncio.to_thread(os.path.exists, stats_path)
+            if not exists:
                 await interaction.response.send_message(f"❌ Stats for {username} not found.", ephemeral=True)
                 return
 
-            # Load stats JSON
-            with open(stats_path, 'r') as f:
-                stats_data = json.load(f)
+            # Load stats JSON using aiofiles
+            async with aiofiles.open(stats_path, 'r') as f:
+                content = await f.read()
+                stats_data = json.loads(content)
 
             # Handle different cases based on parameters
             if category is None:
@@ -164,7 +169,7 @@ class Stats(commands.Cog):
 
         except Exception as e:
             error_msg = f"❌ Failed to get stats: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             await interaction.response.send_message(error_msg, ephemeral=True)
 
 async def setup(bot):

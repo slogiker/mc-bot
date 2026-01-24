@@ -16,9 +16,13 @@ class Config:
     def load(self):
         self.TOKEN = os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
-        self.TEST_BOT_TOKEN = os.getenv("TEST_BOT_TOKEN")
-        self.TEST_MODE = False # Default, can be overridden
-        self.DRY_RUN_MODE = False # Default, can be overridden
+        self.dry_run = False  # Default, set via command line flag
+        
+        # Auto-generate config if it doesn't exist
+        if not os.path.exists('config.json'):
+            from src.config_generator import ConfigGenerator
+            generator = ConfigGenerator()
+            generator.load_or_generate('config.json')
 
         with open('config.json', 'r') as f:
             data = json.load(f)
@@ -48,11 +52,12 @@ class Config:
         self.JAVA_PATH = data.get("java_path", "java")
         self.TIMEZONE = data.get("timezone", "Europe/Ljubljana")
 
-    def set_test_mode(self, enabled: bool):
-        self.TEST_MODE = enabled
-
-    def set_dry_run_mode(self, enabled: bool):
-        self.DRY_RUN_MODE = enabled
+    def set_dry_run(self, enabled: bool):
+        """Enable/disable dry-run mode"""
+        self.dry_run = enabled
+        if enabled:
+            from src.logger import logger
+            logger.info("🌵 DRY-RUN MODE ENABLED - No actual changes will be made")
 
     def override_channel_ids(self, command_id: int, log_id: int, debug_id: int):
         self.COMMAND_CHANNEL_ID = command_id
@@ -71,3 +76,4 @@ class Config:
             self.ROLES = updates['roles']
 
 config = Config()
+

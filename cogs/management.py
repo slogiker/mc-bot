@@ -28,71 +28,97 @@ class Management(commands.Cog):
     @has_role("start")
     async def start(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        if self.bot.server.is_running():
-            embed = discord.Embed(description="✅ Server is already running.", color=0x57F287)
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
         
-        success = await self.bot.server.start()
+        success, message = await self.bot.server.start()
         if success:
-            embed = discord.Embed(description="🚀 Server starting...", color=0x57F287)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            embed = discord.Embed(
+                title="🚀 Server Starting",
+                description=message,
+                color=0x57F287
+            )
         else:
-            embed = discord.Embed(description="❌ Failed to start server.", color=0xED4245)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            embed = discord.Embed(
+                title="❌ Failed to Start Server",
+                description=f"**Error:** {message}",
+                color=0xED4245
+            )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="stop", description="Stop the server")
     @has_role("stop")
     async def stop(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        if not self.bot.server.is_running():
-            embed = discord.Embed(description="✅ Server is not running.", color=0x57F287)
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
 
-        embed = discord.Embed(description="🛑 Stopping...", color=0xFEE75C)
+        embed = discord.Embed(description="🛑 Stopping server...", color=0xFEE75C)
         await interaction.followup.send(embed=embed, ephemeral=True)
         
-        success = await self.bot.server.stop()
+        success, message = await self.bot.server.stop()
         if success:
-            embed = discord.Embed(description="🛑 Server stopped", color=0xED4245)
-            await interaction.edit_original_response(embed=embed)
+            embed = discord.Embed(
+                title="🛑 Server Stopped",
+                description=message,
+                color=0xED4245
+            )
         else:
-            embed = discord.Embed(description="❌ Failed to stop server.", color=0xED4245)
-            await interaction.edit_original_response(embed=embed)
+            embed = discord.Embed(
+                title="❌ Failed to Stop Server",
+                description=f"**Error:** {message}",
+                color=0xED4245
+            )
+        
+        await interaction.edit_original_response(embed=embed)
 
     @app_commands.command(name="restart", description="Restart the server")
     @has_role("restart")
     async def restart(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        embed = discord.Embed(description="🔄 Restarting...", color=0xFEE75C)
+        
+        embed = discord.Embed(description="🔄 Restarting server...", color=0xFEE75C)
         await interaction.followup.send(embed=embed, ephemeral=True)
         
-        success = await self.bot.server.restart()
+        success, message = await self.bot.server.restart()
         if success:
-             embed = discord.Embed(description="🚀 Restarted.", color=0x57F287)
-             await interaction.edit_original_response(embed=embed)
+            embed = discord.Embed(
+                title="🚀 Server Restarted",
+                description=message,
+                color=0x57F287
+            )
         else:
-             embed = discord.Embed(description="❌ Failed to restart server.", color=0xED4245)
-             await interaction.edit_original_response(embed=embed)
+            embed = discord.Embed(
+                title="❌ Failed to Restart Server",
+                description=f"**Error:** {message}",
+                color=0xED4245
+            )
+        
+        await interaction.edit_original_response(embed=embed)
 
     @app_commands.command(name="force_restart", description="Force restart server (simulated)")
     @has_role("force_restart")
     async def force_restart(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        embed = discord.Embed(description="🔄 Forcing Restart...", color=0xFEE75C)
+        
+        embed = discord.Embed(description="🔄 Forcing restart...", color=0xFEE75C)
         await interaction.followup.send(embed=embed, ephemeral=True)
         
         # In current architecture, restart() handles stop/start sequence.
         # We can implement a more aggressive kill in ServerManager if needed.
         # For now, alias to restart.
-        success = await self.bot.server.restart()
+        success, message = await self.bot.server.restart()
         if success:
-             embed = discord.Embed(description="🚀 Forced restart done.", color=0x57F287)
-             await interaction.edit_original_response(embed=embed)
+            embed = discord.Embed(
+                title="🚀 Forced Restart Complete",
+                description=message,
+                color=0x57F287
+            )
         else:
-             embed = discord.Embed(description="❌ Failed to force restart.", color=0xED4245)
-             await interaction.edit_original_response(embed=embed)
+            embed = discord.Embed(
+                title="❌ Failed to Force Restart",
+                description=f"**Error:** {message}",
+                color=0xED4245
+            )
+        
+        await interaction.edit_original_response(embed=embed)
 
     @app_commands.command(name="bot_stop", description="Stop the bot")
     @has_role("bot_stop")

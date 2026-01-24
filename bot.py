@@ -8,22 +8,14 @@ import os
 from src.config import config
 from src.logger import logger
 from src.server_tmux import TmuxServerManager
-from src.server_mock import MockServerManager
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
-parser.add_argument("--test", action="store_true", help="Run in Test Mode (Mock Server)")
-parser.add_argument("--dry-run", action="store_true", help="Run in Dry-Run Mode (Preview changes without applying)")
+parser.add_argument("--dry-run", action="store_true", help="Run in Dry-Run Mode (simulates operations without making changes)")
 args = parser.parse_args()
 
 # --- Configuration Setup ---
-config.set_test_mode(args.test)
-config.set_dry_run_mode(args.dry_run)
-
-if config.DRY_RUN_MODE:
-    logger.info("🌵 STARTING IN DRY-RUN MODE (PREVIEW ONLY) 🌵")
-if config.TEST_MODE:
-    logger.info("⚠️ STARTING IN TEST MODE (MOCK SERVER) ⚠️")
+config.set_dry_run(args.dry_run)
 
 # --- Bot Setup ---
 class MinecraftBot(commands.Bot):
@@ -33,13 +25,12 @@ class MinecraftBot(commands.Bot):
         intents.members = True
         super().__init__(command_prefix='/', intents=intents)
         
-        # Initialize Server Manager
-        if config.TEST_MODE:
-            self.server = MockServerManager(self)
-        else:
-            self.server = TmuxServerManager()
+        # Initialize Server Manager (always use TmuxServerManager)
+        # Dry-run mode is handled within the manager if needed
+        self.server = TmuxServerManager()
         
         self.synced = False  # Prevent duplicate syncs
+        self._sync_lock = asyncio.Lock()  # Prevent race conditions
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CommandOnCooldown):
@@ -73,18 +64,19 @@ class MinecraftBot(commands.Bot):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info("=== Bot Connected to Discord ===")
         
-        # Only sync once
-        if self.synced:
-            logger.info("Commands already synced, skipping...")
-            return
+        # Only sync once (with lock to prevent race conditions)
+        async with self._sync_lock:
+            if self.synced:
+                logger.info("Commands already synced, skipping...")
+                return
         
-        # Determine which Guild to use
-        guild = None
-        if config.GUILD_ID:
-            try:
-                guild = self.get_guild(int(config.GUILD_ID))
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid GUILD_ID: {config.GUILD_ID}")
+            # Determine which Guild to use
+            guild = None
+            if config.GUILD_ID:
+                try:
+                    guild = self.get_guild(int(config.GUILD_ID))
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid GUILD_ID: {config.GUILD_ID}")
         
         if not guild and self.guilds:
             guild = self.guilds[0]
@@ -139,7 +131,7 @@ class MinecraftBot(commands.Bot):
 
 async def main():
     bot = MinecraftBot()
-    token = config.TEST_BOT_TOKEN if config.TEST_MODE else config.TOKEN
+    token = config.TOKEN
     
     if not token:
         logger.error("No token found! Check .env file for BOT_TOKEN")

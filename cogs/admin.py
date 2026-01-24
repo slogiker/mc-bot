@@ -66,21 +66,24 @@ class Admin(commands.Cog):
     @app_commands.command(name="logs", description="Show last N log lines")
     @has_role("logs")
     async def logs(self, interaction: discord.Interaction, lines: int = 10):
-        # Default line count hardcoded or from config if accessible
+        import aiofiles
         try:
             path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
-            if not os.path.exists(path):
+            
+            # Use asyncio.to_thread for os.path.exists check
+            exists = await asyncio.to_thread(os.path.exists, path)
+            if not exists:
                 await interaction.response.send_message("❌ Log file not found.", ephemeral=True)
                 return
 
             dq = deque(maxlen=lines)
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                for L in f:
-                    dq.append(L.rstrip())
+            # Use aiofiles for reading
+            async with aiofiles.open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                async for line in f:
+                    dq.append(line.rstrip())
             
             log_message = "```" + "\n".join(dq) + "```"
-            # Send to log channel as per original bot behavior?
-            # Original sent to log channel AND replied to user.
+            # Send to log channel as per original bot behavior
             log_channel = self.bot.get_channel(config.LOG_CHANNEL_ID)
             if log_channel:
                  await log_channel.send(f"📜 Last {lines} lines:\n{log_message}")
@@ -89,6 +92,7 @@ class Admin(commands.Cog):
                  await interaction.response.send_message(f"Last {lines} lines:\n{log_message}", ephemeral=True)
 
         except Exception as e:
+             logger.error(f"Failed to get logs: {e}")
              await interaction.response.send_message(f"❌ Failed to get logs: {e}", ephemeral=True)
 
     @app_commands.command(name="whitelist_add", description="Add user to whitelist")

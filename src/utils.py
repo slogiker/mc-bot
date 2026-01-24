@@ -34,12 +34,6 @@ def has_role(cmd_name):
 
 async def rcon_cmd(cmd):
     """Execute an RCON command on the Minecraft server asynchronously."""
-    if config.TEST_MODE:
-        logger.info(f"[MOCK RCON] Executing: {cmd}")
-        if cmd == "list":
-            return "There are 0 of a max of 20 players online: "
-        return "Executed command (MOCK)"
-
     try:
         async with Client(config.RCON_HOST, config.RCON_PORT, config.RCON_PASSWORD) as client:
             return await client.send_cmd(cmd)
@@ -48,13 +42,25 @@ async def rcon_cmd(cmd):
         logger.error(error_msg)
         return "❌ Server is not running or RCON is unavailable"
 
-def get_uuid(username):
+async def get_uuid(username):
     """Retrieve a player's UUID from usercache.json."""
+    import aiofiles
     usercache_path = os.path.join(config.SERVER_DIR, 'usercache.json')
-    if not os.path.exists(usercache_path):
+    
+    # Use asyncio.to_thread for os.path.exists check
+    exists = await asyncio.to_thread(os.path.exists, usercache_path)
+    if not exists:
         return None
-    with open(usercache_path, 'r') as f:
-        users = json.load(f)
+    
+    # Use aiofiles for reading
+    try:
+        async with aiofiles.open(usercache_path, 'r') as f:
+            content = await f.read()
+            users = json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to read usercache.json: {e}")
+        return None
+    
     for user in users:
         if user['name'].lower() == username.lower():
             return user['uuid']

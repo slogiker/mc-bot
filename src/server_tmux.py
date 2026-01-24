@@ -2,6 +2,7 @@ import subprocess
 import asyncio
 import os
 import json
+import shlex
 import aiofiles
 from src.server_interface import ServerInterface
 from src.config import config
@@ -12,6 +13,7 @@ class TmuxServerManager(ServerInterface):
         self.session_name = "minecraft"
         self._intentional_stop = True  # Cache in memory to avoid blocking I/O
         self._state_file = os.path.join(config.SERVER_DIR, 'bot_state.json')
+        self._state_lock = asyncio.Lock()  # Prevent race conditions
         
         # Load initial state asynchronously later, for now assume intentional stop
         # We'll load it properly on first access
@@ -36,43 +38,69 @@ class TmuxServerManager(ServerInterface):
 
     async def _load_state(self):
         """Load state from file asynchronously"""
-        try:
-            if os.path.exists(self._state_file):
-                async with aiofiles.open(self._state_file, 'r') as f:
-                    content = await f.read()
-                    data = json.loads(content)
-                    self._intentional_stop = data.get('intentional_stop', True)
-                    logger.info(f"Loaded state: intentional_stop={self._intentional_stop}")
-            else:
-                logger.info("No state file found, assuming intentional stop")
+        async with self._state_lock:
+            try:
+                # Use asyncio.to_thread for os.path.exists check
+                exists = await asyncio.to_thread(os.path.exists, self._state_file)
+                if exists:
+                    async with aiofiles.open(self._state_file, 'r') as f:
+                        content = await f.read()
+                        data = json.loads(content)
+                        self._intentional_stop = data.get('intentional_stop', True)
+                        logger.info(f"Loaded state: intentional_stop={self._intentional_stop}")
+                else:
+                    logger.info("No state file found, assuming intentional stop")
+                    self._intentional_stop = True
+            except Exception as e:
+                logger.error(f"Failed to load state: {e}")
                 self._intentional_stop = True
-        except Exception as e:
-            logger.error(f"Failed to load state: {e}")
-            self._intentional_stop = True
 
     async def _save_state(self):
         """Save state to file asynchronously"""
-        try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
-            
-            data = {'intentional_stop': self._intentional_stop}
-            async with aiofiles.open(self._state_file, 'w') as f:
-                await f.write(json.dumps(data, indent=2))
-            logger.info(f"Saved state: intentional_stop={self._intentional_stop}")
-        except Exception as e:
-            logger.error(f"Failed to save state: {e}")
+        async with self._state_lock:
+            try:
+                # Ensure directory exists (use asyncio.to_thread)
+                await asyncio.to_thread(os.makedirs, os.path.dirname(self._state_file), exist_ok=True)
+                
+                data = {'intentional_stop': self._intentional_stop}
+                async with aiofiles.open(self._state_file, 'w') as f:
+                    await f.write(json.dumps(data, indent=2))
+                logger.info(f"Saved state: intentional_stop={self._intentional_stop}")
+            except Exception as e:
+                logger.error(f"Failed to save state: {e}")
 
-    async def start(self):
+    async def start(self) -> tuple[bool, str]:
         """Start the Minecraft server"""
         if self.is_running():
             logger.info("Server is already running.")
-            return False
+            return False, "Server is already running"
+
+        # Validate paths exist (use asyncio.to_thread)
+        jar_path = os.path.join(config.SERVER_DIR, config.SERVER_JAR)
+        jar_exists = await asyncio.to_thread(os.path.exists, jar_path)
+        if not jar_exists:
+            msg = f"Server jar not found: {jar_path}"
+            logger.error(msg)
+            return False, msg
+        
+        server_dir_exists = await asyncio.to_thread(os.path.exists, config.SERVER_DIR)
+        if not server_dir_exists:
+            msg = f"Server directory not found: {config.SERVER_DIR}"
+            logger.error(msg)
+            return False, msg
 
         # Kill any existing session just in case
         self._run_tmux_cmd(["kill-session", "-t", self.session_name])
 
-        java_cmd = f"cd {config.SERVER_DIR} && {config.JAVA_PATH} -Xms{config.JAVA_XMS} -Xmx{config.JAVA_XMX} -jar {config.SERVER_JAR} nogui"
+        # Build command with proper escaping to prevent injection
+        java_cmd = (
+            f"cd {shlex.quote(config.SERVER_DIR)} && "
+            f"{shlex.quote(config.JAVA_PATH)} "
+            f"-Xms{config.JAVA_XMS} "
+            f"-Xmx{config.JAVA_XMX} "
+            f"-jar {shlex.quote(config.SERVER_JAR)} "
+            f"nogui"
+        )
         
         # Start new session detached
         logger.info(f"Starting server with command: {java_cmd}")
@@ -86,21 +114,22 @@ class TmuxServerManager(ServerInterface):
         )
         
         if res.returncode != 0:
-            logger.error(f"Failed to start tmux session: {res.stderr}")
-            return False
+            msg = f"Failed to start tmux: {res.stderr}"
+            logger.error(msg)
+            return False, msg
         
         # Update state
         self._intentional_stop = False
         await self._save_state()
         
         logger.info("Server started successfully")
-        return True
+        return True, "Server started successfully"
 
-    async def stop(self):
+    async def stop(self) -> tuple[bool, str]:
         """Stop the Minecraft server"""
         if not self.is_running():
             logger.info("Server is not running.")
-            return False
+            return False, "Server is not running"
         
         # Mark as intentional stop FIRST
         self._intentional_stop = True
@@ -124,14 +153,22 @@ class TmuxServerManager(ServerInterface):
             )
         
         logger.info("Server stopped successfully")
-        return True
+        return True, "Server stopped successfully"
 
-    async def restart(self):
+    async def restart(self) -> tuple[bool, str]:
         """Restart the Minecraft server"""
         logger.info("Restarting server...")
-        await self.stop()
+        stop_success, stop_msg = await self.stop()
+        if not stop_success:
+            return False, f"Failed to stop server: {stop_msg}"
+        
         await asyncio.sleep(config.RESTART_DELAY)
-        return await self.start()
+        start_success, start_msg = await self.start()
+        
+        if start_success:
+            return True, "Server restarted successfully"
+        else:
+            return False, f"Server stopped but failed to restart: {start_msg}"
 
     def send_command(self, cmd: str):
         """Send command to tmux session (non-blocking)"""

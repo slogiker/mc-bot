@@ -23,7 +23,7 @@ A powerful Discord bot to manage your Minecraft server directly from Discord. St
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/slogiker/mc-bot.git
    cd mc-bot
    ```
 
