@@ -2,20 +2,9 @@
 
 ## 🎯 Current Focus
 
-### Next Up (Week 2)
-- [ ] **Add type hints** to main modules (`src/`, `cogs/`) - Better IDE support, catch bugs early
-- [ ] **Better config validation** with Pydantic - Prevent cryptic errors from invalid config
-
-### Later (Week 3+)
-- [ ] **Logging levels** - Add `--debug` flag for detailed logging
-- [ ] **Extract duplicate code** - Create embed utility functions, consolidate patterns
-- [ ] **Unit tests** - Add pytest for critical components
-
----
-
-## 🚀 Feature Ideas
 
 ### High Priority
+- [ ] **Full support for Windows without Docker** - Native Windows installation script (no Docker Desktop required)
 - [ ] **Mod Management** - Interactive mod installation with dependency resolution (Modrinth/CurseForge)
 - [ ] **Playit.gg Integration** - Free secure tunnel for public server access
 - [ ] **Vanilla Tweaks** - Allow datapack uploads via Discord

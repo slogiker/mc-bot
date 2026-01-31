@@ -143,14 +143,42 @@ if (-not $dockerCmd) {
 }
 
 # Check if Docker daemon is running
+Write-Blue "[INFO] Checking if Docker daemon is running..."
 try {
-    docker info | Out-Null
+    $dockerInfo = docker info 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker daemon not accessible"
+    }
 } catch {
-    Write-Warning "[WARN] Docker daemon is not running."
-    Write-Blue "[INFO] Please start Docker Desktop and wait for it to be ready."
+    Write-Warning "[WARN] Docker daemon is not running or not accessible."
+    Write-Host ""
+    Write-Blue "[INFO] Please ensure Docker Desktop is:"
+    Write-Host "       1. Installed (download from: https://www.docker.com/products/docker-desktop)"
+    Write-Host "       2. Started (look for Docker Desktop icon in system tray)"
+    Write-Host "       3. Fully initialized (wait for 'Docker Desktop is running' notification)"
+    Write-Host ""
+    Write-Host "       After Docker Desktop is running, please run this script again."
+    exit 1
+}
+
+# Additional check: Try to ping Docker
+try {
+    docker ps 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker not responding"
+    }
+} catch {
+    Write-Warning "[WARN] Docker is installed but not responding."
+    Write-Blue "[INFO] Please check:"
+    Write-Host "       - Docker Desktop is running (check system tray)"
+    Write-Host "       - Docker Desktop has finished starting (may take 30-60 seconds)"
+    Write-Host "       - No firewall is blocking Docker"
+    Write-Host ""
     Write-Host "       Then run this script again."
     exit 1
 }
+
+Write-Success "[OK] Docker daemon is running"
 
 # Determine if we should use "docker-compose" or "docker compose"
 $dockerComposeCmd = $null
@@ -184,14 +212,33 @@ Write-Host ""
 Write-Blue "[INFO] Starting Docker containers using $dockerComposeCmdName..."
 
 # Execute the appropriate docker compose command
+$dockerOutput = $null
 if ($dockerComposeCmd -eq "docker-compose") {
-    & docker-compose up -d
+    $dockerOutput = & docker-compose up -d 2>&1
 } else {
-    & docker compose up -d
+    $dockerOutput = & docker compose up -d 2>&1
 }
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "[ERROR] Failed to start Docker containers!"
+    Write-Host ""
+    
+    # Check for specific Docker Desktop errors
+    $errorText = $dockerOutput -join "`n"
+    if ($errorText -match "dockerDesktopLinuxEngine|The system cannot find the file specified|daemon.*not running") {
+        Write-Warning "[WARN] Docker Desktop appears to not be running or not fully started."
+        Write-Host ""
+        Write-Blue "[INFO] Please:"
+        Write-Host "       1. Open Docker Desktop (look for icon in system tray or Start menu)"
+        Write-Host "       2. Wait for Docker Desktop to fully start (may take 30-60 seconds)"
+        Write-Host "       3. Look for 'Docker Desktop is running' notification"
+        Write-Host "       4. Check system tray - Docker icon should be steady (not animating)"
+        Write-Host ""
+        Write-Host "       Then run this script again."
+    } else {
+        Write-Host "Error details:"
+        Write-Host $errorText
+    }
     exit 1
 }
 
