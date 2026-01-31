@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from src.config import config
 from src.logger import logger
-from src.setup_views import SetupConfigModal, SetupManager
+from src.setup_views import SimpleSetupModal
 import os
 
 class Setup(commands.Cog):
@@ -15,7 +15,7 @@ class Setup(commands.Cog):
     @app_commands.command(name="setup", description="Set up Discord channels and install Minecraft server")
     async def setup(self, interaction: discord.Interaction):
         """
-        Complete setup with modal form → confirmation → installation
+        Simple one-modal setup → Installation starts immediately
         """
         # Check permissions
         if not interaction.user.guild_permissions.administrator and interaction.user != interaction.guild.owner:
@@ -53,11 +53,8 @@ class Setup(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Create setup manager
-        setup_manager = SetupManager(interaction)
-        
-        # Show modal form
-        modal = SetupConfigModal(setup_manager)
+        # Show simple setup modal
+        modal = SimpleSetupModal(interaction)
         await interaction.response.send_modal(modal)
 
 async def setup(bot):

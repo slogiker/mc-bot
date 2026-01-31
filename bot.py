@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import sys
 import os
+import signal
 from src.config import config
 from src.logger import logger
 from src.server_tmux import TmuxServerManager
@@ -48,8 +49,9 @@ class MinecraftBot(commands.Bot):
         self.tree.on_error = self.on_tree_error
         
         logger.info("=== Bot Startup: Loading Extensions ===")
-        # Load cogs
-        for filename in os.listdir('./cogs'):
+        # Load cogs - wrap os.listdir for async
+        filenames = await asyncio.to_thread(os.listdir, './cogs')
+        for filename in filenames:
             if filename.endswith('.py') and filename != '__init__.py':
                 try:
                     await self.load_extension(f'cogs.{filename[:-3]}')
@@ -129,6 +131,28 @@ class MinecraftBot(commands.Bot):
         
         logger.info("=== Bot is now fully ready! ===")
 
+async def shutdown_handler(bot):
+    """Graceful shutdown - stop server and close bot cleanly"""
+    logger.info("🛑 Shutdown initiated...")
+    
+    try:
+        # Stop Minecraft server if running
+        if bot.server and bot.server.is_running():
+            logger.info("Stopping Minecraft server...")
+            await bot.server.stop()
+            logger.info("Server stopped")
+    except Exception as e:
+        logger.error(f"Error stopping server during shutdown: {e}")
+    
+    try:
+        # Close bot connection
+        logger.info("Closing bot connection...")
+        await bot.close()
+    except Exception as e:
+        logger.error(f"Error closing bot: {e}")
+    
+    logger.info("✅ Shutdown complete")
+
 async def main():
     bot = MinecraftBot()
     token = config.TOKEN
@@ -138,6 +162,19 @@ async def main():
         return
 
     logger.info("Starting bot client...")
+    
+    # Setup signal handlers for graceful shutdown
+    loop = asyncio.get_event_loop()
+    
+    def signal_handler(sig):
+        logger.info(f"Received signal {sig}")
+        loop.create_task(shutdown_handler(bot))
+    
+    # Register handlers (Windows supports SIGINT, Unix supports SIGTERM too)
+    signal.signal(signal.SIGINT, lambda s, f: signal_handler(s))
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, lambda s, f: signal_handler(s))
+    
     async with bot:
         await bot.start(token)
 
@@ -146,5 +183,6 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user (Ctrl+C)")
+        # Shutdown handler already called via signal
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)

@@ -3,8 +3,10 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import json
+import asyncio
+import aiofiles
 from src.config import config
-from src.utils import rcon_cmd, get_uuid, display_key, map_key, has_role
+from src.utils import rcon_cmd, get_uuid, display_key, map_key, has_role, parse_server_version
 
 class Info(commands.Cog):
     def __init__(self, bot):
@@ -43,19 +45,7 @@ class Info(commands.Cog):
     @app_commands.command(name="version", description="Show server version")
     @has_role("version")
     async def version(self, interaction: discord.Interaction):
-        # Quick implementation of version checking
-        log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
-        ver = "Unknown"
-        if os.path.exists(log_path):
-             with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  for line in f:
-                       if "Starting minecraft server version" in line:
-                            parts = line.split()
-                            for part in parts:
-                                 if part.startswith('1.') or part.startswith('2.'):
-                                      ver = part
-                                      break
-                            break
+        ver = await parse_server_version()
         await interaction.response.send_message(f"🛠️ Server version: {ver}", ephemeral=True)
 
     @app_commands.command(name="seed", description="Displays the server seed")
@@ -71,10 +61,11 @@ class Info(commands.Cog):
     @has_role("mods")
     async def mods(self, interaction: discord.Interaction):
         mods_dir = os.path.join(config.SERVER_DIR, 'mods')
-        if not os.path.exists(mods_dir):
+        exists = await asyncio.to_thread(os.path.exists, mods_dir)
+        if not exists:
              await interaction.response.send_message("❌ Mods folder not found.", ephemeral=True)
              return
-        mods_list = [f for f in os.listdir(mods_dir) if f.endswith('.jar')]
+        mods_list = [f for f in await asyncio.to_thread(os.listdir, mods_dir) if f.endswith('.jar')]
         if not mods_list:
              await interaction.response.send_message("🧩 No mods installed.", ephemeral=True)
         else:
@@ -83,35 +74,19 @@ class Info(commands.Cog):
     @app_commands.command(name="server_info", description="Displays server information")
     @has_role("server_info")
     async def server_info(self, interaction: discord.Interaction):
-         # Combine version, players, seed
-         # For simplicity, we just call the separate logic
-         await self.version.callback(self, interaction) # This sends response, might conflict if we want single message.
-         # Better to reimplement logic:
-         ver = "Unknown" # duplicate logic
-         log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
-         if os.path.exists(log_path):
-             with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  for line in f:
-                       if "Starting minecraft server version" in line:
-                            parts = line.split()
-                            for part in parts:
-                                 if part.startswith('1.') or part.startswith('2.'):
-                                      ver = part
-                                      break
-                            break
-         
-         players_res = await rcon_cmd("list")
-         seed_res = await rcon_cmd("seed")
-         
-         embed = discord.Embed(title="Server Information")
-         embed.add_field(name="Version", value=ver, inline=False)
-         embed.add_field(name="Players", value=players_res, inline=False)
-         embed.add_field(name="Seed", value=seed_res, inline=False)
-         
-         if not interaction.response.is_done():
-              await interaction.response.send_message(embed=embed, ephemeral=True)
-         else:
-              await interaction.followup.send(embed=embed, ephemeral=True)
+          ver = await parse_server_version()
+          players_res = await rcon_cmd("list")
+          seed_res = await rcon_cmd("seed")
+          
+          embed = discord.Embed(title="Server Information")
+          embed.add_field(name="Version", value=ver, inline=False)
+          embed.add_field(name="Players", value=players_res, inline=False)
+          embed.add_field(name="Seed", value=seed_res, inline=False)
+          
+          if not interaction.response.is_done():
+               await interaction.response.send_message(embed=embed, ephemeral=True)
+          else:
+               await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Info(bot))

@@ -16,25 +16,13 @@ class SetupHelper:
         
         updates = {}
         
-        # 1. ROLES
-        # Define roles and their default permissions (list of command names)
-        # We will use this to populate config.ROLES
-        role_definitions = {
-            "MC Admin": [
-                "start", "stop", "restart", "force_restart", "status", "backup_now", 
-                "reload_config", "shutdown", "bot_stop", "bot_restart", "logs", 
-                "whitelist_add", "seed", "players", "stats", "version", "server_info", 
-                "mods", "help", "cmd", "sync", "control"
-            ],
-            "MC Player": [
-                "status", "players", "seed", "version", "server_info", "mods", "help", "stats"
-            ]
-        }
+        # Define roles to create
+        role_definitions = ["MC Admin", "MC Player"]
         
         existing_roles = {r.name: r for r in guild.roles}
         dynamic_roles_config = {}
 
-        for role_name, permissions in role_definitions.items():
+        for role_name in role_definitions:
             role = existing_roles.get(role_name)
             if not role:
                 try:
@@ -46,14 +34,12 @@ class SetupHelper:
             else:
                 logger.info(f"Found Role: {role_name}")
             
-            # Map Role ID to Permissions
-            dynamic_roles_config[str(role.id)] = permissions
-            
             # Special Case: Assign 'MC Admin' to Owner
             if role_name == "MC Admin":
                 await self._assign_admin_role(guild, role)
 
-        updates['roles'] = dynamic_roles_config
+        # updates['roles'] is no longer needed as permissions are in user_config by name
+        updates['guild_id'] = str(guild.id)
 
         # 2. CATEGORY
         cat_name = "Minecraft Server"

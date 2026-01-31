@@ -12,6 +12,7 @@ class BackupManager:
         self.auto_dir = os.path.join(self.backup_dir, 'auto')
         self.custom_dir = os.path.join(self.backup_dir, 'custom')
         
+        # Sync initialization is OK here (happens once at startup)
         os.makedirs(self.auto_dir, exist_ok=True)
         os.makedirs(self.custom_dir, exist_ok=True)
 
@@ -47,30 +48,16 @@ class BackupManager:
             return False, str(e)
 
     def _zip_world(self, dest_path):
-        """Zips the world folder. This is a blocking operation."""
+        """Zips the world folder directly without creating a temp copy."""
         world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
         
-        # Create a temporary copy to avoid file locking issues (optional but safer)
-        # For large worlds, copying might be slow. 
-        # Given the user wants "no freeze", copying first is safer but slower.
-        # Direct zipping is faster but might hit locked files.
-        # Let's try direct zipping with error tolerance or copy-then-zip.
-        # The original code did copytree to tmp. Let's stick to that pattern for safety.
-        
-        tmp_path = os.path.join(config.SERVER_DIR, 'world_tmp_backup')
-        if os.path.exists(tmp_path):
-            shutil.rmtree(tmp_path)
-            
-        shutil.copytree(world_path, tmp_path)
-        
+        # Direct zipping - no temp copy (saves disk space and faster)
         with zipfile.ZipFile(dest_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for root, dirs, files in os.walk(tmp_path):
+            for root, dirs, files in os.walk(world_path):
                 for file in files:
                     file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, tmp_path)
+                    arcname = os.path.relpath(file_path, world_path)
                     zf.write(file_path, arcname)
-                    
-        shutil.rmtree(tmp_path)
 
     async def _cleanup_auto_backups(self):
         """Deletes auto backups older than retention days."""
@@ -79,15 +66,20 @@ class BackupManager:
         
         logger.info("Running backup cleanup...")
         
-        for fname in os.listdir(self.auto_dir):
+        # Use asyncio.to_thread for directory listing
+        files = await asyncio.to_thread(os.listdir, self.auto_dir)
+        
+        for fname in files:
             if not fname.endswith('.zip'):
                 continue
                 
             fpath = os.path.join(self.auto_dir, fname)
             try:
-                mtime = datetime.fromtimestamp(os.path.getmtime(fpath))
+                # Use asyncio.to_thread for file stat operations
+                mtime_timestamp = await asyncio.to_thread(os.path.getmtime, fpath)
+                mtime = datetime.fromtimestamp(mtime_timestamp)
                 if (now - mtime).days > retention_days:
-                    os.remove(fpath)
+                    await asyncio.to_thread(os.remove, fpath)
                     logger.info(f"Deleted old backup: {fname}")
             except Exception as e:
                 logger.error(f"Failed to delete old backup {fname}: {e}")

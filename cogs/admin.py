@@ -14,6 +14,7 @@ class Admin(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="cmd", description="Execute RCON command")
+    @app_commands.checks.cooldown(5, 60)  # 5 uses per 60 seconds
     @has_role("cmd")
     async def cmd(self, interaction: discord.Interaction, command: str):
         await interaction.response.defer(ephemeral=True)
@@ -41,6 +42,7 @@ class Admin(commands.Cog):
             await interaction.followup.send(f"❌ Sync failed: {e}", ephemeral=True)
 
     @app_commands.command(name="backup_now", description="Trigger immediate backup")
+    @app_commands.checks.cooldown(1, 300)  # 1 use per 5 minutes
     @has_role("backup_now")
     async def backup_now(self, interaction: discord.Interaction, name: str = "manual"):
         await interaction.response.defer(ephemeral=True)
@@ -54,7 +56,7 @@ class Admin(commands.Cog):
         else:
             await interaction.followup.send(f"❌ Backup failed: {result}", ephemeral=True)
 
-    @app_commands.command(name="reload_config", description="Reload config.json")
+    @app_commands.command(name="reload_config", description="Reload configuration")
     @has_role("reload_config")
     async def reload_config(self, interaction: discord.Interaction):
         try:

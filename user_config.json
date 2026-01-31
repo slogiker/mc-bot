@@ -1,0 +1,56 @@
+{
+    "java_ram_min": "2G",
+    "java_ram_max": "4G",
+    "backup_time": "03:00",
+    "backup_keep_days": 7,
+    "restart_time": "04:00",
+    "timezone": "Europe/Ljubljana",
+    "permissions": {
+        "MC Admin": [
+            "start",
+            "stop",
+            "restart",
+            "cmd",
+            "backup_now",
+            "reload_config",
+            "shutdown",
+            "bot_stop",
+            "bot_restart",
+            "logs",
+            "whitelist_add",
+            "seed",
+            "players",
+            "stats",
+            "version",
+            "server_info",
+            "mods",
+            "help",
+            "sync"
+        ],
+        "MC Player": [
+            "status",
+            "start",
+            "players",
+            "stop",
+            "restart",
+            "logs",
+            "whitelist_add",
+            "seed",
+            "version",
+            "server_info",
+            "mods",
+            "backup_now",
+            "stats",
+            "help"
+        ],
+        "@everyone": [
+            "status",
+            "help",
+            "players",
+            "seed",
+            "server_info",
+            "mods",
+            "stats"
+        ]
+    }
+}

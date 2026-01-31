@@ -25,6 +25,7 @@ class Management(commands.Cog):
         await interaction.response.send_message(embed=embed, view=ControlView(self.bot))
 
     @app_commands.command(name="start", description="Start the server")
+    @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
     @has_role("start")
     async def start(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -46,6 +47,7 @@ class Management(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="stop", description="Stop the server")
+    @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
     @has_role("stop")
     async def stop(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -70,6 +72,7 @@ class Management(commands.Cog):
         await interaction.edit_original_response(embed=embed)
 
     @app_commands.command(name="restart", description="Restart the server")
+    @app_commands.checks.cooldown(1, 60)  # 1 use per 60 seconds
     @has_role("restart")
     async def restart(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)

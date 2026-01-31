@@ -20,15 +20,23 @@ async def send_debug(bot, msg: str):
 def has_role(cmd_name):
     """Check if the user has the required role for a command."""
     async def predicate(interaction):
-        user_role_ids = [str(role.id) for role in interaction.user.roles]
-        # Check against config.ROLES
-        # config.ROLES is dict: {role_id: [cmd1, cmd2]}
-        for role_id in user_role_ids:
-            if cmd_name in config.ROLES.get(role_id, []):
+        # Use config.ROLE_PERMISSIONS (Name -> [cmds])
+        role_permissions = config.ROLE_PERMISSIONS
+        
+        # Check user's roles by NAME
+        for role in interaction.user.roles:
+            if cmd_name in role_permissions.get(role.name, []):
                 return True
         
+        # Check @everyone
+        if cmd_name in role_permissions.get("@everyone", []):
+            return True
+
         await send_debug(interaction.client, f"Check failed: {interaction.user.mention} lacks role for command '{cmd_name}'.")
-        await interaction.response.send_message("❌ Prosim, dobi ustrezno vlogo.", ephemeral=True)
+        
+        # Helper to list allowed roles
+        allowed_roles = [r for r, cmds in role_permissions.items() if cmd_name in cmds]
+        await interaction.response.send_message(f"❌ You need one of these roles: {', '.join(allowed_roles)}", ephemeral=True)
         return False
     return app_commands.check(predicate)
 
@@ -75,3 +83,25 @@ def display_key(key):
     if key.startswith("minecraft:"):
         return key[10:]
     return key
+
+async def parse_server_version():
+    """Parse Minecraft version from latest.log asynchronously."""
+    import aiofiles
+    log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
+    
+    exists = await asyncio.to_thread(os.path.exists, log_path)
+    if not exists:
+        return "Unknown"
+    
+    try:
+        async with aiofiles.open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+            async for line in f:
+                if "Starting minecraft server version" in line:
+                    parts = line.split()
+                    for part in parts:
+                        if part.startswith('1.') or part.startswith('2.'):
+                            return part
+    except Exception as e:
+        logger.error(f"Failed to parse server version: {e}")
+    
+    return "Unknown"

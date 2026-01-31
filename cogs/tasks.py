@@ -73,25 +73,26 @@ class Tasks(commands.Cog):
     async def monitor_server_log(self):
         """Monitor server logs for player join/leave events"""
         log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
-        if not os.path.exists(log_path):
+        if not await asyncio.to_thread(os.path.exists, log_path):
             return
 
         # Initialize position on first run
         if self.log_position is None:
             try:
-                self.log_position = os.path.getsize(log_path)
+                self.log_position = await asyncio.to_thread(os.path.getsize, log_path)
                 logger.info(f"Log monitor initialized at position {self.log_position}")
             except Exception as e:
                 logger.error(f"Failed to initialize log position: {e}")
                 return
 
         try:
-            current_size = os.path.getsize(log_path)
+            current_size = await asyncio.to_thread(os.path.getsize, log_path)
             
             # Log rotation detection
             if current_size < self.log_position:
-                self.log_position = 0
-                logger.info("Log rotation detected. Resetting position.")
+                self.log_position = current_size
+                logger.info("Log rotation detected. Skipping this cycle to prevent duplicate messages.")
+                return
             
             # Read new lines if file grew
             if current_size > self.log_position:

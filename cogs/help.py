@@ -12,12 +12,15 @@ class Help(commands.Cog):
     async def help(self, interaction: discord.Interaction):
         try:
             # Get user's role IDs
-            user_role_ids = [str(role.id) for role in interaction.user.roles]
+            # Get user's role names
+            user_roles = [role.name for role in interaction.user.roles]
+            user_roles.append("@everyone") # Always include everyone role
+            
             # Get commands the user is allowed to use
             allowed_commands = set()
-            for role_id in user_role_ids:
-                if role_id in config.ROLES:
-                    allowed_commands.update(config.ROLES[role_id])
+            for role_name in user_roles:
+                if role_name in config.ROLE_PERMISSIONS:
+                    allowed_commands.update(config.ROLE_PERMISSIONS[role_name])
             
             # Create embed with filtered commands
             embed = discord.Embed(title="Bot Commands", description="Commands you can use:")
