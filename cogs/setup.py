@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from src.config import config
 from src.logger import logger
-from src.setup_views import SimpleSetupModal
+from src.setup_forms import SetupFormView
 import os
 
 class Setup(commands.Cog):
@@ -15,7 +15,7 @@ class Setup(commands.Cog):
     @app_commands.command(name="setup", description="Set up Discord channels and install Minecraft server")
     async def setup(self, interaction: discord.Interaction):
         """
-        Simple one-modal setup → Installation starts immediately
+        Modern form-based setup with dropdowns and smart defaults
         """
         # Check permissions
         if not interaction.user.guild_permissions.administrator and interaction.user != interaction.guild.owner:
@@ -53,9 +53,26 @@ class Setup(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Show simple setup modal
-        modal = SimpleSetupModal(interaction)
-        await interaction.response.send_modal(modal)
+        # Show new form-based setup
+        embed = discord.Embed(
+            title="🔧 Minecraft Server Setup",
+            description="Configure your Minecraft server using the dropdowns below.",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="📋 Step 1: Select Options",
+            value="Choose your platform, version, and difficulty using the dropdowns below.",
+            inline=False
+        )
+        embed.add_field(
+            name="📝 Step 2: Basic Settings",
+            value="Click 'Continue to Basic Settings' to configure players and RAM.",
+            inline=False
+        )
+        embed.set_footer(text="You can access Advanced Settings at any time")
+        
+        view = SetupFormView()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Setup(bot))
