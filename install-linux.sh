@@ -112,7 +112,7 @@ if ! command -v docker &> /dev/null; then
     
     if [[ $install_docker =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}[INFO] Installing Docker... (This may require your password)${NC}"
-        curl -fsSL https://get.docker.com -o get-docker.sh
+        curl -fsSL https://get-docker.com -o get-docker.sh
         sudo sh get-docker.sh
         rm get-docker.sh
         

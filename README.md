@@ -18,7 +18,6 @@ A powerful Discord bot to manage your Minecraft server directly from Discord. St
 ### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/) installed
 - Discord Bot Token ([Get one here](https://discord.com/developers/applications))
-- **Windows users**: [WSL](https://aka.ms/wsl) installed (Docker runs in WSL)
 
 ### Setup
 
@@ -32,7 +31,7 @@ A powerful Discord bot to manage your Minecraft server directly from Discord. St
    
    **Linux/Mac:**
    ```bash
-   ./start.sh
+   ./install-linux.sh
    ```
    
    **Windows:**
@@ -127,8 +126,9 @@ mc-bot/
 ├── src/                # Core utilities
 ├── config.json         # Bot configuration
 ├── .env                # Credentials (auto-created)
-├── start.sh            # Docker startup script (Linux/Mac)
-├── start.bat           # Docker startup script (Windows/WSL)
+├── install-linux.sh    # Installation script (Linux/Mac)
+├── install-windows.ps1 # Installation script (Windows)
+├── start.bat           # Windows launcher (double-click to run)
 ├── docs/               # Additional documentation
 └── scripts/            # Installation scripts
 ```
@@ -167,7 +167,7 @@ sudo netstat -tulpn | grep -E '25565|25575'
 ```
 
 **Need to reconfigure?**
-- **Linux/Mac**: Delete `.env` and run `./start.sh` again
+- **Linux/Mac**: Delete `.env` and run `./install-linux.sh` again
 - **Windows**: Delete `.env` and run `start.bat` again
 
 ---

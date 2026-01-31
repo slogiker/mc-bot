@@ -6,16 +6,15 @@ Simple guide to run your Minecraft Discord Bot in Docker with Python 3.11 + Java
 
 - **Docker** installed ([Get Docker](https://docs.docker.com/get-docker/))
 - **Docker Compose** installed (usually comes with Docker Desktop)
-- **Windows users**: [WSL](https://aka.ms/wsl) installed (Docker runs in WSL on Windows)
 
 ## Quick Start
 
-### 1️⃣ Run the start script
+### 1️⃣ Run the installation script
 
 **Linux/Mac:**
 ```bash
-chmod +x start.sh
-./start.sh
+chmod +x install-linux.sh
+./install-linux.sh
 ```
 
 **Windows:**
@@ -28,8 +27,6 @@ The script will:
 - Check if `.env` exists and create it if needed
 - Create necessary directories (`mc-server`, `backups`, `logs`)
 - Build and start the Docker container
-
-**Note for Windows**: The `start.bat` file launches `start.sh` in WSL, so Docker runs natively in the Linux environment.
 
 ### 2️⃣ Configure `.env` (first time only)
 
@@ -44,7 +41,7 @@ RCON_PASSWORD=your_rcon_password_here
 
 **Linux/Mac:**
 ```bash
-./start.sh
+./install-linux.sh
 ```
 
 **Windows:**
