@@ -46,20 +46,39 @@ echo [INFO] Windows path: %WIN_PATH%
 echo [INFO] WSL path: %WSL_PATH%
 echo.
 
-REM Test if bash is available in WSL
-echo [INFO] Testing WSL bash availability...
-wsl which bash >nul 2>&1
+REM Test if the path exists in WSL
+echo [INFO] Testing if path exists in WSL...
+wsl test -d "%WSL_PATH%" 2>nul
 if errorlevel 1 (
-    echo [WARN] bash not found in default PATH, trying alternative...
+    echo [ERROR] Path does not exist in WSL: %WSL_PATH%
+    echo Please verify the path conversion is correct.
+    pause
+    exit /b 1
 )
+echo [OK] Path exists in WSL
+echo.
+
+REM Test if start.sh exists
+echo [INFO] Testing if start.sh exists...
+wsl test -f "%WSL_PATH%/start.sh" 2>nul
+if errorlevel 1 (
+    echo [ERROR] start.sh not found at: %WSL_PATH%/start.sh
+    pause
+    exit /b 1
+)
+echo [OK] start.sh found
+echo.
 
 REM Launch start.sh in WSL
-REM Use semicolons instead of && for better compatibility
-wsl bash -c "cd '%WSL_PATH%'; chmod +x start.sh; bash ./start.sh"
+echo [INFO] Launching start.sh in WSL...
+echo.
+wsl bash -c "cd '%WSL_PATH%' && chmod +x start.sh && bash start.sh"
 
-REM Keep window open if there was an error
+REM Check exit code (must check immediately after command)
 if errorlevel 1 (
     echo.
-    echo [ERROR] Failed to start the bot. Check the error messages above.
+    echo [ERROR] start.sh failed to execute.
+    echo Check the error messages above for details.
     pause
+    exit /b 1
 )
