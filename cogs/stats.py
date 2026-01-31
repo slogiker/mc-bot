@@ -63,25 +63,40 @@ async def item_autocomplete(
     try:
         username = interaction.namespace.username
         category = interaction.namespace.category
-    except:
+    except (AttributeError, KeyError) as e:
+        logger.debug(f"Failed to get namespace attributes in item_autocomplete: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error in item_autocomplete namespace access: {e}")
         return []
         
     if not username or not category:
         return []
 
-    # Get UUID and load stats
-    uuid = get_uuid(username)
+    # Get UUID and load stats (now async)
+    uuid = await get_uuid(username)
     if not uuid:
         return []
 
     stats_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'stats', f"{uuid}.json")
-    if not os.path.exists(stats_path):
+    # Use asyncio.to_thread for os.path.exists
+    exists = await asyncio.to_thread(os.path.exists, stats_path)
+    if not exists:
         return []
 
     try:
-        with open(stats_path, 'r') as f:
-            stats_data = json.load(f)
-    except:
+        # Use aiofiles for async file reading
+        async with aiofiles.open(stats_path, 'r') as f:
+            content = await f.read()
+            stats_data = json.loads(content)
+    except FileNotFoundError:
+        logger.debug(f"Stats file not found: {stats_path}")
+        return []
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse stats JSON for {username}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error loading stats for autocomplete: {e}")
         return []
 
     # Get items for the selected category

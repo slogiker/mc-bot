@@ -17,11 +17,18 @@ class Admin(commands.Cog):
     @app_commands.checks.cooldown(5, 60)  # 5 uses per 60 seconds
     @has_role("cmd")
     async def cmd(self, interaction: discord.Interaction, command: str):
-        await interaction.response.defer(ephemeral=True)
-        res = await rcon_cmd(command)
-        if len(res) > 1900:
-            res = res[:1900] + "..."
-        await interaction.followup.send(f"```{res}```", ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            res = await rcon_cmd(command)
+            if len(res) > 1900:
+                res = res[:1900] + "..."
+            await interaction.followup.send(f"```{res}```", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in cmd command: {e}", exc_info=True)
+            try:
+                await interaction.followup.send(f"❌ Failed to execute command: {e}", ephemeral=True)
+            except:
+                pass
 
     @app_commands.command(name="sync", description="Sync commands")
     @has_role("sync")
@@ -45,16 +52,23 @@ class Admin(commands.Cog):
     @app_commands.checks.cooldown(1, 300)  # 1 use per 5 minutes
     @has_role("backup_now")
     async def backup_now(self, interaction: discord.Interaction, name: str = "manual"):
-        await interaction.response.defer(ephemeral=True)
-        from src.backup_manager import backup_manager
-        
-        await interaction.followup.send("⏳ Starting backup...", ephemeral=True)
-        success, result = await backup_manager.create_backup(custom_name=name)
-        
-        if success:
-            await interaction.followup.send(f"✅ Backup created: `{result}`", ephemeral=True)
-        else:
-            await interaction.followup.send(f"❌ Backup failed: {result}", ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            from src.backup_manager import backup_manager
+            
+            await interaction.followup.send("⏳ Starting backup...", ephemeral=True)
+            success, result = await backup_manager.create_backup(custom_name=name)
+            
+            if success:
+                await interaction.followup.send(f"✅ Backup created: `{result}`", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Backup failed: {result}", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in backup_now command: {e}", exc_info=True)
+            try:
+                await interaction.followup.send(f"❌ Backup command failed: {e}", ephemeral=True)
+            except:
+                pass
 
     @app_commands.command(name="reload_config", description="Reload configuration")
     @has_role("reload_config")
@@ -102,11 +116,19 @@ class Admin(commands.Cog):
     async def whitelist_add(self, interaction: discord.Interaction, username: str):
         try:
             await interaction.response.defer(ephemeral=True)
-            res = await rcon_cmd(f"whitelist add {username}")
-            await rcon_cmd("whitelist reload")
-            await interaction.followup.send(f"➕ {res}", ephemeral=True)
+            try:
+                res = await rcon_cmd(f"whitelist add {username}")
+                await rcon_cmd("whitelist reload")
+                await interaction.followup.send(f"➕ {res}", ephemeral=True)
+            except Exception as rcon_error:
+                logger.error(f"RCON error in whitelist_add: {rcon_error}")
+                await interaction.followup.send(f"❌ Failed to add to whitelist: {rcon_error}", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ Failed: {e}", ephemeral=True)
+            logger.error(f"Error in whitelist_add command: {e}", exc_info=True)
+            try:
+                await interaction.followup.send(f"❌ Command failed: {e}", ephemeral=True)
+            except:
+                pass
 
 async def setup(bot):
     await bot.add_cog(Admin(bot))

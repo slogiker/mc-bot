@@ -20,8 +20,18 @@ class TmuxServerManager(ServerInterface):
 
     def _run_tmux_cmd(self, args):
         """Run tmux command synchronously (only used for quick checks)"""
-        cmd = ["tmux"] + args
-        return subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            cmd = ["tmux"] + args
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            logger.error("Tmux command timed out")
+            return subprocess.CompletedProcess(args, 1, "", "Command timed out")
+        except FileNotFoundError:
+            logger.error("Tmux not found in PATH")
+            return subprocess.CompletedProcess(args, 1, "", "Tmux not found")
+        except Exception as e:
+            logger.error(f"Error running tmux command: {e}")
+            return subprocess.CompletedProcess(args, 1, "", str(e))
 
     def is_running(self) -> bool:
         """Check if tmux session exists (non-blocking subprocess call)"""

@@ -55,24 +55,36 @@ async def get_uuid(username):
     import aiofiles
     usercache_path = os.path.join(config.SERVER_DIR, 'usercache.json')
     
-    # Use asyncio.to_thread for os.path.exists check
-    exists = await asyncio.to_thread(os.path.exists, usercache_path)
-    if not exists:
-        return None
-    
-    # Use aiofiles for reading
     try:
-        async with aiofiles.open(usercache_path, 'r') as f:
-            content = await f.read()
-            users = json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Failed to read usercache.json: {e}")
+        # Use asyncio.to_thread for os.path.exists check
+        exists = await asyncio.to_thread(os.path.exists, usercache_path)
+        if not exists:
+            return None
+        
+        # Use aiofiles for reading
+        try:
+            async with aiofiles.open(usercache_path, 'r') as f:
+                content = await f.read()
+                users = json.loads(content)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to read usercache.json: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error reading usercache.json: {e}")
+            return None
+        
+        # Validate users is a list
+        if not isinstance(users, list):
+            logger.error("usercache.json does not contain a list")
+            return None
+        
+        for user in users:
+            if isinstance(user, dict) and user.get('name', '').lower() == username.lower():
+                return user.get('uuid')
         return None
-    
-    for user in users:
-        if user['name'].lower() == username.lower():
-            return user['uuid']
-    return None
+    except Exception as e:
+        logger.error(f"Error in get_uuid: {e}")
+        return None
 
 def map_key(key):
     """Map user input to Minecraft stat key format."""
