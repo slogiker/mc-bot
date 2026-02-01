@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from src.config import config
 from src.logger import logger
-from src.setup_forms import SetupFormView
+from src.setup_views import SimpleSetupModal
 import os
 
 class Setup(commands.Cog):
@@ -53,26 +53,9 @@ class Setup(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Show new form-based setup
-        embed = discord.Embed(
-            title="🔧 Minecraft Server Setup",
-            description="Configure your Minecraft server using the dropdowns below.",
-            color=discord.Color.blue()
-        )
-        embed.add_field(
-            name="📋 Step 1: Select Options",
-            value="Choose your platform, version, and difficulty using the dropdowns below.",
-            inline=False
-        )
-        embed.add_field(
-            name="📝 Step 2: Basic Settings",
-            value="Click 'Continue to Basic Settings' to configure players and RAM.",
-            inline=False
-        )
-        embed.set_footer(text="You can access Advanced Settings at any time")
-        
-        view = SetupFormView()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        # Show modern single-form setup modal
+        modal = SimpleSetupModal(interaction)
+        await interaction.response.send_modal(modal)
 
 async def setup(bot):
     await bot.add_cog(Setup(bot))
