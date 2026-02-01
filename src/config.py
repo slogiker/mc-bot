@@ -276,8 +276,8 @@ class Config:
                 if role:
                     self.ROLES[str(role.id)] = commands
                 else:
-                from src.logger import logger
-                logger.warning(f"Role '{role_name}' not found in guild")
+                    from src.logger import logger
+                    logger.warning(f"Role '{role_name}' not found in guild")
     
     def get(self, key, default=None):
         """Get config value safely (case-insensitive key lookup)"""
