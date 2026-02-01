@@ -104,11 +104,18 @@ mem_limit: 8g  # Change this value
 
 ## Configuration
 
-The bot uses `/app/mc-server` as the Minecraft server directory inside the container. The `config.json` has been updated to use Docker paths:
+The bot uses `/app/mc-server` as the Minecraft server directory inside the container. Configuration is now split into two files:
 
-- `server_directory`: `/app/mc-server`
-- `java_path`: `java` (OpenJDK 17 installed in container)
-- `rcon_host`: `127.0.0.1` (localhost)
+- **`bot_config.json`** (System config):
+  - `server_directory`: `/app/mc-server`
+  - `guild_id`, `command_channel_id`, etc. (Managed by `/setup`)
+
+- **`user_config.json`** (User settings):
+  - `java_ram_min` / `java_ram_max`
+  - `backup_time`, `restart_time`
+  - `permissions`
+
+The bot auto-generates these on first run.
 
 ## Troubleshooting
 

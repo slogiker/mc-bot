@@ -53,6 +53,13 @@ class Tasks(commands.Cog):
         """Check if server crashed and restart if needed"""
         try:
             if not self.bot.server.is_running() and not self.bot.server.is_intentionally_stopped():
+                # specific check to ensure we update status if it crashed
+                if self.bot.status != discord.Status.dnd:
+                     await self.bot.change_presence(
+                        activity=discord.Activity(type=discord.ActivityType.playing, name="Server Offline"),
+                        status=discord.Status.dnd
+                    )
+                
                 logger.warning("⚠️ Server process not found and not intentionally stopped. Attempting restart...")
                 await send_debug(self.bot, "⚠️ Server process not found — attempting restart…")
                 success = await self.bot.server.start()
@@ -60,6 +67,12 @@ class Tasks(commands.Cog):
                     await send_debug(self.bot, "✅ Auto-restarted after failure.")
                 else:
                     await send_debug(self.bot, "❌ Restart attempt failed.")
+            
+            # If intentionally stopped, ensure status is DND/Idle
+            elif self.bot.server.is_intentionally_stopped():
+                 # We don't want to override if already set, but just to be safe
+                 pass 
+
         except Exception as e:
             logger.error(f"Error in crash_check: {e}")
 
@@ -116,12 +129,17 @@ class Tasks(commands.Cog):
     async def _process_log_line(self, line: str):
         """Process a single log line for events"""
         try:
+            from src.server_info_manager import ServerInfoManager
+            info_manager = ServerInfoManager(self.bot)
+            
             # Player joined
             if "joined the game" in line:
                 match = re.search(r': (\w+) joined the game', line)
                 if match:
                     player = match.group(1)
                     await self.send_log(f"🚪 **{player}** joined the server")
+                    # Update info channel
+                    await info_manager.update_info()
             
             # Player left
             elif "left the game" in line:
@@ -129,6 +147,8 @@ class Tasks(commands.Cog):
                 if match:
                     player = match.group(1)
                     await self.send_log(f"🚶 **{player}** left the server")
+                    # Update info channel
+                    await info_manager.update_info()
 
             # Server finished starting
             elif "Done" in line and "For help" in line:
@@ -137,6 +157,19 @@ class Tasks(commands.Cog):
                     activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"),
                     status=discord.Status.online
                 )
+                # Update info channel
+                await info_manager.update_info()
+                
+            # Server stopping
+            elif "Stopping server" in line:
+                await self.bot.change_presence(
+                    activity=discord.Activity(type=discord.ActivityType.playing, name="Stopping..."),
+                    status=discord.Status.idle
+                )
+            
+            # Server stopped (Saving chunks is usually last)
+            elif "Saving chunks for level" in line:
+                 pass # Waiting for process to actually die
 
         except Exception as e:
             logger.error(f"Error processing log line: {e}")

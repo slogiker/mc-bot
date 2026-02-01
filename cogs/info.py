@@ -8,10 +8,12 @@ import aiofiles
 from src.config import config
 from src.utils import rcon_cmd, get_uuid, display_key, map_key, has_role, parse_server_version
 
+from src.server_info_manager import ServerInfoManager
+
 class Info(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
+        self.info_manager = ServerInfoManager(bot)
 
     @app_commands.command(name="status", description="Show Minecraft server status")
     @has_role("status")
@@ -42,7 +44,7 @@ class Info(commands.Cog):
             try:
                 await interaction.response.send_message("❌ Failed to get server status.", ephemeral=True)
             except:
-                pass  # Response already sent
+                pass
 
     @app_commands.command(name="players", description="List online players")
     @has_role("players")
@@ -75,6 +77,7 @@ class Info(commands.Cog):
     async def version(self, interaction: discord.Interaction):
         try:
             ver = await parse_server_version()
+            # Try to fetch real version via RCON or log parsing if possible, or use configured
             await interaction.response.send_message(f"🛠️ Server version: {ver}", ephemeral=True)
         except Exception as e:
             from src.logger import logger
@@ -88,8 +91,19 @@ class Info(commands.Cog):
     @has_role("seed")
     async def seed(self, interaction: discord.Interaction):
         try:
-             seed_val = await rcon_cmd("seed")
-             await interaction.response.send_message(f"🌱 {seed_val}", ephemeral=True)
+             # Try RCON first
+             if self.bot.server.is_running():
+                try:
+                    seed_val = await rcon_cmd("seed")
+                    await interaction.response.send_message(f"🌱 {seed_val}", ephemeral=True)
+                    return
+                except:
+                    pass
+             
+             # Fallback to reading server.properties or level.dat logic in manager
+             # For now just say server needs to be online or check logs
+             await interaction.response.send_message("❌ Server must be online to check seed (or use /info).", ephemeral=True)
+
         except Exception as e:
              await interaction.response.send_message(f"❌ Failed to get seed: {e}", ephemeral=True)
 
@@ -120,55 +134,62 @@ class Info(commands.Cog):
             except:
                 pass
 
-    @app_commands.command(name="server_info", description="Displays server information")
+    @app_commands.command(name="info", description="Displays server information (updated)")
     @has_role("server_info")
-    async def server_info(self, interaction: discord.Interaction):
+    async def info(self, interaction: discord.Interaction):
+        """Displays detailed server information"""
+        await interaction.response.defer(ephemeral=True)
         try:
+            # Trigger update of the info channel as well
+            await self.info_manager.update_info(interaction.guild)
+            
+            # Show ephemeral info
             from src.logger import logger
-            ver = None
-            players_res = None
-            seed_res = None
+            ver = await parse_server_version()
             
-            # Get version
-            try:
-                ver = await parse_server_version()
-            except Exception as e:
-                logger.error(f"Failed to get server version: {e}")
-                ver = "Unknown"
+            # Get IP
+            ip = "slogikerserver.ddns.net"
             
-            # Get players
-            try:
-                players_res = await rcon_cmd("list")
-            except Exception as e:
-                logger.error(f"Failed to get player list: {e}")
-                players_res = "Unable to fetch"
+            # Get spawn
+            spawn = self.info_manager._get_spawn() or "Not set"
             
-            # Get seed
-            try:
-                seed_res = await rcon_cmd("seed")
-            except Exception as e:
-                logger.error(f"Failed to get seed: {e}")
-                seed_res = "Unable to fetch"
+            embed = discord.Embed(title="🌍 Server Information", color=0x5865F2)
+            embed.add_field(name="IP Address", value=f"`{ip}`", inline=False)
+            embed.add_field(name="Version", value=f"`{ver}`", inline=True)
             
-            embed = discord.Embed(title="Server Information")
-            embed.add_field(name="Version", value=ver, inline=False)
-            embed.add_field(name="Players", value=players_res, inline=False)
-            embed.add_field(name="Seed", value=seed_res, inline=False)
-            
-            if not interaction.response.is_done():
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+            if self.bot.server.is_running():
+                embed.add_field(name="Status", value="🟢 Online", inline=True)
+                try:
+                    players = await rcon_cmd("list")
+                    embed.add_field(name="Players", value=f"```{players}```", inline=False)
+                except:
+                     embed.add_field(name="Players", value="Unknown", inline=False)
             else:
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                embed.add_field(name="Status", value="🔴 Offline", inline=True)
+            
+            embed.add_field(name="Spawn", value=f"`{spawn}`", inline=False)
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
             from src.logger import logger
-            logger.error(f"Error in server_info command: {e}", exc_info=True)
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.send_message("❌ Failed to get server information.", ephemeral=True)
-                else:
-                    await interaction.followup.send("❌ Failed to get server information.", ephemeral=True)
-            except:
-                pass
+            logger.error(f"Error in info command: {e}", exc_info=True)
+            await interaction.followup.send(f"❌ Failed to get info: {e}", ephemeral=True)
+
+    @app_commands.command(name="set_spawn", description="Set spawn coordinates for server info")
+    @app_commands.describe(x="X coordinate", y="Y coordinate", z="Z coordinate")
+    @has_role("MC Admin") # Only admins should do this (using heuristic role check or permission)
+    async def set_spawn(self, interaction: discord.Interaction, x: int, y: int, z: int):
+        if not interaction.user.guild_permissions.administrator:
+             await interaction.response.send_message("❌ Only administrators can set spawn.", ephemeral=True)
+             return
+             
+        await interaction.response.defer(ephemeral=True)
+        success = await self.info_manager.set_spawn(x, y, z)
+        
+        if success:
+            await interaction.followup.send(f"✅ Spawn set to X:{x}, Y:{y}, Z:{z}. Channel updated.", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ Failed to update config.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Info(bot))

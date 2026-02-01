@@ -5,11 +5,11 @@ A powerful Discord bot to manage your Minecraft server directly from Discord. St
 ## ✨ Features
 
 - **Server Control** - Start, stop, restart your Minecraft server
-- **Real-time Monitoring** - Player list, server status, resource usage
+- **Real-time Monitoring** - #server-information channel with live status
 - **Automated Tasks** - Scheduled backups, crash detection, auto-restarts
 - **Role-Based Permissions** - Fine-grained access control per Discord role
 - **RCON Integration** - Execute server commands directly from Discord
-- **Statistics** - View player stats and server info
+- **Interactive Setup** - Easy to use setup form with progress tracking
 
 ---
 
@@ -47,52 +47,35 @@ A powerful Discord bot to manage your Minecraft server directly from Discord. St
 
 3. **Run setup in Discord**
    - Invite the bot to your server
-   - Run `/setup` to create channels and roles
+   - Run `/setup` to initialize:
+     - Creates `#command`, `#console`, `#server-information` channels
+     - Configures role permissions
+     - Installs Minecraft server (if needed)
 
 That's it! 🎉
 
 ---
 
-## 📖 Common Commands
-
-### Viewing Logs
-```bash
-docker-compose logs -f mc-bot
-```
-
-### Stopping the Bot
-```bash
-docker-compose down
-```
-
-### Restarting the Bot
-```bash
-docker-compose restart
-```
-
-### Rebuilding
-```bash
-docker-compose up -d --build
-```
-
----
-
 ## 🎮 Discord Commands
 
-All commands are slash commands. Run `/help` in Discord to see the full list.
+Run `/help` in Discord to see the full categorized list.
 
-**Server Management:**
+**Server Controls:**
+- `/control` - Interactive control panel
 - `/start` - Start the Minecraft server
 - `/stop` - Stop the server safely
 - `/restart` - Restart the server
+- `/status` - Check server status
 
 **Information:**
-- `/status` - Server status, players, resources
+- `/info` - View server connection details
 - `/players` - List online players
 - `/stats [username]` - View player statistics
 - `/version` - Server version info
 
-**Admin:**
+**Administration:**
+- `/setup` - Run initial setup wizard
+- `/set_spawn` - Set spawn coordinates for info channel
 - `/backup_now` - Create immediate backup
 - `/cmd [command]` - Execute RCON command
 - `/whitelist_add [username]` - Add player to whitelist

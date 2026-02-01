@@ -1,6 +1,10 @@
 services:
   mc-bot:
-    build: .
+    build:
+      context: .
+      args:
+        - BUILDKIT_INLINE_CACHE=0
+        - CACHEBUST=${CACHEBUST:-1}
     container_name: mc-bot
     restart: unless-stopped
 
@@ -19,6 +23,9 @@ services:
       - ./backups:/app/backups
       - ./logs:/app/logs
       - ./.env:/app/.env
+      # Don't persist cache
+      - /app/src/__pycache__
+      - /app/cogs/__pycache__
 
     # Environment variables from .env file
     env_file:

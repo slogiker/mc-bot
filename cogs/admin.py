@@ -34,20 +34,6 @@ class Admin(commands.Cog):
     @has_role("sync")
     async def sync(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        try:
-            guild = interaction.guild
-            if not guild:
-                 guild = discord.Object(id=config.GUILD_ID) if config.GUILD_ID else None
-            
-            if guild:
-                self.bot.tree.copy_global_to(guild=guild)
-                synced = await self.bot.tree.sync(guild=guild)
-                await interaction.followup.send(f"✅ Synced {len(synced)} commands.", ephemeral=True)
-            else:
-                await interaction.followup.send("❌ Could not determine guild.", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Sync failed: {e}", ephemeral=True)
-
     @app_commands.command(name="backup_now", description="Trigger immediate backup")
     @app_commands.checks.cooldown(1, 300)  # 1 use per 5 minutes
     @has_role("backup_now")
@@ -69,15 +55,6 @@ class Admin(commands.Cog):
                 await interaction.followup.send(f"❌ Backup command failed: {e}", ephemeral=True)
             except:
                 pass
-
-    @app_commands.command(name="reload_config", description="Reload configuration")
-    @has_role("reload_config")
-    async def reload_config(self, interaction: discord.Interaction):
-        try:
-            config.load()
-            await interaction.response.send_message("🔄 Config reloaded.", ephemeral=True)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Failed to reload: {e}", ephemeral=True)
 
     @app_commands.command(name="logs", description="Show last N log lines")
     @has_role("logs")

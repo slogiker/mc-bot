@@ -1,4 +1,4 @@
-discord.py
+discord.py>=2.0.0
 psutil
 python-dotenv
 git+https://github.com/Iapetus-11/aio-mc-rcon.git#egg=aio-mc-rcon

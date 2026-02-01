@@ -4,6 +4,7 @@ from discord.ext import commands
 from src.config import config
 from src.logger import logger
 from src.setup_views import SetupView
+from discord import ui
 from src.mc_installer import mc_installer
 import os
 
@@ -30,95 +31,40 @@ class Setup(commands.Cog):
         server_jar = os.path.join(config.SERVER_DIR, "server.jar")
         
         if os.path.exists(server_jar):
-            # Server already installed - just show info
+            # Server already installed - warn user
             embed = discord.Embed(
-                title="ℹ️ Server Already Installed",
-                description="Your Minecraft server is already set up!",
-                color=discord.Color.blue()
+                title="⚠️ Server Already Installed",
+                description="**Running setup again will DELETE the current server!**\n\nThe world will be backed up, but all other files will be removed.",
+                color=discord.Color.yellow()
             )
             
-            command_channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID)
+            view = ui.View()
             
-            embed.add_field(
-                name="Quick Start",
-                value=f"Use `/start` in {command_channel.mention if command_channel else 'command channel'} to launch the server!",
-                inline=False
-            )
+            async def confirm_callback(interaction: discord.Interaction):
+                # Show modern interactive setup view
+                view = SetupView(interaction)
+                await view.start()
+                
+            async def cancel_callback(interaction: discord.Interaction):
+                await interaction.response.send_message("Setup cancelled.", ephemeral=True)
+                
+            confirm_btn = ui.Button(label="Yes, Reinstall", style=discord.ButtonStyle.danger, emoji="🗑️")
+            confirm_btn.callback = confirm_callback
             
-            embed.add_field(
-                name="Need to Reinstall?",
-                value="1. Stop the server with `/stop`\n2. Backup your world\n3. Delete `mc-server/server.jar`\n4. Run `/setup` again",
-                inline=False
-            )
+            cancel_btn = ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
+            cancel_btn.callback = cancel_callback
             
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            view.add_item(confirm_btn)
+            view.add_item(cancel_btn)
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
         
         # Show modern interactive setup view
         view = SetupView(interaction)
         await view.start()
     
-    @app_commands.command(name="version", description="Set Minecraft version for setup")
-    @app_commands.describe(version="Minecraft version to use")
-    async def set_version(self, interaction: discord.Interaction, version: str):
-        """Set the Minecraft version (used during setup)"""
-        await interaction.response.send_message(
-            f"✅ Version set to: {version}\n(This will be used in the next setup)",
-            ephemeral=True
-        )
-    
-    @set_version.autocomplete('version')
-    async def version_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
-        """Autocomplete for Minecraft versions"""
-        try:
-            # Get platform from current setup state if available
-            # For now, default to paper
-            platform = "paper"
-            
-            # Fetch recent versions (this is a simplified version)
-            # In production, you'd cache this and fetch from the API
-            versions = await self._get_recent_versions(platform)
-            
-            # Filter based on current input
-            if current:
-                filtered = [v for v in versions if current.lower() in v.lower()]
-            else:
-                filtered = versions[:25]  # Discord limit
-            
-            return [
-                app_commands.Choice(name=version, value=version)
-                for version in filtered[:25]
-            ]
-        except Exception as e:
-            logger.error(f"Version autocomplete error: {e}")
-            return [app_commands.Choice(name="latest", value="latest")]
-    
-    async def _get_recent_versions(self, platform: str) -> list[str]:
-        """Get recent Minecraft versions for a platform"""
-        try:
-            if platform == "paper":
-                # Fetch from Paper API
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.get("https://api.papermc.io/v2/projects/paper") as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            versions = data.get("versions", [])
-                            # Return latest 25 versions in reverse order (newest first)
-                            return ["latest"] + list(reversed(versions[-25:]))
-            elif platform == "vanilla":
-                # For vanilla, we'd need to fetch from Mojang API
-                # Simplified for now
-                return ["latest", "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21", "1.20.6", "1.20.5", "1.20.4"]
-            else:  # fabric
-                return ["latest", "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21", "1.20.6", "1.20.5", "1.20.4"]
-        except Exception as e:
-            logger.error(f"Failed to fetch versions: {e}")
-            return ["latest"]
+
 
 
 async def setup(bot):

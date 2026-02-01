@@ -526,9 +526,8 @@ class SetupView(ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
     
     async def _start_installation(self, interaction: discord.Interaction):
-        """Start the installation process"""
-        # Import here to avoid circular dependency
-        from src.setup_views_legacy import SimpleSetupModal
+        """Start the installation process in background"""
+        import asyncio
         
         # Create initial progress embed
         embed = discord.Embed(
@@ -549,17 +548,142 @@ class SetupView(ui.View):
         )
         
         await interaction.response.edit_message(embed=embed, view=None)
+        message = await interaction.original_response()
         
-        # Use the installation logic from SimpleSetupModal
+        # Run installation in background
         setup_config = self.state.to_dict()
-        
-        # Update global config for RAM
         config.JAVA_XMX = f"{self.state.ram}G"
         config.JAVA_XMS = f"{max(1, self.state.ram // 2)}G"
         
-        # Start installation (reuse existing logic)
-        modal = SimpleSetupModal(interaction)
-        await modal.start_installation(interaction, setup_config)
+        try:
+            # STEP 1: Discord Structure Setup
+            from src.setup_helper import SetupHelper
+            
+            embed.description = "**Step 1/5:** Creating Discord channels and roles..."
+            await message.edit(embed=embed)
+            
+            setup_helper = SetupHelper(interaction.client)
+            updates = await setup_helper.ensure_setup(interaction.guild)
+            
+            # Update config
+            config.update_dynamic_config(updates)
+            await self._save_config_to_file(updates)
+            
+            logger.info(f"Discord setup completed by {interaction.user.name}")
+            
+            # STEP 2: Download server
+            embed.description = f"**Step 2/5:** Downloading {setup_config['platform'].title()} server..."
+            await message.edit(embed=embed)
+            
+            # Get version if "latest"
+            if setup_config['version'] == 'latest':
+                setup_config['version'] = await mc_installer.get_latest_version(setup_config['platform'])
+            
+            async def progress_callback(msg):
+                embed.description = f"**Step 2/5:** {msg}"
+                try:
+                    await message.edit(embed=embed)
+                except:
+                    pass
+            
+            success, result = await mc_installer.download_server(
+                setup_config['platform'],
+                setup_config['version'],
+                progress_callback
+            )
+            
+            if not success:
+                raise Exception(result)
+            
+            # STEP 3: Accept EULA
+            embed.description = "**Step 3/5:** Accepting Minecraft EULA..."
+            await message.edit(embed=embed)
+            
+            await mc_installer.accept_eula()
+            
+            # STEP 4: Configure server
+            embed.description = "**Step 4/5:** Configuring server settings..."
+            await message.edit(embed=embed)
+            
+            await mc_installer.configure_server_properties(setup_config)
+            
+            # STEP 5: Start server
+            embed.description = "**Step 5/5:** Starting server for first time..."
+            await message.edit(embed=embed)
+            
+            # Start the server
+            from src.mc_manager import mc_manager
+            start_success = await mc_manager.start_server()
+            
+            if not start_success:
+                logger.warning("Server failed to start after installation")
+            
+            # Success embed
+            command_channel = interaction.client.get_channel(config.COMMAND_CHANNEL_ID)
+            
+            embed = discord.Embed(
+                title="✅ Installation Complete!",
+                description="Your Minecraft server is ready!" + (" Server is starting..." if start_success else ""),
+                color=0x57F287  # Green
+            )
+            
+            embed.add_field(
+                name="🚀 Quick Start",
+                value=(
+                    f"1. Server is {'starting up' if start_success else 'ready to start'}\n"
+                    f"2. Use `/status` to check server status\n"
+                    f"3. Use `/control` for the control panel\n"
+                    f"4. Check {command_channel.mention if command_channel else '#command'} for commands"
+                ),
+                inline=False
+            )
+            
+            embed.set_footer(text="Use /help to see all available commands")
+            
+            await message.edit(embed=embed)
+            
+            # Initialize server info channel
+            try:
+                from src.server_info_manager import ServerInfoManager
+                await ServerInfoManager(interaction.client).update_info(interaction.guild)
+            except Exception as e:
+                logger.error(f"Failed to init server info channel: {e}")
+            
+        except Exception as e:
+            logger.error(f"Installation failed: {e}", exc_info=True)
+            embed.color = discord.Color.red()
+            embed.description = f"❌ Installation failed: {str(e)}"
+            await message.edit(embed=embed)
+    
+    async def _save_config_to_file(self, updates: dict):
+        """Save configuration updates to bot_config.json file"""
+        import json
+        import aiofiles
+        
+        try:
+            # Load/Update bot_config.json
+            async with aiofiles.open('bot_config.json', 'r') as f:
+                content = await f.read()
+                config_data = json.loads(content)
+            
+            if 'command_channel_id' in updates:
+                config_data['command_channel_id'] = updates['command_channel_id']
+            if 'log_channel_id' in updates:
+                config_data['log_channel_id'] = updates['log_channel_id']
+            if 'debug_channel_id' in updates:
+                config_data['debug_channel_id'] = updates['debug_channel_id']
+            if 'guild_id' in updates:
+                config_data['guild_id'] = updates['guild_id']
+            
+            async with aiofiles.open('bot_config.json', 'w') as f:
+                await f.write(json.dumps(config_data, indent='\t') + '\n')
+            
+            logger.info("bot_config.json updated successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to update bot_config.json: {e}")
+            # Don't raise - this is not critical
+
 
 
 class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):

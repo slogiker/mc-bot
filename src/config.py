@@ -123,9 +123,13 @@ class Config:
         self.COMMAND_CHANNEL_ID = bot_cfg.get('command_channel_id')
         self.LOG_CHANNEL_ID = bot_cfg.get('log_channel_id')
         self.DEBUG_CHANNEL_ID = bot_cfg.get('debug_channel_id')
+        self.SPAWN_X = bot_cfg.get('spawn_x')
+        self.SPAWN_Y = bot_cfg.get('spawn_y')
+        self.SPAWN_Z = bot_cfg.get('spawn_z')
         
         # Hardcoded/default values (not user-configurable)
         self.RCON_HOST = "127.0.0.1"
+
         self.RCON_PORT = 25575
         self.SERVER_JAR = "server.jar"
         self.WORLD_FOLDER = "world"
@@ -251,6 +255,12 @@ class Config:
             self.DEBUG_CHANNEL_ID = updates['debug_channel_id']
         if 'guild_id' in updates:
             self.GUILD_ID = updates['guild_id']
+        if 'spawn_x' in updates:
+            self.SPAWN_X = updates['spawn_x']
+        if 'spawn_y' in updates:
+            self.SPAWN_Y = updates['spawn_y']
+        if 'spawn_z' in updates:
+            self.SPAWN_Z = updates['spawn_z']
     
     def resolve_role_permissions(self, guild):
         """Resolve role names to IDs for permission checking"""
@@ -266,7 +276,18 @@ class Config:
                 if role:
                     self.ROLES[str(role.id)] = commands
                 else:
-                    from src.logger import logger
-                    logger.warning(f"Role '{role_name}' not found in guild")
+                from src.logger import logger
+                logger.warning(f"Role '{role_name}' not found in guild")
+    
+    def get(self, key, default=None):
+        """Get config value safely (case-insensitive key lookup)"""
+        # Try to find attribute directly
+        if hasattr(self, key.upper()):
+            val = getattr(self, key.upper())
+            if val is not None:
+                return val
+        
+        # Try finding in other maps if needed, but for now just return default
+        return default
 
 config = Config()
