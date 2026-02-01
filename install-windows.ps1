@@ -209,14 +209,14 @@ if (-not $dockerComposeCmd) {
 
 # Start with docker-compose
 Write-Host ""
-Write-Blue "[INFO] Starting Docker containers using $dockerComposeCmdName..."
+Write-Blue "[INFO] Starting Docker containers using $dockerComposeCmdName... (Building fresh image)"
 
 # Execute the appropriate docker compose command
 $dockerOutput = $null
 if ($dockerComposeCmd -eq "docker-compose") {
-    $dockerOutput = & docker-compose up -d 2>&1
+    $dockerOutput = & docker-compose up -d --build 2>&1
 } else {
-    $dockerOutput = & docker compose up -d 2>&1
+    $dockerOutput = & docker compose up -d --build 2>&1
 }
 
 if ($LASTEXITCODE -ne 0) {

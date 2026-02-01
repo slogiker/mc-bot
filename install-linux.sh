@@ -142,8 +142,8 @@ fi
 
 # Start with docker-compose
 echo ""
-echo -e "${BLUE}[INFO] Starting Docker containers using $DOCKER_COMPOSE_CMD...${NC}"
-$DOCKER_COMPOSE_CMD up -d
+echo -e "${BLUE}[INFO] Starting Docker containers using $DOCKER_COMPOSE_CMD... (Building fresh image)${NC}"
+$DOCKER_COMPOSE_CMD up -d --build
 
 # Wait a moment for container to initialize
 echo -e "${BLUE}[INFO] Waiting for container to initialize...${NC}"
