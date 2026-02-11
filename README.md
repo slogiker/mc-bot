@@ -1,177 +1,56 @@
-# Minecraft Discord Bot 🎮
+# Minecraft Discord Bot
 
-A powerful Discord bot to manage your Minecraft server directly from Discord. Start, stop, monitor, and control your server with simple slash commands.
+A self-hosted Discord bot that gives you full control over your private Minecraft server.
+
+## 📥 Installation
+
+### 1. Requirements
+- **Python 3.11** or newer.
+- **Java** (Release 17-21 depending on your Minecraft version).
+
+### 2. Setup
+1. **Download** the bot files.
+2. Open a terminal in the folder.
+3. Run the installer:
+   ```bash
+   python install.py
+   ```
+   *This will automatically detect if you are on Windows or Linux/macOS and set up the environment.*
+
+### 3. Configuration
+- The installer will ask for your **Discord Bot Token**.
+- You can manually edit `.env` later if needed.
+
+### 4. Running
+To start the bot:
+```bash
+python bot.py
+```
 
 ## ✨ Features
 
-- **Server Control** - Start, stop, restart your Minecraft server
-- **Real-time Monitoring** - #server-information channel with live status
-- **Automated Tasks** - Scheduled backups, crash detection, auto-restarts
-- **Role-Based Permissions** - Fine-grained access control per Discord role
-- **RCON Integration** - Execute server commands directly from Discord
-- **Interactive Setup** - Easy to use setup form with progress tracking
+### Server Control
+- **Start / Stop / Restart**: Buttons in the control channel.
+- **Console**: View the live server log and standard output in `#console`.
+- **RCON**: Run commands like `/cmd op PlayerName`.
 
----
+### Gameplay
+- **Stats**: Check playtime and deaths with `/stats <player>`.
+- **Online Players**: Bot status shows "Playing Minecraft: X Players".
+- **Economy**: Earn fake coins with `/pay` or winning "Word Hunt" games.
 
-## 🚀 Quick Start (Docker - Recommended)
+### Tools
+- **Backups**: create a backup zip and get a download link with `/backup`.
+- **System Info**: See CPU/RAM usage with `/info`.
+- **AI**: Chat with Grok using `/ai` (Requires API Key).
 
-### Prerequisites
-- [Docker](https://docs.docker.com/get-docker/) installed
-- Discord Bot Token ([Get one here](https://discord.com/developers/applications))
+## ❓ FAQ
 
-### Setup
+**Q: Where is `config.json`?**
+A: We use `data/bot_config.json` for bot data. If you have an old `config.json`, it is backed up in `.backups/old`.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/slogiker/mc-bot.git
-   cd mc-bot
-   ```
+**Q: Can I run this on a server?**
+A: Yes! Use `python install.py` on Linux and it will set up a virtual environment for you.
 
-2. **Start the bot**
-   
-   **Linux/Mac:**
-   ```bash
-   ./install-linux.sh
-   ```
-   
-   **Windows:**
-   ```batch
-   start.bat
-   ```
-   (Double-click `start.bat` or run it from command prompt)
-   
-   The script will:
-   - Prompt you for your Discord Bot Token
-   - Auto-generate a secure RCON password
-   - Build and start the Docker container (Python 3.11 + Java 21)
-
-3. **Run setup in Discord**
-   - Invite the bot to your server
-   - Run `/setup` to initialize:
-     - Creates `#command`, `#console`, `#server-information` channels
-     - Configures role permissions
-     - Installs Minecraft server (if needed)
-
-That's it! 🎉
-
----
-
-## 🎮 Discord Commands
-
-Run `/help` in Discord to see the full categorized list.
-
-**Server Controls:**
-- `/control` - Interactive control panel
-- `/start` - Start the Minecraft server
-- `/stop` - Stop the server safely
-- `/restart` - Restart the server
-- `/status` - Check server status
-
-**Information:**
-- `/info` - View server connection details
-- `/players` - List online players
-- `/stats [username]` - View player statistics
-- `/version` - Server version info
-
-**Administration:**
-- `/setup` - Run initial setup wizard
-- `/set_spawn` - Set spawn coordinates for info channel
-- `/backup_now` - Create immediate backup
-- `/cmd [command]` - Execute RCON command
-- `/whitelist_add [username]` - Add player to whitelist
-
----
-
-## ⚙️ Configuration
-
-The bot automatically configures itself on first run. Configuration is stored in:
-- `.env` - Discord token and RCON password
-- `config.json` - Server paths, channel IDs, role permissions
-
-After running `/setup` in Discord, the bot will auto-configure channel and role IDs.
-
-### Manual Configuration (Optional)
-
-Edit `config.json` to customize:
-- Server directory and Java settings
-- Backup schedule and retention
-- Restart schedule
-- Role permissions
-
----
-
-## 📁 Project Structure
-
-```
-mc-bot/
-├── bot.py              # Main entry point
-├── cogs/               # Discord command modules
-├── src/                # Core utilities
-├── config.json         # Bot configuration
-├── .env                # Credentials (auto-created)
-├── install-linux.sh    # Installation script (Linux/Mac)
-├── install-windows.ps1 # Installation script (Windows)
-├── start.bat           # Windows launcher (double-click to run)
-├── docs/               # Additional documentation
-└── scripts/            # Installation scripts
-```
-
----
-
-## 🐳 Adding Minecraft Server (Optional)
-
-If you want to run an actual Minecraft server with the bot:
-
-1. Download Minecraft server jar from [minecraft.net](https://www.minecraft.net/download/server)
-2. Place in `mc-server/` folder as `server.jar`
-3. Create `mc-server/eula.txt` with: `eula=true`
-4. Use `/start` command in Discord
-
----
-
-## 📚 Documentation
-
-- **[Docker Setup](docs/DOCKER.md)** - Detailed Docker documentation
-- **[Local Installation](docs/LOCAL_INSTALL.md)** - Non-Docker setup guide
-- **[Dry-Run Mode](docs/DRY_RUN.md)** - Testing and development mode
-
----
-
-## 🛠️ Troubleshooting
-
-**Bot won't start?**
-```bash
-docker-compose logs mc-bot
-```
-
-**Port already in use?**
-```bash
-sudo netstat -tulpn | grep -E '25565|25575'
-```
-
-**Need to reconfigure?**
-- **Linux/Mac**: Delete `.env` and run `./install-linux.sh` again
-- **Windows**: Delete `.env` and run `start.bat` again
-
----
-
-## 📝 Technical Details
-
-- **Python**: 3.11
-- **Java**: 21 (OpenJDK)
-- **Discord.py**: Latest
-- **Container**: Docker + Docker Compose
-- **Ports**: 25565 (Minecraft), 25575 (RCON)
-- **Memory**: 8GB limit (configurable)
-
----
-
-## 🤝 Credits
-
-Originally created by **slogiker**. Refactored and dockerized for ease of use.
-
----
-
-## 📄 License
-
-See repository for license information.
+**Q: How do I update?**
+A: `git pull` the latest changes and run `python install.py` again to check dependencies.

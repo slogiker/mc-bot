@@ -107,7 +107,7 @@ class MinecraftBot(commands.Bot):
         try:
             self.tree.copy_global_to(guild=guild)
             synced = await self.tree.sync(guild=guild)
-            logger.info(f"✅ Synced {len(synced)} commands to {guild.name}")
+            logger.info(f"Synced {len(synced)} commands to {guild.name}")
             self.synced = True
         except Exception as e:
             logger.error(f"Failed to sync commands: {e}", exc_info=True)
@@ -133,7 +133,7 @@ class MinecraftBot(commands.Bot):
 
 async def shutdown_handler(bot):
     """Graceful shutdown - stop server and close bot cleanly"""
-    logger.info("🛑 Shutdown initiated...")
+    logger.info("Shutdown initiated...")
     
     try:
         # Stop Minecraft server if running
@@ -151,7 +151,7 @@ async def shutdown_handler(bot):
     except Exception as e:
         logger.error(f"Error closing bot: {e}")
     
-    logger.info("✅ Shutdown complete")
+    logger.info("Shutdown complete")
 
 async def main():
     bot = MinecraftBot()

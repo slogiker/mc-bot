@@ -3,189 +3,167 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-import json
+import aiohttp
+import nbtlib
 import asyncio
-import aiofiles
-from src.config import config
-from src.utils import get_uuid, map_key, display_key, has_role
+from utils.config import load_bot_config
+from src.utils import has_role, map_key, display_key
 from src.logger import logger
 
-async def stats_autocomplete(
-    interaction: discord.Interaction,
-    current: str,
-) -> list[app_commands.Choice]:
-    """Provide autocomplete suggestions for the category parameter."""
-    try:
-        username = interaction.namespace.username
-    except AttributeError:
-        return []
-        
-    if not username:
-        return []
-
-    # Get UUID (now async)
-    uuid = await get_uuid(username)
-    if not uuid:
-        return []
-
-    stats_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'stats', f"{uuid}.json")
-    
-    # Use asyncio.to_thread for os.path.exists
-    exists = await asyncio.to_thread(os.path.exists, stats_path)
-    if not exists:
-        return []
-
-    try:
-        # Use aiofiles for reading
-        async with aiofiles.open(stats_path, 'r') as f:
-            content = await f.read()
-            stats_data = json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Failed to load stats for autocomplete: {e}")
-        return []
-
-    # Extract and filter categories
-    categories = [display_key(key) for key in stats_data.get("stats", {}).keys()]
-    if not categories:
-        return []
-
-    # Filter based on current input
-    current = current.lower()
-    matches = [cat for cat in categories if current in cat.lower()][:25]  # Limit to 25 choices
-
-    return [app_commands.Choice(name=cat, value=cat) for cat in matches]
-
-async def item_autocomplete(
-    interaction: discord.Interaction,
-    current: str,
-) -> list[app_commands.Choice]:
-    """Provide autocomplete suggestions for the item parameter based on the selected category."""
-    try:
-        username = interaction.namespace.username
-        category = interaction.namespace.category
-    except (AttributeError, KeyError) as e:
-        logger.debug(f"Failed to get namespace attributes in item_autocomplete: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"Unexpected error in item_autocomplete namespace access: {e}")
-        return []
-        
-    if not username or not category:
-        return []
-
-    # Get UUID and load stats (now async)
-    uuid = await get_uuid(username)
-    if not uuid:
-        return []
-
-    stats_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'stats', f"{uuid}.json")
-    # Use asyncio.to_thread for os.path.exists
-    exists = await asyncio.to_thread(os.path.exists, stats_path)
-    if not exists:
-        return []
-
-    try:
-        # Use aiofiles for async file reading
-        async with aiofiles.open(stats_path, 'r') as f:
-            content = await f.read()
-            stats_data = json.loads(content)
-    except FileNotFoundError:
-        logger.debug(f"Stats file not found: {stats_path}")
-        return []
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse stats JSON for {username}: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"Unexpected error loading stats for autocomplete: {e}")
-        return []
-
-    # Get items for the selected category
-    full_category = map_key(category)
-    category_data = stats_data.get("stats", {}).get(full_category, {})
-    if not category_data:
-        return []
-
-    # Extract and filter items
-    items = [display_key(key) for key in category_data.keys()]
-    if not items:
-        return []
-
-    # Filter based on current input
-    current = current.lower()
-    matches = [item for item in items if current in item.lower()][:25]  # Limit to 25 choices
-
-    return [app_commands.Choice(name=item, value=item) for item in matches]
-
-class Stats(commands.Cog):
+class StatsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="stats", description="Displays player statistics. Usage: /stats <username> [category] [item]")
-    @app_commands.autocomplete(category=stats_autocomplete, item=item_autocomplete)
-    @has_role("stats")
-    async def stats(self, interaction: discord.Interaction, username: str, category: str = None, item: str = None):
-        """Display statistics for a specific player dynamically."""
-        try:
-            # Get UUID from username (now async)
-            uuid = await get_uuid(username)
-            if not uuid:
-                await interaction.response.send_message(f"❌ Player {username} not found.", ephemeral=True)
-                return
+    async def get_uuid_online(self, username: str):
+        """
+        Fetches UUID from Mojang API.
+        Used for legitimate (premium) accounts to get accurate skins and IDs.
+        """
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'https://api.mojang.com/users/profiles/minecraft/{username}') as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get('id'), data.get('name')
+        return None, None
 
-            # Construct and check stats file path
-            stats_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'stats', f"{uuid}.json")
-            
-            # Use asyncio.to_thread for os.path.exists
-            exists = await asyncio.to_thread(os.path.exists, stats_path)
-            if not exists:
-                await interaction.response.send_message(f"❌ Stats for {username} not found.", ephemeral=True)
-                return
+    async def get_offline_uuid(self, username: str):
+        """Generate offline UUID (v3) based on the username."""
+        import uuid
+        return str(uuid.uuid3(uuid.NAMESPACE_DNS, f"OfflinePlayer:{username}")).replace('-', ''), username
 
-            # Load stats JSON using aiofiles
-            async with aiofiles.open(stats_path, 'r') as f:
-                content = await f.read()
-                stats_data = json.loads(content)
+    def get_stats_from_nbt(self, uuid_str: str, server_path: str):
+        """
+        Parses player statistics from local server files.
+        1. Reads world/stats/<uuid>.json for standard stats.
+        2. Reads world/playerdata/<uuid>.dat using nbtlib for additional data.
+        Falls back gracefully if files are missing (e.g. new player).
+        """
+        # Formatted UUID (with dashes)
+        formatted_uuid = f"{uuid_str[:8]}-{uuid_str[8:12]}-{uuid_str[12:16]}-{uuid_str[16:20]}-{uuid_str[20:]}"
+        
+        bot_config = load_bot_config()
+        # Assume world folder is 'world' or get from config if we had it. defaulting to 'world'
+        world_path = os.path.join(server_path, 'world') 
+        
+        # 1. Try generic stats.json first (standard vanilla stats)
+        stats_file = os.path.join(world_path, 'stats', f"{formatted_uuid}.json")
+        stats = {}
+        if os.path.exists(stats_file):
+             import json
+             try:
+                 with open(stats_file, 'r') as f:
+                     stats = json.load(f)
+             except Exception as e:
+                 logger.error(f"Failed to load stats json: {e}")
 
-            # Handle different cases based on parameters
-            if category is None:
-                # List all categories dynamically
-                categories = [display_key(key) for key in stats_data.get("stats", {}).keys()]
-                if not categories:
-                    await interaction.response.send_message(f"❌ No stats available for {username}.", ephemeral=True)
-                    return
-                categories.sort()
-                msg = f"📊 Available stats categories for {username}:\n- " + "\n- ".join(categories)
-                await interaction.response.send_message(msg, ephemeral=True)
+        # 2. Try playerdata .dat file (NBT) for other info like inventory, pos, or legacy stats?
+        # User specifically mentioned "legit/offline players -> parse .dat file".
+        # And "NBT Parse: nbtlib.load(...) -> root['bukkit']['lastPlayed']"
+        player_dat = os.path.join(world_path, 'playerdata', f"{formatted_uuid}.dat")
+        nbt_data = {}
+        if os.path.exists(player_dat):
+            try:
+                nbt_file = nbtlib.load(player_dat)
+                nbt_data = nbt_file.root
+            except Exception as e:
+                logger.error(f"Failed to load user NBT: {e}")
+        
+        return stats, nbt_data
+
+    @app_commands.command(name="stats", description="Get player statistics")
+    @app_commands.describe(player="Minecraft username or Discord user")
+    async def stats(self, interaction: discord.Interaction, player: str = None, user: discord.Member = None):
+        await interaction.response.defer()
+        
+        bot_config = load_bot_config()
+        server_path = bot_config.get('server_path', './mc-server')
+        
+        target_name = player
+        uuid = None
+        is_cracked = False
+
+        if user:
+            # Look up in mappings
+            mapping = bot_config.get('mappings', {}).get(str(user.id))
+            if mapping:
+                uuid = mapping.get('uuid')
+                target_name = mapping.get('name')
+                is_cracked = mapping.get('cracked', False)
             else:
-                full_category = map_key(category)
-                category_data = stats_data.get("stats", {}).get(full_category, {})
-                if not category_data:
-                    await interaction.response.send_message(f"❌ No stats for category '{category}' for {username}.", ephemeral=True)
-                    return
-                category_display = display_key(full_category)
-
-                if item is None:
-                    # List top 10 items in the specified category
-                    sorted_items = sorted(category_data.items(), key=lambda x: x[1], reverse=True)[:10]
-                    msg = f"📊 Stats for {username} in {category_display}:\n"
-                    for item_key, count in sorted_items:
-                        item_display = display_key(item_key)
-                        msg += f"- {item_display}: {count}\n"
-                    if len(category_data) > 10:
-                        msg += "... and more\n"
-                    await interaction.response.send_message(msg, ephemeral=True)
+                await interaction.followup.send("❌ This user is not linked to a Minecraft player.")
+                return
+        elif player:
+            # Try to determine if online or offline based on existing files or config
+            # For now, let's try Mojang first, then fallback to offline UUID if not found or if server is 'cracked' mode?
+            # User request: "Legit players -> Mojang API... Offline players -> parse .dat"
+            
+            # Check mappings first
+            # Reverse lookup?
+            found_map = False
+            for uid, data in bot_config.get('mappings', {}).items():
+                if data.get('name', '').lower() == player.lower():
+                    uuid = data.get('uuid')
+                    is_cracked = data.get('cracked', False)
+                    target_name = data.get('name')
+                    found_map = True
+                    break
+            
+            if not found_map:
+                # Try Mojang
+                uuid, name = await self.get_uuid_online(player)
+                if uuid:
+                     target_name = name
+                     is_cracked = False
                 else:
-                    # Show specific stat for category:item
-                    full_item = map_key(item)
-                    stat = category_data.get(full_item, 0)
-                    item_display = display_key(full_item)
-                    msg = f"{username}'s {category_display}:{item_display}: {stat}"
-                    await interaction.response.send_message(msg, ephemeral=True)
+                     # Fallback to offline UUID
+                     uuid, name = await self.get_offline_uuid(player)
+                     target_name = name
+                     is_cracked = True
 
-        except Exception as e:
-            error_msg = f"❌ Failed to get stats: {e}"
-            logger.error(error_msg, exc_info=True)
-            await interaction.response.send_message(error_msg, ephemeral=True)
+        if not uuid:
+            await interaction.followup.send(f"❌ Could not find player '{player}'.")
+            return
+
+        # Load data
+        # Run in executor to avoid blocking
+        stats_json, nbt_data = await asyncio.to_thread(self.get_stats_from_nbt, uuid, server_path)
+        
+        if not stats_json and not nbt_data:
+             await interaction.followup.send(f"❌ No data found for player '{target_name}'. Has this player joined the server?")
+             return
+
+        # Process stats
+        # Playtime: stored in 'minecraft:custom' -> 'minecraft:play_time' (ticks) in JSON
+        # Or 'bukkit' -> 'lastPlayed' in NBT (timestamp)
+        
+        play_time_ticks = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:play_time', 0)
+        deaths = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:deaths', 0)
+        player_kills = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:player_kills', 0)
+        mob_kills = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:mob_kills', 0)
+        
+        hours = play_time_ticks / 20 / 3600
+        
+        # Skin
+        if is_cracked:
+            skin_url = "https://minecraft-heads.com/scripts/3d-head.php?hrh=00&aa=true&headOnly=true&ratio=6" # Generic steve or dynamic?
+            # User suggested: https://minecraft-heads.com/avatar/Steve/64
+            skin_url = "https://minecraft-heads.com/avatar/Steve/64"
+        else:
+            skin_url = f"https://crafatar.com/avatars/{uuid}?overlay"
+
+        embed = discord.Embed(title=f"Stats for {target_name}", color=discord.Color.blue())
+        embed.set_thumbnail(url=skin_url)
+        embed.add_field(name="Playtime", value=f"{hours:.2f} hours", inline=True)
+        embed.add_field(name="Deaths", value=str(deaths), inline=True)
+        embed.add_field(name="Player Kills", value=str(player_kills), inline=True)
+        embed.add_field(name="Mob Kills", value=str(mob_kills), inline=True)
+        
+        if is_cracked:
+            embed.set_footer(text="Account Type: Cracked / Offline")
+        else:
+            embed.set_footer(text="Account Type: Premium")
+
+        await interaction.followup.send(embed=embed)
 
 async def setup(bot):
-    await bot.add_cog(Stats(bot))
+    await bot.add_cog(StatsCog(bot))

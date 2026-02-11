@@ -13,22 +13,7 @@ class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="cmd", description="Execute RCON command")
-    @app_commands.checks.cooldown(5, 60)  # 5 uses per 60 seconds
-    @has_role("cmd")
-    async def cmd(self, interaction: discord.Interaction, command: str):
-        try:
-            await interaction.response.defer(ephemeral=True)
-            res = await rcon_cmd(command)
-            if len(res) > 1900:
-                res = res[:1900] + "..."
-            await interaction.followup.send(f"```{res}```", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Error in cmd command: {e}", exc_info=True)
-            try:
-                await interaction.followup.send(f"❌ Failed to execute command: {e}", ephemeral=True)
-            except:
-                pass
+
 
     @app_commands.command(name="sync", description="Sync commands")
     @has_role("sync")

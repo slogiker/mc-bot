@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import psutil
 import json
 import asyncio
 import aiofiles
@@ -157,8 +158,39 @@ class Info(commands.Cog):
             embed.add_field(name="IP Address", value=f"`{ip}`", inline=False)
             embed.add_field(name="Version", value=f"`{ver}`", inline=True)
             
+            # System Stats (psutil)
+            # CPU
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            embed.add_field(name="System CPU", value=f"{cpu_percent}%", inline=True)
+            
+            # RAM
+            mem = psutil.virtual_memory()
+            embed.add_field(name="System RAM", value=f"{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)", inline=True)
+            
+            # Disk (where server is)
+            server_path = config.SERVER_DIR
+            try:
+                disk = psutil.disk_usage(server_path)
+                embed.add_field(name="Disk Usage", value=f"{disk.percent}% ({disk.free // 1024**3}GB free)", inline=True)
+            except:
+                pass
+
             if self.bot.server.is_running():
                 embed.add_field(name="Status", value="🟢 Online", inline=True)
+                
+                # TPS Check (RCON)
+                try:
+                    # 'debug start' -> wait -> 'debug stop' is accurate but slow (requires waiting).
+                    # 'forge tps' or 'paper tps' is better.
+                    # fallback: approximate based on recent tick times if available?
+                    # For now, let's try a quick 'forge tps' or nothing if vanilla.
+                    # Vanilla doesn't have a direct /tps command. 
+                    # We can use /debug, but that spans time.
+                    # Let's just list players for now and maybe implement a TPS task later.
+                    pass
+                except:
+                    pass
+
                 try:
                     players = await rcon_cmd("list")
                     embed.add_field(name="Players", value=f"```{players}```", inline=False)

@@ -6,3 +6,10 @@ aiofiles
 requests
 pytz
 aiohttp
+
+filelock
+nbtlib
+mcrcon
+
+pyonesend
+xai-sdk

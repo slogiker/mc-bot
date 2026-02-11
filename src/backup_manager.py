@@ -5,6 +5,7 @@ import zipfile
 from datetime import datetime
 from src.config import config
 from src.logger import logger
+from pyonesend import OneSend
 
 class BackupManager:
     def __init__(self):
@@ -17,9 +18,10 @@ class BackupManager:
         os.makedirs(self.custom_dir, exist_ok=True)
 
     async def create_backup(self, custom_name=None):
-        """Creates a backup asynchronously.
-        If custom_name is provided, it's a custom backup (kept forever).
-        Otherwise, it's an auto backup (subject to retention policy).
+        """
+        Creates a backup asynchronously.
+        - **Custom**: If a name is provided, it is stored in 'backups/custom/' and never auto-deleted.
+        - **Auto**: If no name, it is stored in 'backups/auto/' and subject to 7-day retention policy.
         """
         timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
         
@@ -42,10 +44,10 @@ class BackupManager:
             if not custom_name:
                 await self._cleanup_auto_backups()
                 
-            return True, filename
+            return True, filename, dest_path
         except Exception as e:
             logger.error(f"Backup failed: {e}")
-            return False, str(e)
+            return False, str(e), None
 
     def _zip_world(self, dest_path):
         """Zips the world folder directly without creating a temp copy."""
@@ -55,6 +57,9 @@ class BackupManager:
         with zipfile.ZipFile(dest_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for root, dirs, files in os.walk(world_path):
                 for file in files:
+                    # Skip session.lock to avoid errors if server is running
+                    if file == 'session.lock':
+                        continue
                     file_path = os.path.join(root, file)
                     arcname = os.path.relpath(file_path, world_path)
                     zf.write(file_path, arcname)
@@ -83,5 +88,16 @@ class BackupManager:
                     logger.info(f"Deleted old backup: {fname}")
             except Exception as e:
                 logger.error(f"Failed to delete old backup {fname}: {e}")
+
+    async def upload_backup(self, filepath):
+        """Uploads a backup file using pyonesend and returns the link."""
+        try:
+            onesend = OneSend()
+            # Run upload in thread as it might be blocking
+            link = await asyncio.to_thread(onesend.upload, filepath)
+            return link
+        except Exception as e:
+            logger.error(f"Failed to upload backup: {e}")
+            return None
 
 backup_manager = BackupManager()

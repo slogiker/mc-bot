@@ -1,10 +1,3 @@
-#######TODO##########
-#
-#
-#
-#
-#
-#
 #            Made by slogiker - All rights reserved v6
 #
 import discord
