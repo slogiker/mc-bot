@@ -39,7 +39,7 @@ echo ""
 # ============================================================================
 echo -e "${BOLD}${BLUE}[STEP 1/6] Working Directory Detection${NC}"
 echo -e "${CYAN}───────────────────────────────────────────────────────${NC}"
-WORKING_DIR=$(pwd)
+WORKING_DIR=$(pwd/..)
 echo -e "Current directory: ${GREEN}${WORKING_DIR}${NC}"
 echo ""
 sleep 1
