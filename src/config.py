@@ -79,17 +79,17 @@ class Config:
         self.dry_run = False  # Default, set via command line flag
         
         # Check for old config.json and migrate
-        if os.path.exists('config.json') and not os.path.exists('user_config.json'):
+        if os.path.exists('config.json') and not os.path.exists(os.path.join('data', 'user_config.json')):
             self._migrate_old_config()
         
         # Load user config
         try:
-            with open('user_config.json', 'r') as f:
+            with open(os.path.join('data', 'user_config.json'), 'r') as f:
                 user_cfg = json.load(f)
         except FileNotFoundError:
             print("❌ user_config.json not found! Creating default...")
             self._create_default_configs()
-            with open('user_config.json', 'r') as f:
+            with open(os.path.join('data', 'user_config.json'), 'r') as f:
                 user_cfg = json.load(f)
         
         # Validate
@@ -100,12 +100,12 @@ class Config:
         
         # Load bot config
         try:
-            with open('bot_config.json', 'r') as f:
+            with open(os.path.join('data', 'bot_config.json'), 'r') as f:
                 bot_cfg = json.load(f)
         except FileNotFoundError:
             print("❌ bot_config.json not found! Creating default...")
             self._create_default_configs()
-            with open('bot_config.json', 'r') as f:
+            with open(os.path.join('data', 'bot_config.json'), 'r') as f:
                 bot_cfg = json.load(f)
         
         # Apply user config
@@ -164,7 +164,7 @@ class Config:
                 "permissions": self._convert_old_roles(old_cfg.get('roles', {}))
             }
             
-            with open('user_config.json', 'w') as f:
+            with open(os.path.join('data', 'user_config.json'), 'w') as f:
                 json.dump(user_cfg, f, indent='\t')
             
             # Create bot_config.json
@@ -176,7 +176,7 @@ class Config:
                 "debug_channel_id": old_cfg.get('debug_channel_id')
             }
             
-            with open('bot_config.json', 'w') as f:
+            with open(os.path.join('data', 'bot_config.json'), 'w') as f:
                 json.dump(bot_cfg, f, indent='\t')
             
             # Backup old config
@@ -221,24 +221,33 @@ class Config:
         
         bot_cfg = {
             "server_directory": "./mc-server",
-            "guild_id": null,
-            "command_channel_id": null,
-            "log_channel_id": null,
-            "debug_channel_id": null
+            "guild_id": None,
+            "command_channel_id": None,
+            "log_channel_id": None,
+            "debug_channel_id": None
         }
         
-        with open('user_config.json', 'w') as f:
-            json.dump(user_cfg, f, indent='\t')
-        
-        with open('bot_config.json', 'w') as f:
-            json.dump(bot_cfg, f, indent='\t')
+        # In simulation, we don't write defaults to disk
+        if not self.dry_run:
+            try:
+                os.makedirs('data', exist_ok=True)
+            except OSError:
+                pass # Ignore if exists
+                
+            with open(os.path.join('data', 'user_config.json'), 'w') as f:
+                json.dump(user_cfg, f, indent='\t')
+            
+            with open(os.path.join('data', 'bot_config.json'), 'w') as f:
+                json.dump(bot_cfg, f, indent='\t')
+        else:
+             print("👻 Simulation Mode: Skipping default config creation")
 
-    def set_dry_run(self, enabled: bool):
-        """Enable/disable dry-run mode"""
+    def set_simulation_mode(self, enabled: bool):
+        """Enable/disable simulation/ghost mode"""
         self.dry_run = enabled
         if enabled:
             from src.logger import logger
-            logger.info("🌵 DRY-RUN MODE ENABLED - No actual changes will be made")
+            logger.info("👻 SIMULATION MODE ENABLED - No files will be written")
 
     def override_channel_ids(self, command_id: int, log_id: int, debug_id: int):
         self.COMMAND_CHANNEL_ID = command_id

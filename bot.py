@@ -12,11 +12,14 @@ from src.server_tmux import TmuxServerManager
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
-parser.add_argument("--dry-run", action="store_true", help="Run in Dry-Run Mode (simulates operations without making changes)")
+parser.add_argument("--dry-run", action="store_true", help="Deprecated: Use --simulate instead")
+parser.add_argument("--simulate", action="store_true", help="Run in Simulation/Ghost Mode (No file/system changes)")
 args = parser.parse_args()
 
 # --- Configuration Setup ---
-config.set_dry_run(args.dry_run)
+# Use simulate if present, otherwise fallback to dry-run (legacy)
+is_simulation = args.simulate or args.dry_run
+config.set_simulation_mode(is_simulation)
 
 # --- Bot Setup ---
 class MinecraftBot(commands.Bot):
@@ -26,9 +29,13 @@ class MinecraftBot(commands.Bot):
         intents.members = True
         super().__init__(command_prefix='/', intents=intents)
         
-        # Initialize Server Manager (always use TmuxServerManager)
-        # Dry-run mode is handled within the manager if needed
-        self.server = TmuxServerManager()
+        # Initialize Server Manager
+        if is_simulation:
+            from src.server_mock import MockServerManager
+            logger.info("👻 GHOST MODE: Using MockServerManager")
+            self.server = MockServerManager()
+        else:
+            self.server = TmuxServerManager()
         
         self.synced = False  # Prevent duplicate syncs
         self._sync_lock = asyncio.Lock()  # Prevent race conditions
@@ -50,14 +57,17 @@ class MinecraftBot(commands.Bot):
         
         logger.info("=== Bot Startup: Loading Extensions ===")
         # Load cogs - wrap os.listdir for async
-        filenames = await asyncio.to_thread(os.listdir, './cogs')
-        for filename in filenames:
-            if filename.endswith('.py') and filename != '__init__.py':
-                try:
-                    await self.load_extension(f'cogs.{filename[:-3]}')
-                    logger.info(f"Loaded cog: {filename}")
-                except Exception as e:
-                    logger.error(f"Failed to load cog {filename}: {e}")
+        try:
+            filenames = await asyncio.to_thread(os.listdir, './cogs')
+            for filename in filenames:
+                if filename.endswith('.py') and filename != '__init__.py':
+                    try:
+                        await self.load_extension(f'cogs.{filename[:-3]}')
+                        logger.info(f"Loaded cog: {filename}")
+                    except Exception as e:
+                        logger.error(f"Failed to load cog {filename}: {e}")
+        except FileNotFoundError:
+            logger.warning("No cogs directory found!")
         
         logger.info("=== All extensions loaded ===")
 
@@ -66,6 +76,9 @@ class MinecraftBot(commands.Bot):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info("=== Bot Connected to Discord ===")
         
+        if is_simulation:
+            logger.info("👻 GHOST MODE ACTIVE: No files will be modified. Server is mocked.")
+
         # Only sync once (with lock to prevent race conditions)
         async with self._sync_lock:
             if self.synced:
@@ -97,6 +110,7 @@ class MinecraftBot(commands.Bot):
         setup_helper = SetupHelper(self)
         try:
             updates = await setup_helper.ensure_setup(guild)
+            # In simulation, this updates memory config but skips saving
             config.update_dynamic_config(updates)
             logger.info(f"Dynamic Config Updated: {updates}")
         except Exception as e:
@@ -157,8 +171,15 @@ async def main():
     bot = MinecraftBot()
     token = config.TOKEN
     
+    if is_simulation and "BOT_TOKEN" in os.environ:
+         # In simulation, prefer the env var passed by simulate.py
+         token = os.environ["BOT_TOKEN"]
+    
     if not token:
-        logger.error("No token found! Check .env file for BOT_TOKEN")
+        if is_simulation:
+             logger.error("Simulation Error: BOT_TOKEN not provided (simulate.py should handle this)")
+        else:
+             logger.error("No token found! Check .env file for BOT_TOKEN")
         return
 
     logger.info("Starting bot client...")
@@ -171,9 +192,13 @@ async def main():
         loop.create_task(shutdown_handler(bot))
     
     # Register handlers (Windows supports SIGINT, Unix supports SIGTERM too)
-    signal.signal(signal.SIGINT, lambda s, f: signal_handler(s))
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, lambda s, f: signal_handler(s))
+    try:
+        signal.signal(signal.SIGINT, lambda s, f: signal_handler(s))
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, lambda s, f: signal_handler(s))
+    except (ValueError, OSError):
+        # Can fail if not in main thread or on windows in some contexts
+        logger.warning("Could not register signal handlers (running in non-main thread?)")
     
     async with bot:
         await bot.start(token)
