@@ -13,10 +13,19 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Detect if we're running from install/ subdirectory and navigate to project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$(basename "$SCRIPT_DIR")" == "install" ]]; then
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    echo -e "${CYAN}[INFO] Navigating to project root: ${PROJECT_ROOT}${NC}"
+    cd "$PROJECT_ROOT"
+fi
+
 echo -e "${CYAN}----------------------------------------${NC}"
 echo -e "${CYAN}   Minecraft Discord Bot - Docker Setup ${NC}"
 echo -e "${CYAN}----------------------------------------${NC}"
 echo ""
+
 
 # Check if .env exists and is configured
 if [ ! -f .env ]; then
