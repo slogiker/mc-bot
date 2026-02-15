@@ -30,6 +30,7 @@ backups/
 !README.md
 
 # Installation scripts
+install/
 install.sh
 install-dry-run.sh
 

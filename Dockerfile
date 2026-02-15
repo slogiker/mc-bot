@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY bot.py .
 COPY cogs/ ./cogs/
 COPY src/ ./src/
-COPY config.json .
+COPY data/ ./data/
 
 # Create necessary directories
 RUN mkdir -p /app/mc-server /app/backups /app/logs
