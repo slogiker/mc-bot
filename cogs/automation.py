@@ -79,6 +79,7 @@ class AutomationCog(commands.Cog):
         while not self.stop_scan.is_set():
             try:
                 server_path = config.SERVER_DIR
+                # TODO: Verify if latest.log is accessible with new Docker setup or switch to docker logs
                 log_path = os.path.join(server_path, 'logs', 'latest.log')
                 
                 if not os.path.exists(log_path):
@@ -137,7 +138,9 @@ class AutomationCog(commands.Cog):
             await interaction.response.send_message("❌ Admin only.", ephemeral=True)
             return
 
-        user_config = load_user_config()
+        # TODO: Fix NameError - load_user_config is not defined (should be config.load_user_config)
+        # user_config = load_user_config() 
+        user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         triggers[phrase] = command
         user_config['triggers'] = triggers

@@ -21,6 +21,7 @@ def has_role(cmd_name):
     """Check if the user has the required role for a command."""
     async def predicate(interaction):
         # Use config.ROLE_PERMISSIONS (Name -> [cmds])
+        # TODO: Switch to using config.ROLES (ID -> [cmds]) for robust checks against role renames
         role_permissions = config.ROLE_PERMISSIONS
         
         # Check user's roles by NAME
@@ -99,6 +100,7 @@ def display_key(key):
 async def parse_server_version():
     """Parse Minecraft version from latest.log asynchronously."""
     import aiofiles
+    # TODO: Update to use Docker logs introspection or configured version
     log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
     
     exists = await asyncio.to_thread(os.path.exists, log_path)

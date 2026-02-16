@@ -19,6 +19,13 @@ class Admin(commands.Cog):
     @has_role("sync")
     async def sync(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+        # TODO: Implement actual sync logic (self.bot.tree.sync)
+        if interaction.guild:
+            self.bot.tree.copy_global_to(guild=interaction.guild)
+            await self.bot.tree.sync(guild=interaction.guild)
+        else:
+            await self.bot.tree.sync()
+        await interaction.followup.send("✅ Commands synced!", ephemeral=True)
     @app_commands.command(name="backup_now", description="Trigger immediate backup")
     @app_commands.checks.cooldown(1, 300)  # 1 use per 5 minutes
     @has_role("backup_now")
@@ -46,6 +53,7 @@ class Admin(commands.Cog):
     async def logs(self, interaction: discord.Interaction, lines: int = 10):
         import aiofiles
         try:
+            # TODO: Update to use Docker logs instead of file reading to match console.py
             path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
             
             # Use asyncio.to_thread for os.path.exists check

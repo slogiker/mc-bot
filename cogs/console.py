@@ -31,124 +31,158 @@ class ConsoleCog(commands.Cog):
 
     async def tail_logs(self):
         await self.bot.wait_until_ready()
-        logger.info("Starting log tailing task...")
+        logger.info("Starting docker log tailing task...")
 
         while not self.stop_event.is_set():
             try:
-                bot_config = config.load_bot_config()
-                # Ensure server path is correct. Using config.SERVER_DIR as primary source.
-                server_path = config.SERVER_DIR
-                log_path = os.path.join(server_path, 'logs', 'latest.log')
-                
                 channel_id = config.LOG_CHANNEL_ID
                 if not channel_id:
-                    # Try to find existing channel or wait for setup
                     await asyncio.sleep(10)
                     continue
 
                 channel = self.bot.get_channel(channel_id)
                 if not channel:
-                     # Channel might have been deleted
-                     await asyncio.sleep(10)
-                     continue
-
-                if not os.path.exists(log_path):
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(10)
                     continue
 
-                pos = bot_config.get('log_pos', 0)
+                # Start docker logs process
+                process = await asyncio.create_subprocess_exec(
+                    'docker', 'logs', '-f', '--tail', '0', 'mc-bot',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT
+                )
+
+                logger.info("Connected to docker logs stream")
                 
-                # Check for file rotation (size turned smaller)
-                file_size = os.path.getsize(log_path)
-                if file_size < pos:
-                    pos = 0
+                # Batch buffer for messages
+                batch = []
+                last_send = asyncio.get_event_loop().time()
+                batch_interval = 2.0  # Send every 2 seconds or when batch is full
+                max_batch_size = 10  # Max messages per batch
 
-                async with aiofiles.open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    await f.seek(pos)
-                    lines = await f.readlines()
-                    if not lines:
-                         # No new lines, update pos just in case
-                         pos = await f.tell()
-                    else:
-                        pos = await f.tell()
+                while not self.stop_event.is_set():
+                    try:
+                        line_bytes = await asyncio.wait_for(
+                            process.stdout.readline(),
+                            timeout=1.0
+                        )
                         
-                        # Process lines
-                        chunk = ""
-                        for line in lines:
-                             # Basic filtering
-                             if not line.strip(): continue
-                             
-                             # Regex parsing
-                             # Default MC log format: [HH:MM:SS] [Thread/LEVEL]: Message
-                             match = re.search(r'\[(.*?)] \[(.*?)/(.*?)\]: (.*)', line)
-                             if match:
-                                 time_str, thread, level, msg = match.groups()
-                                 
-                                 # Skip blacklisted
-                                 user_config = config.load_user_config()
-                                 if any(b in msg for b in user_config.get('log_blacklist', [])):
-                                     continue
+                        if not line_bytes:
+                            break  # EOF
+                        
+                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                        if not line:
+                            continue
 
-                                 # Color coding
-                                 color = discord.Color.default()
-                                 if "INFO" in level: color = discord.Color.green()
-                                 elif "WARN" in level: color = discord.Color.gold()
-                                 elif "ERROR" in level or "FATAL" in level: color = discord.Color.red()
-                                 
-                                 # We can either send embeds or code blocks.
-                                 # Code blocks are more compact for a console feel. 
-                                 # But user requested "Live Console Channel... Real-time colored log tail"
-                                 # Discord code blocks with ansi colors are good, but embeds are also fine.
-                                 
-                                 embed = discord.Embed(description=msg, color=color, timestamp=datetime.now())
-                                 embed.set_footer(text=f"{level} | {thread}")
-                                 
-                                 # Grouping or sending individually? 
-                                 # Individual embeds might hit rate limits fast if there's log spam.
-                                 # For V1, let's try individual but handle rate limits by sleeping if needed?
-                                 # Better: Batching. But for now following prompts snippet roughly.
-                                 
-                                 try:
-                                     await channel.send(embed=embed)
-                                 except discord.HTTPException as e:
-                                     logger.warning(f"Failed to send log to console channel: {e}")
-                                     await asyncio.sleep(1) # Backoff
-                                 
-                                 # --- Presence Update Logic ---
-                                 if "joined the game" in msg:
-                                     player_name = msg.split(" joined the game")[0]
-                                     current_players = bot_config.get('online_players', [])
-                                     if player_name not in current_players:
-                                         current_players.append(player_name)
-                                         bot_config['online_players'] = current_players
-                                         config.save_bot_config(bot_config)
-                                     await self.update_presence(len(current_players))
-                                     
-                                 elif "left the game" in msg:
-                                     player_name = msg.split(" left the game")[0]
-                                     current_players = bot_config.get('online_players', [])
-                                     if player_name in current_players:
-                                         current_players.remove(player_name)
-                                         bot_config['online_players'] = current_players
-                                         config.save_bot_config(bot_config)
-                                     await self.update_presence(len(current_players))
+                        # Parse MC log format: [HH:MM:SS] [Thread/LEVEL]: Message
+                        match = re.search(r'\[(.*?)] \[(.*?)/(.*?)\]: (.*)', line)
+                        if match:
+                            time_str, thread, level, msg = match.groups()
+                            
+                            # Skip blacklisted messages
+                            user_config = config.load_user_config()
+                            if any(b in msg for b in user_config.get('log_blacklist', [])):
+                                continue
 
-                             else:
-                                 # Unformatted line (tracebacks etc)
-                                 # Send as plain text or embed
-                                 if line.strip():
-                                     await channel.send(f"```{line.strip()}```")
+                            # Format: [LEVEL] message
+                            formatted = f"[{level}] {msg}"
+                            batch.append(formatted)
+                            
+                            # --- Player tracking for presence ---
+                            if "joined the game" in msg:
+                                player_name = msg.split(" joined the game")[0].strip()
+                                bot_config = config.load_bot_config()
+                                current_players = bot_config.get('online_players', [])
+                                if player_name not in current_players:
+                                    current_players.append(player_name)
+                                    bot_config['online_players'] = current_players
+                                    config.save_bot_config(bot_config)
+                                await self.update_presence(len(current_players))
+                                # Send notification to debug channel
+                                await self.send_event_notification("join", player_name)
+                                
+                            elif "left the game" in msg:
+                                player_name = msg.split(" left the game")[0].strip()
+                                bot_config = config.load_bot_config()
+                                current_players = bot_config.get('online_players', [])
+                                if player_name in current_players:
+                                    current_players.remove(player_name)
+                                    bot_config['online_players'] = current_players
+                                    config.save_bot_config(bot_config)
+                                await self.update_presence(len(current_players))
+                                # Send notification to debug channel
+                                await self.send_event_notification("leave", player_name)
+                            
+                            # Death detection (various death messages)
+                            elif any(death_word in msg for death_word in ["was slain", "was shot", "drowned", "experienced kinetic energy", "blew up", "was killed", "hit the ground", "fell from", "went up in flames", "burned to death", "walked into fire", "tried to swim in lava", "died", "was squashed", "was pummeled", "was pricked", "starved to death", "suffocated", "was impaled", "was frozen", "withered away"]):
+                                # Extract player name (usually first word before death message)
+                                player_name = msg.split()[0] if msg else None
+                                if player_name:
+                                    await self.send_event_notification("death", player_name, msg)
 
-                # Save position
-                if pos != bot_config.get('log_pos'):
-                    bot_config['log_pos'] = pos
-                    config.save_bot_config(bot_config)
+                        # Send batch if full or time elapsed
+                        current_time = asyncio.get_event_loop().time()
+                        if len(batch) >= max_batch_size or (batch and current_time - last_send >= batch_interval):
+                            # Send as code block
+                            message = "```ansi\n" + "\n".join(batch) + "\n```"
+                            try:
+                                await channel.send(message[:2000])  # Discord limit
+                            except discord.HTTPException as e:
+                                logger.warning(f"Failed to send log batch: {e}")
+                            
+                            batch = []
+                            last_send = current_time
+
+                    except asyncio.TimeoutError:
+                        # No data for 1 second, check if we have pending batch
+                        if batch:
+                            current_time = asyncio.get_event_loop().time()
+                            if current_time - last_send >= batch_interval:
+                                message = "```ansi\n" + "\n".join(batch) + "\n```"
+                                try:
+                                    await channel.send(message[:2000])
+                                except discord.HTTPException:
+                                    pass
+                                batch = []
+                                last_send = current_time
+                        continue
+
+                # Process terminated, restart after delay
+                await process.wait()
+                logger.warning("Docker logs process ended, restarting in 5 seconds...")
+                await asyncio.sleep(5)
 
             except Exception as e:
-                logger.error(f"Error in log tailing: {e}")
+                logger.error(f"Error in log tailing: {e}", exc_info=True)
                 await asyncio.sleep(5)
             
             await asyncio.sleep(1)
+
+    async def send_event_notification(self, event_type: str, player_name: str, extra_msg: str = None):
+        """Send player event notifications to debug channel with mentions"""
+        try:
+            debug_channel_id = config.DEBUG_CHANNEL_ID
+            if not debug_channel_id:
+                return
+            
+            debug_channel = self.bot.get_channel(debug_channel_id)
+            if not debug_channel:
+                return
+            
+            # Format message based on event type
+            if event_type == "join":
+                message = f"🟢 **{player_name}** joined the game"
+            elif event_type == "leave":
+                message = f"🔴 **{player_name}** left the game"
+            elif event_type == "death":
+                message = f"💀 **{player_name}** died: {extra_msg}" if extra_msg else f"💀 **{player_name}** died"
+            else:
+                return
+            
+            await debug_channel.send(message)
+            
+        except Exception as e:
+            logger.error(f"Failed to send event notification: {e}")
 
     async def update_presence(self, player_count):
         activity = discord.Activity(

@@ -3,7 +3,7 @@
 > A powerful, self-hosted Discord bot that brings your private Minecraft Java Server to life.  
 > **Control. Monitor. Automate.**
 
-![Version](https://img.shields.io/badge/Version-2.5.3-blue) ![Python](https://img.shields.io/badge/Python-3.11+-yellow) ![Docker](https://img.shields.io/badge/Docker-Supported-blue)
+![Version](https://img.shields.io/badge/Version-2.5.6-blue) ![Python](https://img.shields.io/badge/Python-3.11+-yellow) ![Docker](https://img.shields.io/badge/Docker-Supported-blue)
 
 ---
 

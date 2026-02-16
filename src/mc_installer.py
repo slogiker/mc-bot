@@ -42,6 +42,7 @@ class MinecraftInstaller:
                             
                 elif platform == "forge":
                     # Forge API is more complex, default to 1.20.1 for now
+                    # TODO: Implement dynamic Forge version fetching
                     return "1.20.1"
                     
         except Exception as e:
@@ -188,6 +189,7 @@ class MinecraftInstaller:
     
     async def _download_forge(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """Download Forge server (simplified - user should download manually for now)"""
+        # TODO: Implement Forge installer download and execution (requires Java headless run)
         return False, "Forge installation requires manual download from files.minecraftforge.net"
     
     async def accept_eula(self) -> bool:
@@ -261,6 +263,7 @@ class MinecraftInstaller:
     
     async def add_to_whitelist(self, username: str) -> bool:
         """Add a player to whitelist.json"""
+        # TODO: Support offline mode whitelist (UUID generation based on name)
         try:
             whitelist_path = os.path.join(self.server_dir, "whitelist.json")
             

@@ -79,6 +79,7 @@ class EconomyCog(commands.Cog):
             self.current_word = None
 
     async def monitor_chat_for_word(self):
+        # TODO: Switch to Docker log tailing or event bus
         log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
         if not os.path.exists(log_path): return
 
@@ -104,7 +105,9 @@ class EconomyCog(commands.Cog):
 
     async def award_winner(self, player_name):
         reward = 100
-        bot_config = load_bot_config()
+        # TODO: Fix NameError
+        # bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         economy = bot_config.get('economy', {})
         
         # We need to map player name to discord ID if possible, or store by MC Name?

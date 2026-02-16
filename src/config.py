@@ -129,6 +129,7 @@ class Config:
         self.SPAWN_Z = bot_cfg.get('spawn_z')
         
         # Hardcoded/default values (not user-configurable)
+        # TODO: Make RCON_HOST configurable for multi-container setups
         self.RCON_HOST = "127.0.0.1"
 
         self.RCON_PORT = 25575

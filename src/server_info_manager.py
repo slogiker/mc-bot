@@ -48,30 +48,33 @@ class ServerInfoManager:
         try:
             channel = await self.get_or_create_channel(guild)
             
-            # Prepare Embed Data
-            # SERVER_ADDRESS is preferred for easy playit.gg/ddns updates
+            # Gather information
             ip_address = getattr(config, 'SERVER_ADDRESS', 'slogikerserver.ddns.net')
-            
-            # Version & Seed
-            # We use the _get methods which read from properties/config
             version = self._get_version()
             seed = self._get_seed()
+            spawn = self._get_spawn()
+            world_spawn = self._get_world_spawn()
             
-            embed = discord.Embed(title="🌍 Server Information", color=0x5865F2)
-            
-            # We construct the description as requested
-            desc_lines = [
-                f"> **Address:** `{ip_address}`",
-                f"> **Version:** `{version}`",
-                f"> **Seed:** `{seed}`",
+            # Build plain text message with Discord markdown
+            lines = [
+                "━━━━━━━━━━━━━━━━━━━━━━━━",
+                "🌍 **Server Information**",
+                "━━━━━━━━━━━━━━━━━━━━━━━━",
+                "",
+                f"**Address:** `{ip_address}`",
+                f"**Version:** `{version}`",
+                f"**Seed:** `{seed}`",
             ]
             
-            # Add spawn if set
-            spawn = self._get_spawn()
             if spawn:
-                desc_lines.append(f"> **Spawn:** `{spawn}`")
-                
-            embed.description = "\n".join(desc_lines)
+                lines.append(f"**Spawn:** `{spawn}`")
+            
+            if world_spawn:
+                lines.append(f"**World Spawn:** `{world_spawn}`")
+            
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
+            
+            message_text = "\n".join(lines)
             
             # Check for existing bot message to edit
             message = None
@@ -81,9 +84,9 @@ class ServerInfoManager:
                     break
             
             if message:
-                await message.edit(embed=embed)
+                await message.edit(content=message_text)
             else:
-                await channel.send(embed=embed)
+                await channel.send(message_text)
                 
             logger.info("Updated server info channel")
             
@@ -122,6 +125,24 @@ class ServerInfoManager:
         
         if x is not None and y is not None and z is not None:
              return f"X: {x}, Y: {y}, Z: {z}"
+        return None
+    
+    def _get_world_spawn(self) -> Optional[str]:
+        """Read world spawn from server.properties or level.dat"""
+        try:
+            from src.mc_manager import get_server_properties
+            props = get_server_properties()
+            if props:
+                # Try to read spawn coordinates from properties
+                spawn_x = props.get('spawn-x')
+                spawn_y = props.get('spawn-y')
+                spawn_z = props.get('spawn-z')
+                
+                if spawn_x is not None and spawn_y is not None and spawn_z is not None:
+                    return f"X: {spawn_x}, Y: {spawn_y}, Z: {spawn_z}"
+        except Exception as e:
+            logger.debug(f"Could not read world spawn: {e}")
+        
         return None
 
     async def set_spawn(self, x: int, y: int, z: int):

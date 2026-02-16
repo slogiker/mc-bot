@@ -1,7 +1,7 @@
 # Developer Documentation
 
 **Repository**: `mc-bot`
-**Version**: v2.5.5
+**Version**: v2.5.6
 **Last Updated**: February 16, 2026
 
 ---
@@ -29,7 +29,7 @@ This is a **self-hosted Discord bot** designed to manage a local Minecraft Java 
 - **Aiofiles**: Non-blocking log tailing keeps the Discord UI responsive while reading large server logs.
 - **Docker**: Container-based deployment with WSL 2 integration on Windows.
 
-### File Structure (v2.5.4)
+### File Structure (v2.5.6)
 
 | Path                     | Description                                                                                                               |
 | :----------------------- | :------------------------------------------------------------------------------------------------------------------------ |
@@ -254,6 +254,42 @@ If APIs are unreachable:
   - Docker integration troubleshooting guide.
   - Version resolution documentation.
   - Installation progress tracking documentation.
+
+### v2.5.6 (February 16, 2026) - Major Overhaul
+
+**Permissions & Commands:**
+
+- Implemented 4-tier role hierarchy: Owner → Admin → Player → @everyone
+- Fixed `set_spawn` command permission decorator
+- Fixed `/seed` to read from `server.properties` (works offline)
+- Improved `/info` UI: removed backticks, added emoji player list format
+- Added `control` and `set_spawn` to permission system
+
+**Logging System:**
+
+- Completely redesigned: now tails docker logs instead of files (`docker logs -f mc-bot`)
+- Minimal format: `[LEVEL] message` in code blocks
+- Batch messages (up to 10 or every 2 seconds) to avoid Discord rate limits
+- Preserved player tracking for bot presence updates
+
+**Event Notifications:**
+
+- Added player join/leave/death notifications to debug channel
+- Format: 🟢/🔴/💀 **PlayerName** [event message]
+- Covers all death types (slain, drowned, fell, etc.)
+
+**Server Information:**
+
+- Converted from embed to plain text with Discord markdown formatting
+- Added world spawn coordinates from `server.properties` (spawn-x/y/z)
+- Visual separators with bold labels and code blocks for values
+
+**Developer Tools:**
+
+- Created `install/auto_setup.py` for automated role/channel creation
+- Advanced users can programmatically set up Discord infrastructure
+
+### v2.5.5 (February 16, 2026) - Installation Improvementss tracking documentation.
 
 ### v2.5.3 - _The "Cleanup" Update_
 

@@ -12,7 +12,7 @@ from src.server_tmux import TmuxServerManager
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
-parser.add_argument("--dry-run", action="store_true", help="Deprecated: Use --simulate instead") # TODO: Remove
+parser.add_argument("--dry-run", action="store_true", help="Deprecated: Use --simulate instead") # TODO: Remove in next major version
 parser.add_argument("--simulate", action="store_true", help="Run in Simulation/Ghost Mode (No file/system changes)")
 args = parser.parse_args()
 
