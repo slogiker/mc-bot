@@ -3,6 +3,7 @@
 **Current Version**: `v2.5.3`
 
 ## ✅ Completed Features
+
 - **Core**:
   - [x] Process Management (Start/Stop/Restart) via `subprocess`.
   - [x] RCON Communication (`src/utils.rcon_cmd`).
@@ -32,13 +33,23 @@
   - [x] Regex Chat Triggers.
 
 ## 🚧 In Progress / Planned
+
 - **Mod Management**:
   - [ ] Modrinth API Integration.
   - [ ] Auto-updating modpacks.
-- **Web Interface**:
-  - [ ] Simple Dashboard for non-Discord management.
+
+- **Add playit.gg Docker tunnel**
+
+- Add playit container to docker-compose
+- Use: network_mode: service:mc-bot
+- Tunnel port: 25565 (Minecraft)
+- Claim tunnel via https://playit.gg/claim link
+- Remove public port 25565 if using playit only
+- Test connection from external network
+- Add Discord command to show playit IP
 
 ## 🕒 Version History
+
 - **v2.5.3**: Cleanup Update. Root directory sanitization, Documentation split, Emoji removal.
 - **v2.5.2**: Automation Update. Events, MOTD, Triggers.
 - **v2.5.0**: Advanced Features. Stats, Info, Backups, Economy.

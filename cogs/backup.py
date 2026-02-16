@@ -5,7 +5,7 @@ import os
 import asyncio
 from src.backup_manager import backup_manager
 from src.logger import logger
-from utils.config import load_user_config
+from src.config import config
 
 class BackupCog(commands.Cog):
     def __init__(self, bot):

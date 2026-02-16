@@ -105,9 +105,6 @@ class Management(commands.Cog):
         
         await interaction.edit_original_response(embed=embed)
 
-    @app_commands.command(name="force_restart", description="Force restart server (simulated)")
-    @has_role("force_restart")
-    async def force_restart(self, interaction: discord.Interaction):
     @app_commands.command(name="bot_restart", description="Restart the bot")
     @has_role("bot_restart")
     async def api_bot_restart(self, interaction: discord.Interaction):

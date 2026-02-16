@@ -331,8 +331,8 @@ class SetupView(ui.View):
         "Version", 
         "Difficulty",
         "Max Players",
-        "RAM",
-        "Advanced Settings",
+        "Advanced Settings",  # Swapped with RAM
+        "RAM",               # Swapped with Advanced
         "Confirmation"
     ]
     
@@ -413,20 +413,7 @@ class SetupView(ui.View):
             )
             return embed, [MaxPlayersSelect(self.state.max_players), self._back_button(), self._next_button()]
             
-        elif step == 4:  # RAM
-            embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
-                description=f"**{progress}** - Allocate server RAM",
-                color=discord.Color.blue()
-            )
-            embed.add_field(
-                name="Current Selection",
-                value=f"**{self.state.ram} GB**",
-                inline=False
-            )
-            return embed, [RAMSelect(self.state.ram), self._back_button(), self._next_button()]
-            
-        elif step == 5:  # Advanced Settings (optional)
+        elif step == 4:  # Advanced Settings (Swapped)
             embed = discord.Embed(
                 title="🔧 Minecraft Server Setup",
                 description=f"**{progress}** - Advanced Settings (Optional)",
@@ -444,6 +431,19 @@ class SetupView(ui.View):
             )
             embed.set_footer(text="Click 'Skip' to use default settings")
             return embed, [self._back_button(), self._skip_button(), self._configure_advanced_button()]
+
+        elif step == 5:  # RAM (Swapped)
+            embed = discord.Embed(
+                title="🔧 Minecraft Server Setup",
+                description=f"**{progress}** - Allocate server RAM",
+                color=discord.Color.blue()
+            )
+            embed.add_field(
+                name="Current Selection",
+                value=f"**{self.state.ram} GB**",
+                inline=False
+            )
+            return embed, [RAMSelect(self.state.ram), self._back_button(), self._next_button()]
             
         else:  # Confirmation
             embed = discord.Embed(
@@ -451,16 +451,26 @@ class SetupView(ui.View):
                 description="Review your configuration and click Install to begin",
                 color=discord.Color.green()
             )
+            
+            # Display resolved version if 'latest'
+            display_version = self.state.version
+            if display_version == 'latest':
+                # Note: We can't easily await here since this is not async in the current design (it's called by _get_step_content)
+                # But we can add a note that it will be resolved.
+                # Alternatively, we could resolve it in _navigate when moving to Confirmation.
+                pass
+
             embed.add_field(
                 name="📋 Configuration Summary",
                 value=(
                     f"**Platform:** {self.state.platform.title()}\n"
-                    f"**Version:** {self.state.version}\n"
+                    f"**Version:** {self.state.version}{' (Latest available will be used)' if self.state.version == 'latest' else ''}\n"
                     f"**Difficulty:** {self.state.difficulty.title()}\n"
                     f"**Max Players:** {self.state.max_players}\n"
                     f"**RAM:** {self.state.ram} GB\n"
                     f"**Whitelist:** {'Enabled' if self.state.whitelist else 'Disabled'}\n"
-                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}"
+                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}\n"
+                    f"**Seed:** {self.state.seed or 'Random'}"
                 ),
                 inline=False
             )
@@ -607,16 +617,20 @@ class SetupView(ui.View):
             
             await mc_installer.configure_server_properties(setup_config)
             
+            # Save resolved version to config
+            version_update = {'installed_version': setup_config['version']}
+            config.update_dynamic_config(version_update)
+            await self._save_config_to_file(version_update)
+            
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
             await message.edit(embed=embed)
             
-            # Start the server
-            from src.mc_manager import mc_manager
-            start_success = await mc_manager.start_server()
+            # Start the server using the bot's server instance
+            start_success, start_msg = await interaction.client.server.start()
             
             if not start_success:
-                logger.warning("Server failed to start after installation")
+                logger.warning(f"Server failed to start after installation: {start_msg}")
             
             # Success embed
             command_channel = interaction.client.get_channel(config.COMMAND_CHANNEL_ID)
@@ -657,32 +671,11 @@ class SetupView(ui.View):
     
     async def _save_config_to_file(self, updates: dict):
         """Save configuration updates to bot_config.json file"""
-        import json
-        import aiofiles
-        
         try:
-            # Load/Update bot_config.json
-            async with aiofiles.open('bot_config.json', 'r') as f:
-                content = await f.read()
-                config_data = json.loads(content)
-            
-            if 'command_channel_id' in updates:
-                config_data['command_channel_id'] = updates['command_channel_id']
-            if 'log_channel_id' in updates:
-                config_data['log_channel_id'] = updates['log_channel_id']
-            if 'debug_channel_id' in updates:
-                config_data['debug_channel_id'] = updates['debug_channel_id']
-            if 'guild_id' in updates:
-                config_data['guild_id'] = updates['guild_id']
-            
-            async with aiofiles.open('bot_config.json', 'w') as f:
-                await f.write(json.dumps(config_data, indent='\t') + '\n')
-            
-            logger.info("bot_config.json updated successfully")
-            
+            await asyncio.to_thread(config.save_bot_config, config.load_bot_config() | updates)
+            logger.info("data/bot_config.json updated successfully")
         except Exception as e:
-            logger.error(f"Failed to update bot_config.json: {e}")
-            # Don't raise - this is not critical
+            logger.error(f"Failed to update data/bot_config.json: {e}")
 
 
 

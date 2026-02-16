@@ -6,10 +6,10 @@ import re
 import os
 import aiofiles
 from datetime import datetime
-from utils.config import load_bot_config, save_bot_config, load_user_config
+from datetime import datetime
+from src.config import config
 from src.utils import rcon_cmd
 from src.logger import logger
-from src.config import config as main_config  # For paths if needed, though bot_config should have it
 
 class ConsoleCog(commands.Cog):
     def __init__(self, bot):
@@ -35,12 +35,12 @@ class ConsoleCog(commands.Cog):
 
         while not self.stop_event.is_set():
             try:
-                bot_config = load_bot_config()
-                # Ensure server path is correct. Using main_config as fallback or primary source if bot_config is empty.
-                server_path = bot_config.get('server_path') or main_config.SERVER_DIR
+                bot_config = config.load_bot_config()
+                # Ensure server path is correct. Using config.SERVER_DIR as primary source.
+                server_path = config.SERVER_DIR
                 log_path = os.path.join(server_path, 'logs', 'latest.log')
                 
-                channel_id = bot_config.get('console_channel_id')
+                channel_id = config.LOG_CHANNEL_ID
                 if not channel_id:
                     # Try to find existing channel or wait for setup
                     await asyncio.sleep(10)
@@ -85,7 +85,7 @@ class ConsoleCog(commands.Cog):
                                  time_str, thread, level, msg = match.groups()
                                  
                                  # Skip blacklisted
-                                 user_config = load_user_config()
+                                 user_config = config.load_user_config()
                                  if any(b in msg for b in user_config.get('log_blacklist', [])):
                                      continue
 
@@ -121,7 +121,7 @@ class ConsoleCog(commands.Cog):
                                      if player_name not in current_players:
                                          current_players.append(player_name)
                                          bot_config['online_players'] = current_players
-                                         save_bot_config(bot_config)
+                                         config.save_bot_config(bot_config)
                                      await self.update_presence(len(current_players))
                                      
                                  elif "left the game" in msg:
@@ -130,7 +130,7 @@ class ConsoleCog(commands.Cog):
                                      if player_name in current_players:
                                          current_players.remove(player_name)
                                          bot_config['online_players'] = current_players
-                                         save_bot_config(bot_config)
+                                         config.save_bot_config(bot_config)
                                      await self.update_presence(len(current_players))
 
                              else:
@@ -140,11 +140,9 @@ class ConsoleCog(commands.Cog):
                                      await channel.send(f"```{line.strip()}```")
 
                 # Save position
-                # Optimisation: Don't save on every loop if unchanged?
-                # But we updated filelock to be fast. 
                 if pos != bot_config.get('log_pos'):
                     bot_config['log_pos'] = pos
-                    save_bot_config(bot_config)
+                    config.save_bot_config(bot_config)
 
             except Exception as e:
                 logger.error(f"Error in log tailing: {e}")
@@ -167,20 +165,21 @@ class ConsoleCog(commands.Cog):
     @app_commands.command(name="cmd", description="Execute a command on the server (Owner only)")
     async def cmd(self, interaction: discord.Interaction, command: str):
         # Owner check
-        bot_config = load_bot_config()
-        owner_id = bot_config.get('owner_id')
+        # Use config.OWNER_ID directly
+        owner_id = config.OWNER_ID
         
         # Fallback to checking app info if owner_id not set in config
         if not owner_id:
             app_info = await self.bot.application_info()
             if app_info.owner.id == interaction.user.id:
                 # Save it for later
+                bot_config = config.load_bot_config()
                 bot_config['owner_id'] = interaction.user.id
-                save_bot_config(bot_config)
+                config.save_bot_config(bot_config)
             else:
                  await interaction.response.send_message("❌ This command is restricted to the bot owner.", ephemeral=True)
                  return
-        elif interaction.user.id != owner_id:
+        elif str(interaction.user.id) != str(owner_id):
             await interaction.response.send_message("❌ This command is restricted to the bot owner.", ephemeral=True)
             return
 

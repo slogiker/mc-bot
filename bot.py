@@ -12,7 +12,7 @@ from src.server_tmux import TmuxServerManager
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
-parser.add_argument("--dry-run", action="store_true", help="Deprecated: Use --simulate instead")
+parser.add_argument("--dry-run", action="store_true", help="Deprecated: Use --simulate instead") # TODO: Remove
 parser.add_argument("--simulate", action="store_true", help="Run in Simulation/Ghost Mode (No file/system changes)")
 args = parser.parse_args()
 
@@ -41,15 +41,58 @@ class MinecraftBot(commands.Bot):
         self._sync_lock = asyncio.Lock()  # Prevent race conditions
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        # Ignore cooldowns or permission errors for the debug channel, just show ephemeral to user
         if isinstance(error, app_commands.CommandOnCooldown):
             await interaction.response.send_message(f"⏳ Command is on cooldown. Try again in {error.retry_after:.2f}s.", ephemeral=True)
+            return
         elif isinstance(error, app_commands.MissingRole):
             await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            return
         elif isinstance(error, app_commands.CheckFailure):
             await interaction.response.send_message("❌ You cannot use this command here.", ephemeral=True)
+            return
+
+        # Handle unknown errors
+        logger.error(f"Global Command error: {error}", exc_info=True)
+        
+        # Notify user ephemerally
+        if not interaction.response.is_done():
+            await interaction.response.send_message(f"❌ An unexpected error occurred. Technical details have been sent to the debug channel.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"❌ An error occurred: {error}", ephemeral=True)
-            logger.error(f"Command error: {error}")
+            await interaction.followup.send(f"❌ An unexpected error occurred. Technical details have been sent to the debug channel.", ephemeral=True)
+
+        # Send detailed report to debug channel
+        try:
+            debug_channel_id = config.DEBUG_CHANNEL_ID
+            if debug_channel_id:
+                channel = self.get_channel(int(debug_channel_id))
+                if channel:
+                    import traceback
+                    tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+                    
+                    # Create embed
+                    embed = discord.Embed(title="🚨 Command Error", color=discord.Color.red(), timestamp=interaction.created_at)
+                    embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})", inline=True)
+                    embed.add_field(name="Command", value=f"/{interaction.command.name if interaction.command else 'Unknown'}", inline=True)
+                    embed.add_field(name="Error Type", value=type(error).__name__, inline=False)
+                    embed.add_field(name="Message", value=str(error), inline=False)
+                    
+                    # Owner ping logic
+                    owner_ping = ""
+                    if config.OWNER_ID:
+                        owner_ping = f"<@{config.OWNER_ID}>"
+                    
+                    # Send with traceback in code block
+                    msg = f"{owner_ping} A critical error occurred!"
+                    
+                    # Handle long tracebacks
+                    if len(tb) > 1000:
+                        tb = tb[-1000:] # Get last 1000 chars
+                    
+                    await channel.send(content=msg, embed=embed)
+                    await channel.send(f"**Traceback:**\n```py\n{tb}\n```")
+        except Exception as e:
+            logger.error(f"Failed to send error report to debug channel: {e}")
 
     async def setup_hook(self):
         """Called during bot startup - load extensions but DON'T sync yet"""

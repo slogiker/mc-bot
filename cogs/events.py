@@ -2,9 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
-from utils.config import load_bot_config, save_bot_config
+from src.config import config
 from src.logger import logger
-from src.config import config as main_config
 
 class EventsCog(commands.Cog):
     def __init__(self, bot):
@@ -17,7 +16,7 @@ class EventsCog(commands.Cog):
     @tasks.loop(minutes=1)
     async def event_loop(self):
         """Checks for upcoming events and sends reminders."""
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         events = bot_config.get('events', [])
         updated = False
         now = datetime.now()
@@ -64,10 +63,10 @@ class EventsCog(commands.Cog):
         
         if updated:
             bot_config['events'] = active_events
-            save_bot_config(bot_config)
+            config.save_bot_config(bot_config)
 
     async def send_reminder(self, event, time_left_str):
-        channel_id = main_config.STATUS_CHANNEL_ID # Or info channel
+        channel_id = config.LOG_CHANNEL_ID # Dynamically assigned during setup
         channel = self.bot.get_channel(channel_id)
         if not channel: return
         
@@ -93,7 +92,7 @@ class EventsCog(commands.Cog):
             await interaction.response.send_message("❌ Invalid time format. Use `YYYY-MM-DD HH:MM` (e.g., 2026-05-20 18:00)", ephemeral=True)
             return
 
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         events = bot_config.get('events', [])
         
         new_event = {
@@ -108,7 +107,7 @@ class EventsCog(commands.Cog):
         
         events.append(new_event)
         bot_config['events'] = events
-        save_bot_config(bot_config)
+        config.save_bot_config(bot_config)
         
         embed = discord.Embed(title="✅ Event Created", color=discord.Color.green())
         embed.add_field(name="Name", value=name)
@@ -118,7 +117,7 @@ class EventsCog(commands.Cog):
 
     @app_commands.command(name="event_list", description="List upcoming events")
     async def list_events(self, interaction: discord.Interaction):
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         events = bot_config.get('events', [])
         
         if not events:
@@ -141,7 +140,7 @@ class EventsCog(commands.Cog):
 
     @app_commands.command(name="event_delete", description="Delete an event")
     async def delete_event(self, interaction: discord.Interaction, index: int):
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         events = bot_config.get('events', [])
         
         if index < 1 or index > len(events):
@@ -150,7 +149,7 @@ class EventsCog(commands.Cog):
             
         deleted = events.pop(index - 1)
         bot_config['events'] = events
-        save_bot_config(bot_config)
+        config.save_bot_config(bot_config)
         
         await interaction.response.send_message(f"🗑️ Deleted event: **{deleted['name']}**", ephemeral=True)
 

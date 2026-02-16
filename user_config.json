@@ -5,6 +5,7 @@
 	"backup_keep_days": 7,
 	"restart_time": "04:00",
 	"timezone": "Europe/Ljubljana",
+	"comment": "change timezone to auto detect timezone",
 	"permissions": {
 		"MC Admin": [
 			"start",

@@ -14,9 +14,9 @@ class ControlView(discord.ui.View):
             return
 
         await interaction.followup.send("🚀 Starting server...", ephemeral=True)
-        success = await self.bot.server.start()
+        success, message = await self.bot.server.start()
         if not success:
-            await interaction.followup.send("❌ Failed to start server.", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to start server: {message}", ephemeral=True)
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.red, custom_id="mc_stop")
     async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -26,17 +26,17 @@ class ControlView(discord.ui.View):
             return
 
         await interaction.followup.send("🛑 Stopping server...", ephemeral=True)
-        success = await self.bot.server.stop()
+        success, message = await self.bot.server.stop()
         if not success:
-            await interaction.followup.send("❌ Failed to stop server.", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to stop server: {message}", ephemeral=True)
 
     @discord.ui.button(label="Restart", style=discord.ButtonStyle.blurple, custom_id="mc_restart")
     async def restart_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send("🔄 Restarting server...", ephemeral=True)
-        success = await self.bot.server.restart()
+        success, message = await self.bot.server.restart()
         if not success:
-            await interaction.followup.send("❌ Failed to restart server.", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to restart server: {message}", ephemeral=True)
 
     @discord.ui.button(label="Status", style=discord.ButtonStyle.gray, custom_id="mc_status")
     async def status_button(self, interaction: discord.Interaction, button: discord.ui.Button):

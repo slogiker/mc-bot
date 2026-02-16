@@ -6,7 +6,7 @@ import os
 import aiohttp
 import nbtlib
 import asyncio
-from utils.config import load_bot_config
+from src.config import config
 from src.utils import has_role, map_key, display_key
 from src.logger import logger
 
@@ -41,7 +41,7 @@ class StatsCog(commands.Cog):
         # Formatted UUID (with dashes)
         formatted_uuid = f"{uuid_str[:8]}-{uuid_str[8:12]}-{uuid_str[12:16]}-{uuid_str[16:20]}-{uuid_str[20:]}"
         
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         # Assume world folder is 'world' or get from config if we had it. defaulting to 'world'
         world_path = os.path.join(server_path, 'world') 
         
@@ -75,8 +75,8 @@ class StatsCog(commands.Cog):
     async def stats(self, interaction: discord.Interaction, player: str = None, user: discord.Member = None):
         await interaction.response.defer()
         
-        bot_config = load_bot_config()
-        server_path = bot_config.get('server_path', './mc-server')
+        bot_config = config.load_bot_config()
+        server_path = config.SERVER_DIR
         
         target_name = player
         uuid = None

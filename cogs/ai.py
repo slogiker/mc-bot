@@ -3,7 +3,6 @@ from discord import app_commands
 from discord.ext import commands
 import os
 from src.logger import logger
-from utils.config import load_user_config
 from src.config import config
 
 # Try to import xai_sdk, handle failure gracefully

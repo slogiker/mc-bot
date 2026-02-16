@@ -6,10 +6,9 @@ import random
 import re
 import aiofiles
 import os
-from utils.config import load_bot_config, save_bot_config
 from src.utils import rcon_cmd, has_role
 from src.logger import logger
-from src.config import config as main_config
+from src.config import config
 
 COLORS = [discord.Color.blue(), discord.Color.green(), discord.Color.gold(), discord.Color.purple()]
 
@@ -43,8 +42,7 @@ class EconomyCog(commands.Cog):
             logger.info(f"Next Word Hunt in {wait_min} minutes.")
             await asyncio.sleep(wait_min * 60)
             
-            # Check players > 1
-            bot_config = load_bot_config()
+            bot_config = config.load_bot_config()
             players = bot_config.get('online_players', [])
             if len(players) < 1: # User said >1, but for testing lets say >=1
                 logger.info("Skipping Word Hunt: Not enough players.")
@@ -81,7 +79,7 @@ class EconomyCog(commands.Cog):
             self.current_word = None
 
     async def monitor_chat_for_word(self):
-        log_path = os.path.join(main_config.SERVER_DIR, 'logs', 'latest.log')
+        log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
         if not os.path.exists(log_path): return
 
         # Seek to end
@@ -122,7 +120,7 @@ class EconomyCog(commands.Cog):
         if user_id:
             economy[user_id] = economy.get(user_id, 0) + reward
             bot_config['economy'] = economy
-            save_bot_config(bot_config)
+            config.save_bot_config(bot_config)
             await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won the Word Hunt and got {reward} coins!","color":"green"}}')
         else:
             await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won, but is not linked to Discord! No coins awarded.","color":"yellow"}}')
@@ -131,7 +129,7 @@ class EconomyCog(commands.Cog):
     @app_commands.command(name="balance", description="Check your or another user's balance")
     async def balance(self, interaction: discord.Interaction, user: discord.Member = None):
         target = user or interaction.user
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         bal = bot_config.get('economy', {}).get(str(target.id), 0)
         
         embed = discord.Embed(title=f"💰 Balance: {target.display_name}", description=f"**{bal}** coins", color=discord.Color.gold())
@@ -146,7 +144,7 @@ class EconomyCog(commands.Cog):
              await interaction.response.send_message("❌ You cannot pay yourself.", ephemeral=True)
              return
 
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         economy = bot_config.get('economy', {})
         sender_id = str(interaction.user.id)
         receiver_id = str(user.id)
@@ -159,7 +157,7 @@ class EconomyCog(commands.Cog):
         economy[sender_id] = sender_bal - amount
         economy[receiver_id] = economy.get(receiver_id, 0) + amount
         bot_config['economy'] = economy
-        save_bot_config(bot_config)
+        config.save_bot_config(bot_config)
         
         await interaction.response.send_message(f"✅ Paid **{amount}** coins to {user.mention}.", ephemeral=True)
         try:
@@ -173,11 +171,11 @@ class EconomyCog(commands.Cog):
              await interaction.response.send_message("❌ Admin only.", ephemeral=True)
              return
              
-        bot_config = load_bot_config()
+        bot_config = config.load_bot_config()
         economy = bot_config.get('economy', {})
         economy[str(user.id)] = amount
         bot_config['economy'] = economy
-        save_bot_config(bot_config)
+        config.save_bot_config(bot_config)
         
         await interaction.response.send_message(f"✅ Set {user.mention}'s balance to **{amount}**.", ephemeral=True)
 

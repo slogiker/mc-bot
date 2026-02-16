@@ -3,6 +3,7 @@ import os
 import re
 from datetime import datetime
 from dotenv import load_dotenv
+from filelock import FileLock
 
 load_dotenv()
 
@@ -70,6 +71,8 @@ class Config:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
+            cls._instance.BOT_CONFIG_FILE = os.path.join('data', 'bot_config.json')
+            cls._instance.USER_CONFIG_FILE = os.path.join('data', 'user_config.json')
             cls._instance.load()
         return cls._instance
 
@@ -100,13 +103,11 @@ class Config:
         
         # Load bot config
         try:
-            with open(os.path.join('data', 'bot_config.json'), 'r') as f:
-                bot_cfg = json.load(f)
-        except FileNotFoundError:
+            bot_cfg = self.load_bot_config()
+        except Exception:
             print("❌ bot_config.json not found! Creating default...")
             self._create_default_configs()
-            with open(os.path.join('data', 'bot_config.json'), 'r') as f:
-                bot_cfg = json.load(f)
+            bot_cfg = self.load_bot_config()
         
         # Apply user config
         self.JAVA_XMX = user_cfg['java_ram_max']
@@ -255,21 +256,51 @@ class Config:
         self.DEBUG_CHANNEL_ID = debug_id
 
     def update_dynamic_config(self, updates: dict):
-        """Update bot_config.json with dynamically found IDs"""
-        if 'command_channel_id' in updates:
-            self.COMMAND_CHANNEL_ID = updates['command_channel_id']
-        if 'log_channel_id' in updates:
-            self.LOG_CHANNEL_ID = updates['log_channel_id']
-        if 'debug_channel_id' in updates:
-            self.DEBUG_CHANNEL_ID = updates['debug_channel_id']
-        if 'guild_id' in updates:
-            self.GUILD_ID = updates['guild_id']
-        if 'spawn_x' in updates:
-            self.SPAWN_X = updates['spawn_x']
-        if 'spawn_y' in updates:
-            self.SPAWN_Y = updates['spawn_y']
-        if 'spawn_z' in updates:
-            self.SPAWN_Z = updates['spawn_z']
+        """Update memory config with dynamically found IDs"""
+        for key, value in updates.items():
+            attr_name = key.upper()
+            if hasattr(self, attr_name):
+                setattr(self, attr_name, value)
+            elif key == 'installed_version':
+                self.INSTALLED_VERSION = value
+
+    def load_bot_config(self) -> dict:
+        """Load the bot configuration with file locking."""
+        lock = FileLock(self.BOT_CONFIG_FILE + ".lock")
+        with lock:
+            if not os.path.exists(self.BOT_CONFIG_FILE):
+                return {}
+            with open(self.BOT_CONFIG_FILE, 'r') as f:
+                return json.load(f)
+
+    def save_bot_config(self, data: dict):
+        """Save the bot configuration with file locking."""
+        lock = FileLock(self.BOT_CONFIG_FILE + ".lock")
+        os.makedirs(os.path.dirname(self.BOT_CONFIG_FILE), exist_ok=True)
+        with lock:
+            with open(self.BOT_CONFIG_FILE, 'w') as f:
+                json.dump(data, f, indent='\t')
+        # Refresh current config object
+        self.load()
+
+    def load_user_config(self) -> dict:
+        """Load user preferences with file locking."""
+        lock = FileLock(self.USER_CONFIG_FILE + ".lock")
+        with lock:
+            if not os.path.exists(self.USER_CONFIG_FILE):
+                return {}
+            with open(self.USER_CONFIG_FILE, 'r') as f:
+                return json.load(f)
+
+    def save_user_config(self, data: dict):
+        """Save user preferences with file locking."""
+        lock = FileLock(self.USER_CONFIG_FILE + ".lock")
+        os.makedirs(os.path.dirname(self.USER_CONFIG_FILE), exist_ok=True)
+        with lock:
+            with open(self.USER_CONFIG_FILE, 'w') as f:
+                json.dump(data, f, indent='\t')
+        # Refresh current config object
+        self.load()
     
     def resolve_role_permissions(self, guild):
         """Resolve role names to IDs for permission checking"""

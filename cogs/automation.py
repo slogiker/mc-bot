@@ -7,9 +7,8 @@ import random
 import aiofiles
 from datetime import datetime
 from src.utils import rcon_cmd
-from utils.config import load_user_config, load_bot_config, save_user_config
+from src.config import config
 from src.logger import logger
-from src.config import config as main_config
 
 class AutomationCog(commands.Cog):
     def __init__(self, bot):
@@ -79,7 +78,7 @@ class AutomationCog(commands.Cog):
         
         while not self.stop_scan.is_set():
             try:
-                server_path = main_config.SERVER_DIR
+                server_path = config.SERVER_DIR
                 log_path = os.path.join(server_path, 'logs', 'latest.log')
                 
                 if not os.path.exists(log_path):
@@ -100,8 +99,7 @@ class AutomationCog(commands.Cog):
                             await asyncio.sleep(0.5)
                             continue
                             
-                        # Process Trigger
-                        user_config = load_user_config()
+                        user_config = config.load_user_config()
                         triggers = user_config.get('triggers', {})
                         # Triggers format: { "phrase": "command" }
                         # User wants context aware: "if phrase in line"
@@ -144,7 +142,7 @@ class AutomationCog(commands.Cog):
         triggers[phrase] = command
         user_config['triggers'] = triggers
         
-        save_user_config(user_config)
+        config.save_user_config(user_config)
         
         await interaction.response.send_message(f"✅ Added trigger: `{phrase}` -> `{command}`")
 
@@ -174,7 +172,7 @@ class AutomationCog(commands.Cog):
         
         if phrase in triggers:
             del triggers[phrase]
-            save_user_config(user_config)
+            config.save_user_config(user_config)
             await interaction.response.send_message(f"🗑️ Removed trigger: `{phrase}`")
         else:
             await interaction.response.send_message("❌ Trigger not found.", ephemeral=True)
