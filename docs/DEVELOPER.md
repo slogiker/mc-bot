@@ -1,7 +1,7 @@
 # Developer Documentation
 
 **Repository**: `mc-bot`
-**Version**: v2.5.4
+**Version**: v2.5.5
 **Last Updated**: February 16, 2026
 
 ---
@@ -11,6 +11,7 @@
 This is a **self-hosted Discord bot** designed to manage a local Minecraft Java Edition server. It acts as a bridge between Discord and the server process, providing remote control, monitoring, and automation features.
 
 ### Core Philosophy
+
 - **Private Use**: Built for small friend groups, not public servers.
 - **Self-Contained**: No external web panels or databases required (uses JSON/Filelock).
 - **Direct Control**: Wraps the server JAR process (`subprocess`) and uses RCON for commands.
@@ -21,59 +22,63 @@ This is a **self-hosted Discord bot** designed to manage a local Minecraft Java 
 ## 🛠️ Architecture Deep Dive
 
 ### Tech Stack
+
 - **Python + discord.py**: Rapid development of slash commands and asynchronous task management.
-- **Subprocess**: The bot *is* the wrapper. It owns the Java process, capturing STDOUT directly for the log console.
+- **Subprocess**: The bot _is_ the wrapper. It owns the Java process, capturing STDOUT directly for the log console.
 - **Filelock**: Prevents race conditions when multiple async tasks read/write JSON config files.
 - **Aiofiles**: Non-blocking log tailing keeps the Discord UI responsive while reading large server logs.
 - **Docker**: Container-based deployment with WSL 2 integration on Windows.
 
 ### File Structure (v2.5.4)
 
-| Path | Description |
-| :--- | :--- |
-| **Root** | |
-| `bot.py` | Main entry point. Loads cogs, starts ServerManager, handles shutdown signals. |
-| `.env` | **Secret** configuration (Discord Token, RCON Password, API Keys). |
-| `requirements.txt` | Python dependencies. |
-| `docker-compose.yml` | Docker Compose configuration with cache busting and WSL integration. |
-| `Dockerfile` | Multi-stage container build with cache invalidation support. |
-| **Install (`install/`)** | |
-| `install.bat` | **Windows Bootstrapper**. Installs WSL/Ubuntu, configures Docker, handles reboot, launches `install.sh`. |
-| `install.sh` | **Linux Setup**. Installs Docker Engine (if needed), validates Python/Java. Uses unbuffered output for progress tracking. |
-| `simulate.py` | **Ghost Mode**. Simulates installation and runs bot in RAM-only simulation mode. |
-| **Cogs (`cogs/`)** | **Discord Command Modules** |
-| `console.py` | Live log streaming, Owner-only RCON (`/cmd`), Presence updates. |
-| `stats.py` | Player stats (`/stats`). Parses NBT `.dat` files for offline players and hits Mojang API for online. |
-| `info.py` | System health (`/info`). Uses `psutil` to check CPU/RAM/Disk usage of the host. |
-| `backup.py` | Backup commands (`/backup`). Triggers zip creation and ephemeral uploads. |
-| `economy.py` | Balance system (`/pay`) and background "Word Hunt" minigame. |
-| `ai.py` | AI integration. Uses `xai-sdk` to chat with Grok (`/ai`) and generate MOTDs. |
-| `events.py` | Scheduling system (`/event`) with auto-reminders (24h/1h). |
-| `automation.py` | Background tasks: AI MOTD updates and custom Regex Chat Triggers. |
-| `management.py` | Control panel commands (Start/Stop/Restart). |
-| `setup.py` | Setup wizard for completely new installations. |
-| **Src (`src/`)** | **Core Logic & Helpers** |
-| `backup_manager.py` | Handles Zipping world folders and interactions with `pyonesend`. |
-| `server_info_manager.py` | Updates the persistent "Status" channel embed. |
-| `logger.py` | Centralized logging configuration. |
-| `utils.py` | RCON wrapper, file helpers, role checkers. |
-| `version_fetcher.py` | Dynamically fetches Minecraft server versions from APIs with intelligent fallbacks. |
-| `mc_installer.py` | Manages Minecraft server installation and version resolution. |
-| **Utils (`utils/`)** | |
-| `config.py` | **Thread-safe** `load/save` for JSON configs using `FileLock`. |
-| **Data (`data/`)** | **Persistent Storage** |
-| `bot_config.json` | Core bot state: Economy balances, Event lists, Setup flags. |
-| `user_config.json` | User preferences: Custom triggers, Schedule settings. |
+| Path                     | Description                                                                                                               |
+| :----------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| **Root**                 |                                                                                                                           |
+| `bot.py`                 | Main entry point. Loads cogs, starts ServerManager, handles shutdown signals.                                             |
+| `.env`                   | **Secret** configuration (Discord Token, RCON Password, API Keys).                                                        |
+| `requirements.txt`       | Python dependencies.                                                                                                      |
+| `docker-compose.yml`     | Docker Compose configuration with cache busting and WSL integration.                                                      |
+| `Dockerfile`             | Multi-stage container build with cache invalidation support.                                                              |
+| **Install (`install/`)** |                                                                                                                           |
+| `install.bat`            | **Windows Bootstrapper**. Installs WSL/Ubuntu, configures Docker, handles reboot, launches `install.sh`.                  |
+| `install.sh`             | **Linux Setup**. Installs Docker Engine (if needed), validates Python/Java. Uses unbuffered output for progress tracking. |
+| `rebuild.sh`             | **Developer Rebuild**. Checks for unpulled commits, rebuilds with `--no-cache`, and restarts containers.                  |
+| `simulate.py`            | **Ghost Mode**. Simulates installation and runs bot in RAM-only simulation mode.                                          |
+| **Cogs (`cogs/`)**       | **Discord Command Modules**                                                                                               |
+| `console.py`             | Live log streaming, Owner-only RCON (`/cmd`), Presence updates.                                                           |
+| `stats.py`               | Player stats (`/stats`). Parses NBT `.dat` files for offline players and hits Mojang API for online.                      |
+| `info.py`                | System health (`/info`). Uses `psutil` to check CPU/RAM/Disk usage of the host.                                           |
+| `backup.py`              | Backup commands (`/backup`). Triggers zip creation and ephemeral uploads.                                                 |
+| `economy.py`             | Balance system (`/pay`) and background "Word Hunt" minigame.                                                              |
+| `ai.py`                  | AI integration. Uses `xai-sdk` to chat with Grok (`/ai`) and generate MOTDs.                                              |
+| `events.py`              | Scheduling system (`/event`) with auto-reminders (24h/1h).                                                                |
+| `automation.py`          | Background tasks: AI MOTD updates and custom Regex Chat Triggers.                                                         |
+| `management.py`          | Control panel commands (Start/Stop/Restart).                                                                              |
+| `setup.py`               | Setup wizard for completely new installations.                                                                            |
+| **Src (`src/`)**         | **Core Logic & Helpers**                                                                                                  |
+| `backup_manager.py`      | Handles Zipping world folders and interactions with `pyonesend`.                                                          |
+| `server_info_manager.py` | Updates the persistent "Status" channel embed.                                                                            |
+| `logger.py`              | Centralized logging configuration.                                                                                        |
+| `utils.py`               | RCON wrapper, file helpers, role checkers.                                                                                |
+| `version_fetcher.py`     | Dynamically fetches Minecraft server versions from APIs with intelligent fallbacks.                                       |
+| `mc_installer.py`        | Manages Minecraft server installation and version resolution.                                                             |
+| **Utils (`utils/`)**     |                                                                                                                           |
+| `config.py`              | **Thread-safe** `load/save` for JSON configs using `FileLock`.                                                            |
+| **Data (`data/`)**       | **Persistent Storage**                                                                                                    |
+| `bot_config.json`        | Core bot state: Economy balances, Event lists, Setup flags.                                                               |
+| `user_config.json`       | User preferences: Custom triggers, Schedule settings.                                                                     |
 
 ---
 
 ## ⚙️ Configuration Guide
 
 ### `bot_config.json` vs `user_config.json`
-- **Bot Config**: Stores *system state* and *essential logic* (e.g., economy balances, scheduled events, server directory).
-- **User Config**: Stores *user preferences* (e.g., keyword triggers, backup schedules).
+
+- **Bot Config**: Stores _system state_ and _essential logic_ (e.g., economy balances, scheduled events, server directory).
+- **User Config**: Stores _user preferences_ (e.g., keyword triggers, backup schedules).
 
 ### Environment Variables (.env)
+
 - `BOT_TOKEN`: Required (Discord Bot Token).
 - `RCON_PASSWORD`: Required (Auto-generated by installer).
 - `XAI_API_KEY`: Optional (Enables Grok features).
@@ -100,33 +105,44 @@ This step is **REQUIRED** for Docker commands to work in WSL 2.
 ### Linux Installation
 
 Run `install.sh` directly. It will:
+
 1. Check for Docker installation
 2. Install Docker Engine if needed
 3. Add your user to the docker group
 4. Build and start the container
 
 ### Volumes
+
 - `./mc-server`: Maps to `/app/mc-server` (Persistent Minecraft world/data).
 - `./backups`: Maps to `/app/backups` (Persistent zip backups).
 - `./logs`: Maps to `/app/logs` (Persistent bot logs).
 - `./.env`: Maps to `/app/.env` (Configuration file).
 
 ### Ports
+
 - **25565**: Minecraft Server (TCP/UDP) - can be remapped or disabled with playit.gg.
 - **25575**: RCON (TCP) - Local only, not exposed externally.
 
 ### Memory
+
 - Default limit: **8GB**. Adjust in `docker-compose.yml` (`mem_limit`).
 
-### Cache Busting
+### Developer Rebuilds
 
-Docker caches build layers by default. To force a rebuild without Docker cache:
+For developers working on the bot code, use the dedicated rebuild script:
 
 ```bash
-CACHEBUST=$(date +%s) docker compose up -d --build
+./install/rebuild.sh
 ```
 
-This invalidates cached layers and rebuilds the entire image, ensuring latest versions of dependencies.
+This script:
+
+- Checks if you have unpulled commits (suggests `git pull` if behind)
+- Stops existing containers
+- Rebuilds the Docker image with `--no-cache` (ensures fresh build)
+- Starts the containers
+
+> **Note**: Normal users should use `install.sh` which uses Docker caching for faster builds.
 
 ---
 
@@ -135,11 +151,13 @@ This invalidates cached layers and rebuilds the entire image, ensuring latest ve
 For testing or demonstration purposes, the bot can run in a **Simulation Mode** that mimics a full installation and server without modifying the host system.
 
 ### How to Run
+
 ```bash
 python install/simulate.py
 ```
 
 ### What it does
+
 1. **Visual Mimicry**: Prints fake installation progress (5 steps) identical to the real script.
 2. **Transient Token**: Prompts for a Discord Token securely. This token is **NEVER saved to disk**, only held in RAM.
 3. **Bot Simulation**: Launches `bot.py --simulate`.
@@ -149,6 +167,7 @@ python install/simulate.py
    - **NO** server/java process is started.
 
 ### Use Cases
+
 - Testing Discord permissions/commands without a real server.
 - Demonstrating the setup flow to users safely.
 - Development of new commands without needing a heavy server running.
@@ -158,17 +177,21 @@ python install/simulate.py
 All installation scripts now include clear step indicators:
 
 **Windows (`install.bat`)**:
+
 - STEP 1/4: Checking Docker configuration
 - STEP 2/4: Checking Docker WSL integration
 - STEP 3/4: Preparing Linux setup in WSL
 - STEP 4/4: Running Linux installation script
 
 **Linux (`install.sh`)**:
-- STEP 1/3: Building Docker image (with build progress)
-- STEP 2/3: Waiting for container to initialize
-- STEP 3/3: Verifying container status
+
+- STEP 1/4: Building Docker image (with build progress)
+- STEP 2/4: Starting containers
+- STEP 3/4: Waiting for container to initialize
+- STEP 4/4: Verifying container status
 
 **Simulation (`simulate.py`)**:
+
 - STEP 1/5: Checking system requirements
 - STEP 2/5: Checking Docker configuration
 - STEP 3/5: Updating package lists
@@ -190,6 +213,7 @@ The bot supports dynamic version fetching from official APIs:
 ### Version Selection
 
 In the Discord setup wizard (`/setup`), users can:
+
 - Select from **latest** (auto-resolves to newest available)
 - Choose from recent versions (1.21.11, 1.21.10, 1.21.9, etc.)
 - Enter a custom version (e.g., 1.20.4)
@@ -197,6 +221,7 @@ In the Discord setup wizard (`/setup`), users can:
 ### Fallback Versions
 
 If APIs are unreachable:
+
 ```python
 ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"]
 ```
@@ -205,7 +230,8 @@ If APIs are unreachable:
 
 ## 📜 Version History & Changelog
 
-### v2.5.4 (Current) - *The "Stability & Windows Support" Update*
+### v2.5.4 (Current) - _The "Stability & Windows Support" Update_
+
 - **Windows Installation**:
   - Added comprehensive Docker WSL integration detection and guidance.
   - Enhanced error handling for missing Docker Desktop.
@@ -229,29 +255,34 @@ If APIs are unreachable:
   - Version resolution documentation.
   - Installation progress tracking documentation.
 
-### v2.5.3 - *The "Cleanup" Update*
+### v2.5.3 - _The "Cleanup" Update_
+
 - Refactoring: Renamed `scripts/` to `install/`.
 - Consolidated installation logic into `install.bat` (Windows/WSL) and `install.sh` (Linux).
 - Added Ghost Mode simulation (`install/simulate.py`).
 - Deep cleaned root directory.
 
-### v2.5.2 - *Automation & Community*
+### v2.5.2 - _Automation & Community_
+
 - Added `cogs/events.py` for scheduling.
 - Added `cogs/automation.py` for AI MOTD and Chat Triggers.
 - Implemented Context-Aware Triggers (Log scanning).
 
-### v2.5.0 - *Advanced Features*
+### v2.5.0 - _Advanced Features_
+
 - Stats: NBT Parsing (`nbtlib`) for offline player data.
 - Info: `psutil` integration for real hardware monitoring.
 - Backups: `pyonesend` integration for cloud zip sharing.
 - Economy: Added "Word Hunt" and Balance system.
 
-### v2.0.0 - *The Rewrite*
+### v2.0.0 - _The Rewrite_
+
 - Shifted to `discord.py` 2.0+ (Slash Commands).
 - Introduced `cogs` architecture.
 - Added `aiofiles` for non-blocking log tailing.
 
-### v1.0.0 - *Legacy*
+### v1.0.0 - _Legacy_
+
 - Basic start/stop script.
 - Single file monolith.
 
@@ -264,6 +295,7 @@ If APIs are unreachable:
 **Problem**: Running `docker` in WSL returns "command not found" error.
 
 **Solution**:
+
 1. Open Docker Desktop
 2. Settings > Resources > WSL Integration
 3. Enable "Enable integration with Ubuntu"
@@ -276,6 +308,7 @@ If APIs are unreachable:
 **Problem**: Installation stops after entering Discord token.
 
 **Solution**:
+
 - Scripts now use unbuffered output (`PYTHONUNBUFFERED=1`)
 - Check install.sh for proper `set -e` error handling
 - Ensure your `.env` file was created: `cat .env`
@@ -291,6 +324,7 @@ CACHEBUST=$(date +%s) docker compose up -d --build
 ### Version Not Found
 
 If a specific version doesn't exist:
+
 1. Check Paper API: https://api.papermc.io/v2/projects/paper/versions
 2. Use the Discord `/setup` wizard for automatic resolution
 3. Check fallback versions in `src/version_fetcher.py`

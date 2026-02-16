@@ -153,13 +153,12 @@ else
     exit 1
 fi
 
-# Step 1: Build the Docker image with --no-cache
+# Step 1: Build the Docker image
 echo ""
 echo -e "${BLUE}[STEP 1/4] Building Docker image...${NC}"
 echo -e "${YELLOW}[INFO] This may take several minutes on first run...${NC}"
-echo -e "${YELLOW}[INFO] Building with --no-cache to ensure fresh build...${NC}"
 
-$DOCKER_COMPOSE_CMD build --no-cache 2>&1 | while IFS= read -r line; do
+$DOCKER_COMPOSE_CMD build 2>&1 | while IFS= read -r line; do
     # Add progress indicators
     if [[ $line == *"Step"* ]]; then
         echo -e "${BLUE}[BUILD] $line${NC}"
