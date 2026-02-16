@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 # Disable stdout/stderr buffering for immediate output in WSL
 export PYTHONUNBUFFERED=1
-export BASH_XTRACEFD=3
+
 
 # Detect if we're running from install/ subdirectory and navigate to project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -157,7 +157,7 @@ fi
 echo ""
 echo -e "${BLUE}[STEP 1/3] Building Docker image...${NC}"
 echo -e "${YELLOW}[INFO] This may take several minutes on first run...${NC}"
-$DOCKER_COMPOSE_CMD up -d --build 2>&1 | while IFS= read -r line; do
+$DOCKER_COMPOSE_CMD up -d --build --no-cache 2>&1 | while IFS= read -r line; do
     # Add progress indicators
     if [[ $line == *"Step"* ]]; then
         echo -e "${BLUE}[BUILD] $line${NC}"

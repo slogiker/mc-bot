@@ -42,7 +42,3 @@ services:
     # Keep container running
     tty: true
     stdin_open: true
-
-    # Keep container running
-    tty: true
-    stdin_open: true

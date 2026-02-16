@@ -105,20 +105,8 @@ echo.
 
 echo %BLUE%[STEP 3/4] Preparing to launch Linux setup in WSL...%NC%
 
-:: Convert current path to WSL format
-set "WIN_PATH=%CD%"
-set "WSL_PATH=/mnt/%WIN_PATH::=%"
-set "WSL_PATH=%WSL_PATH:\=/%"
-:: Convert drive letter to lowercase (e.g., C: -> /mnt/c)
-for %%i in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
-    set "WSL_PATH=!WSL_PATH:%%i=/%%i!"
-)
-set "WSL_PATH=%WSL_PATH:A=/a%"
-set "WSL_PATH=%WSL_PATH:B=/b%"
-set "WSL_PATH=%WSL_PATH:C=/c%"
-set "WSL_PATH=%WSL_PATH:D=/d%"
-set "WSL_PATH=%WSL_PATH:E=/e%"
-set "WSL_PATH=%WSL_PATH:F=/f%"
+:: Convert current path to WSL format using wslpath
+for /f "usebackq tokens=*" %%a in (`wsl wslpath -u "%CD%"`) do set "WSL_PATH=%%a"
 
 echo %CYAN%[INFO] Mounted path: %WSL_PATH%%NC%
 echo.
@@ -128,7 +116,7 @@ echo %BLUE%[STEP 4/4] Running Linux installation script...%NC%
 echo %YELLOW%[INFO] This will install Docker Engine and dependencies inside WSL.%NC%
 echo %YELLOW%[INFO] You may be prompted for your WSL password.%NC%
 echo.
-wsl -d Ubuntu bash -c "cd '%WSL_PATH%' && chmod +x install/install.sh && ./install/install.sh"
+wsl -d Ubuntu -e bash -c "cd '%WSL_PATH%' && chmod +x install/install.sh && ./install/install.sh"
 
 if %errorlevel% neq 0 (
     echo.
