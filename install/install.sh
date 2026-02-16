@@ -153,15 +153,17 @@ else
     exit 1
 fi
 
-# Start with docker-compose
+# Step 1: Build the Docker image with --no-cache
 echo ""
-echo -e "${BLUE}[STEP 1/3] Building Docker image...${NC}"
+echo -e "${BLUE}[STEP 1/4] Building Docker image...${NC}"
 echo -e "${YELLOW}[INFO] This may take several minutes on first run...${NC}"
-$DOCKER_COMPOSE_CMD up -d --build --no-cache 2>&1 | while IFS= read -r line; do
+echo -e "${YELLOW}[INFO] Building with --no-cache to ensure fresh build...${NC}"
+
+$DOCKER_COMPOSE_CMD build --no-cache 2>&1 | while IFS= read -r line; do
     # Add progress indicators
     if [[ $line == *"Step"* ]]; then
         echo -e "${BLUE}[BUILD] $line${NC}"
-    elif [[ $line == *"Running"* ]]; then
+    elif [[ $line == *"Successfully built"* ]] || [[ $line == *"Successfully tagged"* ]]; then
         echo -e "${GREEN}[OK] $line${NC}"
     elif [[ $line == *"error"* ]] || [[ $line == *"ERROR"* ]]; then
         echo -e "${RED}[ERROR] $line${NC}"
@@ -175,11 +177,31 @@ if [ ${PIPESTATUS[0]} -ne 0 ]; then
     exit 1
 fi
 
-echo -e "${BLUE}[STEP 2/3] Waiting for container to initialize...${NC}"
+echo -e "${GREEN}[OK] Build completed successfully!${NC}"
+echo ""
+
+# Step 2: Start the containers
+echo -e "${BLUE}[STEP 2/4] Starting containers...${NC}"
+$DOCKER_COMPOSE_CMD up -d 2>&1 | while IFS= read -r line; do
+    if [[ $line == *"Running"* ]] || [[ $line == *"Started"* ]]; then
+        echo -e "${GREEN}[OK] $line${NC}"
+    elif [[ $line == *"error"* ]] || [[ $line == *"ERROR"* ]]; then
+        echo -e "${RED}[ERROR] $line${NC}"
+    else
+        echo "$line"
+    fi
+done
+
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo -e "${RED}[ERROR] Failed to start containers!${NC}"
+    exit 1
+fi
+
+echo -e "${BLUE}[STEP 3/4] Waiting for container to initialize...${NC}"
 sleep 5
 
 # Check if container is actually running
-echo -e "${BLUE}[STEP 3/3] Verifying container status...${NC}"
+echo -e "${BLUE}[STEP 4/4] Verifying container status...${NC}"
 if ! $DOCKER_COMPOSE_CMD ps | grep -q "mc-bot.*Up"; then
     echo -e "${RED}[ERROR] Container failed to start!${NC}"
     echo -e "${YELLOW}[WARN] Docker logs:${NC}"
