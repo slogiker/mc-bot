@@ -13,6 +13,10 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Disable stdout/stderr buffering for immediate output in WSL
+export PYTHONUNBUFFERED=1
+export BASH_XTRACEFD=3
+
 # Detect if we're running from install/ subdirectory and navigate to project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(basename "$SCRIPT_DIR")" == "install" ]]; then
@@ -47,7 +51,7 @@ if [ ! -f .env ]; then
     rcon_password=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
     
     echo ""
-    echo -e "${GREEN}[OK] Auto-generated RCON password: ${NC}$rcon_password"
+    echo -e "${GREEN}[OK] Generated RCON password${NC}"
     echo ""
     
     # Create .env file
@@ -151,20 +155,39 @@ fi
 
 # Start with docker-compose
 echo ""
-echo -e "${BLUE}[INFO] Starting Docker containers using $DOCKER_COMPOSE_CMD... (Building fresh image)${NC}"
-$DOCKER_COMPOSE_CMD up -d --build
+echo -e "${BLUE}[STEP 1/3] Building Docker image...${NC}"
+echo -e "${YELLOW}[INFO] This may take several minutes on first run...${NC}"
+$DOCKER_COMPOSE_CMD up -d --build 2>&1 | while IFS= read -r line; do
+    # Add progress indicators
+    if [[ $line == *"Step"* ]]; then
+        echo -e "${BLUE}[BUILD] $line${NC}"
+    elif [[ $line == *"Running"* ]]; then
+        echo -e "${GREEN}[OK] $line${NC}"
+    elif [[ $line == *"error"* ]] || [[ $line == *"ERROR"* ]]; then
+        echo -e "${RED}[ERROR] $line${NC}"
+    else
+        echo "$line"
+    fi
+done
 
-# Wait a moment for container to initialize
-echo -e "${BLUE}[INFO] Waiting for container to initialize...${NC}"
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo -e "${RED}[ERROR] Docker build failed!${NC}"
+    exit 1
+fi
+
+echo -e "${BLUE}[STEP 2/3] Waiting for container to initialize...${NC}"
 sleep 5
 
 # Check if container is actually running
-if ! $DOCKER_COMPOSE_CMD ps | grep -q "Up"; then
+echo -e "${BLUE}[STEP 3/3] Verifying container status...${NC}"
+if ! $DOCKER_COMPOSE_CMD ps | grep -q "mc-bot.*Up"; then
     echo -e "${RED}[ERROR] Container failed to start!${NC}"
-    echo -e "${YELLOW}[WARN] checking logs:${NC}"
-    $DOCKER_COMPOSE_CMD logs
+    echo -e "${YELLOW}[WARN] Docker logs:${NC}"
+    $DOCKER_COMPOSE_CMD logs mc-bot
     exit 1
 fi
+
+echo -e "${GREEN}[OK] Container is running successfully!${NC}"
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"

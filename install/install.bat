@@ -80,7 +80,30 @@ if %errorlevel% neq 0 (
 
 :RunSetup
 echo.
-echo %BLUE%[STEP 2/3] Preparing to launch Linux setup in WSL...%NC%
+echo %BLUE%[STEP 2/4] Checking Docker configuration...%NC%
+echo.
+
+:: Check if Docker Desktop is installed
+where docker.exe >nul 2>&1
+if %errorlevel% neq 0 (
+    echo %YELLOW%[WARN] Docker Desktop does not appear to be installed.%NC%
+    echo %BLUE%[INFO] Please ensure Docker Desktop is installed and running.%NC%
+    echo %BLUE%[INFO] Download from: https://www.docker.com/products/docker-desktop%NC%
+    echo.
+    set /p CHOICE="       Continue anyway? (Y/N): "
+    if /i "!CHOICE!" neq "Y" goto :Cancel
+    echo.
+) else (
+    echo %GREEN%[OK] Docker Desktop found.%NC%
+)
+
+:: Check if WSL Docker integration is needed
+echo %BLUE%[INFO] Configuring Docker for WSL 2 integration...%NC%
+echo %YELLOW%[WARN] After setup completes, please verify in Docker Desktop settings:%NC%
+echo        Settings ^> Resources ^> WSL Integration ^> Enable integration with Ubuntu%NC%
+echo.
+
+echo %BLUE%[STEP 3/4] Preparing to launch Linux setup in WSL...%NC%
 
 :: Convert current path to WSL format
 set "WIN_PATH=%CD%"
@@ -101,14 +124,16 @@ echo %CYAN%[INFO] Mounted path: %WSL_PATH%%NC%
 echo.
 
 :: Run the Linux install script inside WSL
-echo %BLUE%[STEP 3/3] Running Linux installation script...%NC%
+echo %BLUE%[STEP 4/4] Running Linux installation script...%NC%
+echo %YELLOW%[INFO] This will install Docker Engine and dependencies inside WSL.%NC%
+echo %YELLOW%[INFO] You may be prompted for your WSL password.%NC%
 echo.
 wsl -d Ubuntu bash -c "cd '%WSL_PATH%' && chmod +x install/install.sh && ./install/install.sh"
 
 if %errorlevel% neq 0 (
     echo.
-    echo %RED%[ERROR] Installation failed inside WSL!%NC%
-    echo %YELLOW%[WARN] Check the output above for errors.%NC%
+    echo %RED%[ERROR] WSL installation script failed!%NC%
+    echo %YELLOW%[WARN] Check the output above for details.%NC%
     pause
     exit /b 1
 )
@@ -130,15 +155,28 @@ echo %GREEN%•%NC% WSL path: %CYAN%%WSL_PATH%%NC%
 echo %GREEN%•%NC% Docker: %CYAN%Running in Ubuntu WSL%NC%
 echo.
 
-echo %BLUE%Next Steps:%NC%
+echo %YELLOW%IMPORTANT - Docker WSL Integration:%NC%
 echo.
-echo 1. %CYAN%Open Discord and run:%NC% %GREEN%/setup%NC%
+echo 1. %CYAN%Open Docker Desktop%NC%
+echo 2. Go to: %GREEN%Settings ^> Resources ^> WSL Integration%NC%
+echo 3. Enable: %GREEN%"Enable integration with Ubuntu"%NC%
+echo 4. Click: %GREEN%"Apply & Restart"%NC%
+echo.
+echo %CYAN%This step is required for docker commands to work in WSL!%NC%
+echo.
+
+echo %BLUE%Next Steps (After Docker integration enabled):%NC%
+echo.
+echo 1. %CYAN%Test Docker in WSL:%NC% %GREEN%wsl docker --version%NC%
+echo    Should show version (e.g., Docker version 24.0.0)
+echo.
+echo 2. %CYAN%Open Discord and run:%NC% %GREEN%/setup%NC%
 echo    This will create the Discord channels and configure the bot
 echo.
-echo 2. %CYAN%Install Minecraft Server:%NC%
+echo 3. %CYAN%Install Minecraft Server:%NC%
 echo    Follow the interactive prompts in Discord
 echo.
-echo 3. %CYAN%Configure RCON:%NC%
+echo 4. %CYAN%Configure RCON:%NC%
 echo    The bot will guide you through server.properties configuration
 echo.
 

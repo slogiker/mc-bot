@@ -149,11 +149,11 @@ class VersionFetcher:
     def _get_fallback_versions(self, platform: str, limit: Optional[int]) -> List[str]:
         """Fallback versions if API fails"""
         fallback = {
-            "paper": ["1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.19.4", "1.19.3", "1.19.2"],
-            "vanilla": ["1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.19.4", "1.19.3", "1.19.2"],
-            "fabric": ["1.20.4", "1.20.3", "1.20.2", "1.20.1", "1.19.4", "1.19.3", "1.19.2"]
+            "paper": ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"],
+            "vanilla": ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"],
+            "fabric": ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"]
         }
-        versions = fallback.get(platform, ["1.20.4"])
+        versions = fallback.get(platform, ["1.21.11"])
         return versions[:limit] if limit else versions
     
     async def get_latest_version(self, platform: str) -> str:
@@ -162,7 +162,7 @@ class VersionFetcher:
         if versions:
             return versions[0]
         # Fallback
-        return "1.20.4"
+        return "1.21.11"
 
 # Singleton instance
 version_fetcher = VersionFetcher()

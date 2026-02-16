@@ -3,6 +3,9 @@
 
 FROM python:3.11-slim
 
+# Build arguments for cache busting
+ARG CACHEBUST=1
+
 # Install Java 21, tmux, and other dependencies
 RUN apt-get update && apt-get install -y \
     openjdk-21-jre-headless \
@@ -19,6 +22,9 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Use build argument to invalidate cache if needed
+RUN echo "Cache buster: $CACHEBUST"
 
 # Copy bot files
 COPY bot.py .

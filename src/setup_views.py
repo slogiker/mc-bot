@@ -82,9 +82,15 @@ class PlatformSelect(ui.Select):
 class VersionSelect(ui.Select):
     """Dropdown for selecting Minecraft version"""
     def __init__(self, platform: str = "paper", current_value: str = "latest"):
-        # Common recent versions (will be dynamic in production)
+        # TODO: Dynamically fetch versions based on platform and cache them for better UX using Modrin's API
         common_versions = [
             "latest",
+            "1.21.11",
+            "1.21.10",
+            "1.21.9",
+            "1.21.8",
+            "1.21.7",
+            "1.21.6",
             "1.21.5",
             "1.21.4",
             "1.21.3",
@@ -93,12 +99,7 @@ class VersionSelect(ui.Select):
             "1.21",
             "1.20.6",
             "1.20.5",
-            "1.20.4",
-            "1.20.3",
-            "1.20.2",
-            "1.20.1",
-            "1.20",
-            "1.19.4"
+            "1.20.4"
         ]
         
         options = []
@@ -207,6 +208,40 @@ class DifficultySelect(ui.Select):
         view: SetupView = self.view
         view.state.difficulty = self.values[0]
         await interaction.response.defer()
+
+
+class SeedModal(ui.Modal, title="World Seed"):
+    """Modal for custom world seed input"""
+    def __init__(self, current_value: str):
+        super().__init__()
+        self.value: Optional[str] = None
+        
+        self.seed_input = ui.TextInput(
+            label="World Seed",
+            placeholder="Leave empty for random seed",
+            default=current_value,
+            max_length=50,
+            required=False
+        )
+        self.add_item(self.seed_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        self.value = self.seed_input.value.strip()
+        await interaction.response.defer()
+
+
+class SeedButton(ui.Button):
+    """Button to set world seed"""
+    def __init__(self):
+        super().__init__(label="Set Seed", style=discord.ButtonStyle.primary, emoji="🌱")
+    
+    async def callback(self, interaction: discord.Interaction):
+        view: SetupView = self.view
+        modal = SeedModal(view.state.seed)
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        if modal.value is not None:
+            view.state.seed = modal.value
 
 
 class MaxPlayersSelect(ui.Select):
@@ -330,9 +365,9 @@ class SetupView(ui.View):
         "Platform",
         "Version", 
         "Difficulty",
+        "Seed",
         "Max Players",
-        "Advanced Settings",  # Swapped with RAM
-        "RAM",               # Swapped with Advanced
+        "Advanced Settings",
         "Confirmation"
     ]
     
@@ -400,7 +435,21 @@ class SetupView(ui.View):
             )
             return embed, [DifficultySelect(self.state.difficulty), self._back_button(), self._next_button()]
             
-        elif step == 3:  # Max Players
+        elif step == 3:  # Seed
+            embed = discord.Embed(
+                title="🔧 Minecraft Server Setup",
+                description=f"**{progress}** - Set world seed (optional)",
+                color=discord.Color.blue()
+            )
+            embed.add_field(
+                name="Current Selection",
+                value=f"**{self.state.seed or 'Random'}**",
+                inline=False
+            )
+            seed_btn = SeedButton()
+            return embed, [seed_btn, self._back_button(), self._next_button()]
+            
+        elif step == 4:  # Max Players
             embed = discord.Embed(
                 title="🔧 Minecraft Server Setup",
                 description=f"**{progress}** - Set maximum players",
@@ -413,39 +462,25 @@ class SetupView(ui.View):
             )
             return embed, [MaxPlayersSelect(self.state.max_players), self._back_button(), self._next_button()]
             
-        elif step == 4:  # Advanced Settings (Swapped)
+        elif step == 5:  # Advanced Settings (now with RAM)
             embed = discord.Embed(
                 title="🔧 Minecraft Server Setup",
-                description=f"**{progress}** - Advanced Settings (Optional)",
+                description=f"**{progress}** - Advanced Settings",
                 color=discord.Color.blue()
             )
             embed.add_field(
                 name="Current Settings",
                 value=(
+                    f"**RAM:** {self.state.ram} GB\n"
                     f"**Whitelist:** {'Enabled' if self.state.whitelist else 'Disabled'}\n"
                     f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}\n"
-                    f"**View Distance:** {self.state.view_distance} chunks\n"
-                    f"**World Seed:** {self.state.seed or 'Random'}"
+                    f"**View Distance:** {self.state.view_distance} chunks"
                 ),
                 inline=False
             )
-            embed.set_footer(text="Click 'Skip' to use default settings")
-            return embed, [self._back_button(), self._skip_button(), self._configure_advanced_button()]
-
-        elif step == 5:  # RAM (Swapped)
-            embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
-                description=f"**{progress}** - Allocate server RAM",
-                color=discord.Color.blue()
-            )
-            embed.add_field(
-                name="Current Selection",
-                value=f"**{self.state.ram} GB**",
-                inline=False
-            )
-            return embed, [RAMSelect(self.state.ram), self._back_button(), self._next_button()]
+            return embed, [self._back_button(), self._configure_advanced_button(), self._next_button()]
             
-        else:  # Confirmation
+        else:  # Confirmation (step 6)
             embed = discord.Embed(
                 title="✅ Ready to Install",
                 description="Review your configuration and click Install to begin",
@@ -466,11 +501,11 @@ class SetupView(ui.View):
                     f"**Platform:** {self.state.platform.title()}\n"
                     f"**Version:** {self.state.version}{' (Latest available will be used)' if self.state.version == 'latest' else ''}\n"
                     f"**Difficulty:** {self.state.difficulty.title()}\n"
+                    f"**Seed:** {self.state.seed or 'Random'}\n"
                     f"**Max Players:** {self.state.max_players}\n"
                     f"**RAM:** {self.state.ram} GB\n"
                     f"**Whitelist:** {'Enabled' if self.state.whitelist else 'Disabled'}\n"
-                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}\n"
-                    f"**Seed:** {self.state.seed or 'Random'}"
+                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}"
                 ),
                 inline=False
             )
@@ -508,7 +543,7 @@ class SetupView(ui.View):
             await interaction.response.send_modal(modal)
             await modal.wait()
             # Refresh current view
-            await self._navigate(interaction, self.state.current_step, already_responded=True)
+            await self.message.edit(embed=self._get_step_content(self.state.current_step)[0], view=self)
         button.callback = callback
         return button
     
@@ -686,6 +721,15 @@ class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
         super().__init__()
         self.state = state
         
+        self.ram = ui.TextInput(
+            label="RAM Allocation in GB",
+            placeholder="4",
+            default=str(state.ram),
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.ram)
+        
         self.view_distance = ui.TextInput(
             label="View Distance (chunks)",
             placeholder="16",
@@ -694,15 +738,6 @@ class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
             required=False
         )
         self.add_item(self.view_distance)
-        
-        self.seed = ui.TextInput(
-            label="World Seed (leave empty for random)",
-            placeholder="Random seed",
-            default=state.seed,
-            required=False,
-            max_length=50
-        )
-        self.add_item(self.seed)
         
         self.whitelist = ui.TextInput(
             label="Enable Whitelist? (yes/no)",
@@ -724,12 +759,13 @@ class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
+            # Parse RAM
+            ram_clean = ''.join(filter(str.isdigit, self.ram.value or "4"))
+            self.state.ram = int(ram_clean) if ram_clean else 4
+            
             # Parse view distance
             vd_clean = ''.join(filter(str.isdigit, self.view_distance.value or "16"))
             self.state.view_distance = int(vd_clean) if vd_clean else 16
-            
-            # Parse seed
-            self.state.seed = self.seed.value.strip()
             
             # Parse whitelist
             self.state.whitelist = self.whitelist.value.lower().strip() in ["yes", "y", "true", "1"]

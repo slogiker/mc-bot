@@ -39,34 +39,33 @@ def main():
     # Visual Simulation of Installation Steps
     simulated_delay(0.5)
     
-    info("Checking system requirements...")
+    # STEP 1: System Check
+    info("[STEP 1/5] Checking system requirements...")
     simulated_delay(1)
     
     # Fake WSL Check
-    print(f"{BLUE}[INFO] Checking WSL status...{NC}", end='\r')
+    print(f"{BLUE}[INFO] Checking WSL status...{NC}")
     simulated_delay(1.5)
     success("WSL is active and ready.")
     
-    # Fake Package Updates
-    info("Updating package lists...")
+    # STEP 2: Docker Check
+    info("[STEP 2/5] Checking Docker configuration...")
+    simulated_delay(1)
+    success("Docker Desktop found.")
+    print(f"{YELLOW}[WARN] Ensure Docker WSL integration is enabled in settings!{NC}")
+    
+    # STEP 3: Package Updates
+    info("[STEP 3/5] Updating package lists...")
     simulated_delay(2) 
-    # Can simulate apt-get text scroll if wanted, but simpler to just show progress
     success("System packages updated.")
-    
-    # Fake Docker Install
-    info("Checking Docker Engine...")
-    simulated_delay(1)
-    success("Docker Engine installed.")
-    
-    # Fake Dependencies
-    info("Checking Python/Java dependencies...")
-    simulated_delay(1)
     success("Python 3.11 found.")
-    success("OpenJDK 17 found.")
+    success("OpenJDK 21 found.")
+    success("Docker Engine verified.")
     
     print("")
     
-    # Token Prompt (REAL Interaction)
+    # STEP 4: Setup Configuration
+    info("[STEP 4/5] Setting up configuration...")
     warn(".env file not found! Starting setup...")
     print("")
     info("Please enter your Discord Bot Token:")
@@ -91,7 +90,8 @@ def main():
     success("Configuration ready (In-Memory).")
     print("")
     
-    info("Starting Bot in SIMULATION MODE...")
+    # STEP 5: Launch Bot
+    info("[STEP 5/5] Starting Bot in SIMULATION MODE...")
     print(f"{CYAN}Allows testing Discord commands. No server will actually run.{NC}")
     simulated_delay(1)
     

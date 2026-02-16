@@ -2,9 +2,14 @@ services:
   mc-bot:
     build:
       context: .
+      dockerfile: Dockerfile
       args:
-        - BUILDKIT_INLINE_CACHE=0
-        - CACHEBUST=${CACHEBUST:-1}
+        - BUILDKIT_INLINE_CACHE=1
+        # Use timestamp for cache busting on rebuilds
+        - CACHEBUST=${CACHEBUST:-$(date +%s)}
+      # Rebuild image if any file changes
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache
     container_name: mc-bot
     restart: unless-stopped
 
@@ -33,6 +38,10 @@ services:
 
     # Memory limit
     mem_limit: 8g
+
+    # Keep container running
+    tty: true
+    stdin_open: true
 
     # Keep container running
     tty: true
