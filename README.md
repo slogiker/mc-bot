@@ -1,120 +1,94 @@
-# 🎮 Minecraft Discord Bot
+# Minecraft Discord Bot
 
-> A powerful, self-hosted Discord bot that brings your private Minecraft Java Server to life.  
-> **Control. Monitor. Automate.**
+A self-hosted Discord bot that brings your private Minecraft Java Server to life.
 
-![Version](https://img.shields.io/badge/Version-2.5.6-blue) ![Python](https://img.shields.io/badge/Python-3.11+-yellow) ![Docker](https://img.shields.io/badge/Docker-Supported-blue)
+I built this because I was tired of SSH-ing into my server just to manage it. This bot runs alongside your Minecraft server in Docker, giving you full control via a clean Discord interface.
 
----
-
-## 📖 Overview
-
-This bot serves as a **bridge between Discord and your Minecraft Server**, giving you full control without needing to SSH into your server. It runs essentially as a wrapper around the Minecraft Java process, capturing logs in real-time and allowing you to execute commands from Discord.
-
-### Why use this?
-
-- **🔒 Private & Secure**: Self-hosted on your own machine. No external databases or web panels required.
-- **⚡ performance**: Lightweight and fast, using `aiofiles` and `asyncio` for non-blocking operations.
-- **🐋 Docker Native**: Designed to run in a container for perfect isolation and easy updates.
-- **👻 Ghost Mode**: Try it out without installing anything using our built-in simulation.
+![Python](https://img.shields.io/badge/Python-3.11-blue) ![Docker](https://img.shields.io/badge/Docker-Required-blue)
 
 ---
 
-## ✨ Key Features
+## ⚡ Core Features
 
-| Category             | Features                                                                                                                                                                                                   |
-| :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **🕹️ Control**       | **Start / Stop / Restart** buttons directly in Discord. <br> **Console Streaming**: Live server logs in a dedicated channel. <br> **RCON**: Execute server commands (`/cmd`) remotely.                     |
-| **📊 Stats & Info**  | **Live Status**: Bot status shows "Playing Minecraft: X Players". <br> **Player Stats**: Check playtime, deaths, and joins (`/stats`). <br> **System Health**: Monitor CPU, RAM, and Disk usage (`/info`). |
-| **🤖 Automation**    | **Auto-Backups**: Scheduled world zipping and upload. <br> **Auto-Restarts**: Scheduled daily restarts. <br> **AI Integration**: Chat with Grok (`/ai`) and AI-generated MOTDs.                            |
-| **💰 Economy & Fun** | **Economy System**: Earn coins, check balances (`/pay`). <br> **Minigames**: "Word Hunt" events in chat to earn coins. <br> **Events**: Schedule community events with auto-reminders.                     |
+- **Control**: Start, Stop, Restart your server from Discord.
+- **No Port Forwarding**: Integrated **Playit.gg** support for instant public access.
+- **Live Logs**: Stream the server console directly to a Discord channel.
+- **Backups**: Automated daily backups with manual triggers.
+- **Permissions**: Granular control over who can do what (Mods vs Admins).
+- **Fun**: Economy system, chat minigames, and AI-powered MOTDs.
 
 ---
 
 ## 📥 Installation
 
+This project is built for **Docker**. It works natively on Linux (Debian/Ubuntu/Raspberry Pi) and Windows (via WSL2).
+
 ### 1. Requirements
 
-- **OS**: Windows 10/11 (with WSL2 support) OR Linux.
-- **Docker**: Desktop (Windows) or Engine (Linux).
-- **Discord Bot Token**: Get one from the [Discord Developer Portal](https://discord.com/developers/applications).
+- **Docker Installed**
+- **Discord Bot Token**: Create an application at the [Discord Developer Portal](https://discord.com/developers/applications), create a Bot, and copy the **Token**.
 
-### 🚀 Option A: Windows (One-Click)
+### 2. Setup (Linux / Standard)
 
-We provide a "magic" installer that handles WSL, Docker, and dependencies for you.
-
-1.  **Download** the repository.
-2.  Double-click `install/install.bat`.
-3.  Follow the on-screen prompts.
-    - It will ask for your **Discord Token**.
-    - It will generate a secure **RCON Password**.
-
-### 🐧 Option B: Linux / Manual
-
-If you prefer manual setup or are running on a Linux VPS:
+The standard way to run this is via Docker Compose.
 
 ```bash
-# Clone the repo
 git clone https://github.com/yourusername/mc-bot.git
 cd mc-bot
 
-# Make installer executable
-chmod +x install/install.sh
-
-# Run setup
-sudo ./install/install.sh
+# Configure your environment
+cp .env.example .env
+nano .env
 ```
+
+**Inside `.env`**:
+
+- `BOT_TOKEN`: **Required.** Paste your Discord Bot Token here.
+- `PLAYIT_SECRET_KEY`: (Optional) Paste your key from [playit.gg](https://playit.gg) if you want public access.
+- `RCON_PASSWORD`: Leave this or change it. It's auto-configured for you internally, so you rarely need to touch it.
+
+### 3. Start
+
+```bash
+docker compose up -d
+```
+
+The bot will start, generate the Minecraft server files (if missing), and come online in Discord.
 
 ---
 
-## 👻 Ghost Mode (Try it safely!)
+## 🪟 Windows Users (Convenience Script)
 
-Want to see how the installation looks or test the bot commands **without** modifying your system or starting a real server?
+We included a helper script (`install/install.bat`) for Windows users. It essentially just ensures you have WSL/Docker set up and runs the commands above for you.
 
-Run the simulation script:
+1.  Run `install/install.bat`.
+2.  Paste your **Discord Token** when asked.
+3.  The script handles the rest.
 
-```bash
-python install/simulate.py
-```
+---
 
-- **Safe**: No files created, no Docker containers spawned.
-- **Realistic**: Mimics the exact installation process visually.
-- **Interactive**: You can use `/start`, `/stop`, and other commands in Discord to see the bot's responses.
+## 🌐 Remote Access (Playit.gg)
+
+If you're hosting at home and don't want to mess with router ports:
+
+1.  Get a **Secret Key** from [playit.gg](https://playit.gg) (create a Linux/Docker agent).
+2.  Add it to your `.env` file: `PLAYIT_SECRET_KEY=...`
+3.  Restart: `docker compose up -d`.
+4.  In the Playit dashboard, create a tunnel to `mc-bot:25565`.
+5.  Type `/ip` in Discord to get the address.
 
 ---
 
 ## ⚙️ Configuration
 
-The bot uses a **clean file-based configuration** located in the `data/` folder.
+Check the `data/` folder after the first run.
 
-- **`data/user_config.json`**:
-  - Manage **backups** (time, retention).
-  - Manage **permissions** (which Discord roles can control the server).
-  - Manage **Java RAM** settings (Min/Max).
-
-- **`.env`**:
-  - Stores secrets like `BOT_TOKEN` and `RCON_PASSWORD`.
-
-- **`data/bot_config.json`**:
-  - Stores internal state (Channel IDs, Guild ID). _Avoid editing this manually unless necessary._
+- `user_config.json`: Manage backup schedules, role permissions, and memory settings.
+- `bot_config.json`: Internal state (channel IDs). Don't touch this.
 
 ---
 
-## 📚 Advanced Documentation
+## 📜 Commands & Docs
 
-For developers or power users who want to understand the code structure, Docker volumes, or contribute, check out the full **Developer Documentation**:
-
-👉 **[Read DEVELOPER.md](docs/DEVELOPER.md)**
-
----
-
-## ❓ FAQ
-
-**Q: Where are my backups stored?**
-A: In the `backups/` folder in the root directory.
-
-**Q: Can I change specific permissions?**
-A: Yes! Edit `data/user_config.json` to assign specific commands to your Discord roles.
-
-**Q: It says "PyNaCl is not installed"?**
-A: This is only needed for Voice features (not yet implemented). You can ignore this warning.
+- **Commands**: See [docs/commands.md](docs/commands.md) for a list of `/start`, `/pay`, `/ip`, and others.
+- **Developers**: See [docs/DEVELOPER.md](docs/DEVELOPER.md) for architecture and contribution guide.

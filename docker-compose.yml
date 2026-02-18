@@ -42,3 +42,17 @@ services:
     # Keep container running
     tty: true
     stdin_open: true
+
+  playit:
+    image: playitcloud/playit:0.15.19
+    container_name: mc-bot-playit
+    restart: unless-stopped
+    environment:
+      - SECRET_KEY=${PLAYIT_SECRET_KEY}
+    network_mode: "service:mc-bot" # Share network namespace for localhost access if needed, OR explicit link
+    # Actually, user wants "mc-bot:25565" to be the target.
+    # If we use default network, playit can reach mc-bot by name.
+    # network_mode: service:mc-bot would make localhost:25565 work inside playit container.
+    # But standard compose network is cleaner if we assume target is "mc-bot".
+    depends_on:
+      - mc-bot
