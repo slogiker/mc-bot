@@ -1,15 +1,71 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
-import os
-import asyncio
-from src.backup_manager import backup_manager
-from src.logger import logger
-from src.config import config
+from discord.ext import commands, tasks
+from datetime import datetime
 
 class BackupCog(commands.Cog):
+    """
+    Manages world backups.
+    Features:
+    - Manual backups via /backup.
+    - Scheduled backups (daily at configured time).
+    - Ephemeral download links via `pyonesend`.
+    """
     def __init__(self, bot):
         self.bot = bot
+        self.backup_loop.start()
+
+    def cog_unload(self):
+        self.backup_loop.cancel()
+
+    @tasks.loop(minutes=1)
+    async def backup_loop(self):
+        """
+        Background task that checks every minute if the current time matches 
+        the configured `backup_time` in `user_config.json`.
+        If triggered, creates a named auto-backup (e.g., auto_2026-05-20).
+        """
+        await self.bot.wait_until_ready()
+        
+        try:
+            # Load configs
+            user_config = config.load_user_config()
+            bot_config = config.load_bot_config()
+            
+            backup_time = user_config.get('backup_time', '03:00')
+            now = datetime.now()
+            current_time = now.strftime("%H:%M")
+            
+            # Check if times match
+            if current_time == backup_time:
+                # Check if already done today
+                last_run = bot_config.get('last_auto_backup', '')
+                today_str = now.strftime("%Y-%m-%d")
+                
+                if last_run != today_str:
+                    logger.info(f"⏰ Starting scheduled backup (Time: {backup_time})")
+                    
+                    # Notify command channel if possible
+                    cmd_channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID)
+                    if cmd_channel:
+                        await cmd_channel.send("⏳ Starting scheduled backup...")
+
+                    success, filename, _ = await backup_manager.create_backup(custom_name=f"auto_{today_str}")
+                    
+                    if success:
+                        # Update last run
+                        bot_config['last_auto_backup'] = today_str
+                        config.save_bot_config(bot_config)
+                        
+                        if cmd_channel:
+                            await cmd_channel.send(f"✅ Scheduled backup created: `{filename}`")
+                    else:
+                        logger.error(f"Scheduled backup failed: {filename}")
+                        if cmd_channel:
+                             await cmd_channel.send(f"❌ Scheduled backup failed: {filename}")
+
+        except Exception as e:
+            logger.error(f"Error in backup schedule loop: {e}")
 
     @app_commands.command(name="backup", description="Create a backup of the world")
     @app_commands.describe(name="Optional custom name for the backup")

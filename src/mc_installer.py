@@ -19,7 +19,21 @@ class MinecraftInstaller:
         os.makedirs(self.server_dir, exist_ok=True)
     
     async def get_latest_version(self, platform: str) -> str:
-        """Get the latest version for the specified platform"""
+        """
+        Fetch the latest Minecraft version for the specified platform.
+        
+        Supported Platforms:
+        - paper: Fetches from PaperMC API (v2).
+        - vanilla: Fetches from Mojang Launcher Meta.
+        - fabric: Fetches via Fabric Meta (resolves to latest generic version).
+        - forge: currently defaults to 1.20.1 (API complexity).
+        
+        Args:
+            platform (str): 'paper', 'vanilla', 'fabric', or 'forge'.
+            
+        Returns:
+            str: The version string (e.g. "1.21.1"). Defaults to "1.20.1" on error.
+        """
         try:
             async with aiohttp.ClientSession() as session:
                 if platform == "paper":
@@ -51,8 +65,15 @@ class MinecraftInstaller:
     
     async def download_server(self, platform: str, version: str, progress_callback=None) -> tuple[bool, str]:
         """
-        Download server jar file
-        Returns: (success: bool, message: str)
+        Download the server JAR file for the given platform and version.
+        
+        Args:
+            platform (str): The server software type.
+            version (str): The specific version (e.g. "1.20.4").
+            progress_callback (func, optional): Async function to receive status strings.
+            
+        Returns:
+            tuple[bool, str]: (Success, Message/Error Path)
         """
         try:
             jar_path = os.path.join(self.server_dir, "server.jar")

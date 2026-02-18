@@ -1,275 +1,149 @@
 #!/bin/bash
 
-# Minecraft Discord Bot - Docker Startup Script
-# Simple script to start the bot in Docker
+# Minecraft Discord Bot - Linux/Docker Installer
+# ---------------------------------------------------
+# This script handles:
+# 1. Dependency checks (Docker, Git)
+# 2. Environment configuration (.env)
+# 3. Docker container deployment
 
 set -e
 
-# ANSI Colors
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Disable stdout/stderr buffering for immediate output in WSL
-export PYTHONUNBUFFERED=1
-
-
-# Detect if we're running from install/ subdirectory and navigate to project root
+# Ensure we are in the project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(basename "$SCRIPT_DIR")" == "install" ]]; then
-    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-    echo -e "${CYAN}[INFO] Navigating to project root: ${PROJECT_ROOT}${NC}"
-    cd "$PROJECT_ROOT"
+    cd "$(dirname "$SCRIPT_DIR")"
 fi
 
-echo -e "${CYAN}----------------------------------------${NC}"
-echo -e "${CYAN}   Minecraft Discord Bot - Docker Setup ${NC}"
-echo -e "${CYAN}----------------------------------------${NC}"
+echo -e "${CYAN}---------------------------------------------${NC}"
+echo -e "${CYAN}   Minecraft Discord Bot - Linux Installer   ${NC}"
+echo -e "${CYAN}---------------------------------------------${NC}"
 echo ""
 
+# 1. Check & Install Dependencies
+echo -e "${BLUE}[1/4] Checking dependencies...${NC}"
 
-# Check if .env exists and is configured
-if [ ! -f .env ]; then
-    echo -e "${YELLOW}[WARN] .env file not found! Starting setup...${NC}"
-    echo ""
-    
-    # Prompt for Discord Bot Token
-    echo -e "${BLUE}[INFO] Please enter your Discord Bot Token:${NC}"
-    echo "       (Get it from: https://discord.com/developers/applications)"
-    read -p "       > BOT_TOKEN: " bot_token
-    
-    # Validate token is not empty
-    if [ -z "$bot_token" ]; then
-        echo -e "${RED}[ERROR] Bot token cannot be empty!${NC}"
-        exit 1
-    fi
-    
-    # Generate random RCON password
-    rcon_password=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
-    
-    echo ""
-    echo -e "${GREEN}[OK] Generated RCON password${NC}"
-    echo ""
-    
-    # Create .env file
-    cat > .env << EOF
-# Discord Bot Configuration
-BOT_TOKEN=$bot_token
-
-# Minecraft RCON Password (auto-generated)
-RCON_PASSWORD=$rcon_password
-EOF
-    
-    echo -e "${GREEN}[OK] Created .env file with your configuration!${NC}"
-    echo ""
-elif ! grep -q "BOT_TOKEN=." .env 2>/dev/null || ! grep -q "RCON_PASSWORD=." .env 2>/dev/null; then
-    echo -e "${YELLOW}[WARN] .env file exists but appears incomplete!${NC}"
-    echo -e "${BLUE}[INFO] Please ensure .env contains:${NC}"
-    echo "       - BOT_TOKEN=your_discord_bot_token"
-    echo "       - RCON_PASSWORD=your_rcon_password"
-    echo ""
-    read -p "       > Do you want to reconfigure .env? (y/N): " reconfigure
-    
-    if [[ $reconfigure =~ ^[Yy]$ ]]; then
-        # Backup existing .env
-        mkdir -p .backups
-        cp .env .backups/.env.backup.$(date +%s)
-        echo -e "${CYAN}[INFO] Backed up existing .env to .backups/${NC}"
-        
-        # Prompt for Discord Bot Token
-        echo ""
-        echo -e "${BLUE}[INFO] Please enter your Discord Bot Token:${NC}"
-        read -p "       > BOT_TOKEN: " bot_token
-        
-        if [ -z "$bot_token" ]; then
-            echo -e "${RED}[ERROR] Bot token cannot be empty!${NC}"
-            exit 1
-        fi
-        
-        # Generate random RCON password
-        rcon_password=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
-        
-        echo ""
-        echo -e "${GREEN}[OK] Auto-generated RCON password: ${NC}$rcon_password"
-        echo ""
-        
-        # Create .env file
-        cat > .env << EOF
-# Discord Bot Configuration
-BOT_TOKEN=$bot_token
-
-# Minecraft RCON Password (auto-generated)
-RCON_PASSWORD=$rcon_password
-EOF
-        
-        echo -e "${GREEN}[OK] Updated .env file!${NC}"
-        echo ""
+if ! command -v git &> /dev/null; then
+    echo -e "${YELLOW}[WARN] Git is not installed.${NC}"
+    echo -e "${BLUE}Installing Git...${NC}"
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y git
+    elif command -v apk &> /dev/null; then
+        sudo apk add git
     else
-        echo -e "${YELLOW}[WARN] Please configure .env manually and run this script again.${NC}"
+        echo -e "${RED}[ERROR] Could not install Git automatically. Please install it manually.${NC}"
         exit 1
     fi
 fi
 
-# Create necessary directories
-echo -e "${BLUE}[INFO] Creating directories...${NC}"
-mkdir -p mc-server backups logs
-
-# Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}[WARN] Docker is not installed.${NC}"
-    echo -e "${BLUE}[INFO] Would you like to install Docker automatically? (y/N)${NC}"
-    read -p "       > " install_docker
-    
+    read -p "      > Install Docker automatically? (y/N) " install_docker
     if [[ $install_docker =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}[INFO] Installing Docker... (This may require your password)${NC}"
-        curl -fsSL https://get-docker.com -o get-docker.sh
+        echo -e "${BLUE}Installing Docker (using official script)...${NC}"
+        curl -fsSL https://get.docker.com -o get-docker.sh
         sudo sh get-docker.sh
         rm get-docker.sh
         
-        echo -e "${BLUE}[INFO] Adding current user to 'docker' group...${NC}"
+        echo -e "${BLUE}Adding user $USER to docker group...${NC}"
         sudo usermod -aG docker $USER
-        
-        echo -e "${GREEN}[SUCCESS] Docker installed successfully!${NC}"
-        echo -e "${YELLOW}[WARN] You may need to log out and back in for group changes to take effect.${NC}"
-        echo -e "${YELLOW}[WARN] If you get a permission error below, try restarting your session.${NC}"
+        echo -e "${GREEN}[OK] Docker installed.${NC}"
+        echo -e "${YELLOW}[IMPORTANT] You must log out and log back in for group changes to take effect.${NC}"
+        echo -e "${YELLOW}            Please run this script again after re-login.${NC}"
+        exit 0
     else
-        echo -e "${RED}[ERROR] Docker is required to run this bot.${NC}"
-        echo "       Please install Docker manually and try again."
+        echo -e "${RED}[ERROR] Docker is required.${NC}"
         exit 1
     fi
 fi
 
-# Determine if we should use "docker-compose" or "docker compose"
-if command -v docker-compose &> /dev/null; then
-    DOCKER_COMPOSE_CMD="docker-compose"
-elif docker compose version &> /dev/null; then
-    DOCKER_COMPOSE_CMD="docker compose"
-else
-    echo -e "${RED}[ERROR] Docker Compose is not installed or not in PATH.${NC}"
-    echo "       Please install it or ensure 'docker compose' works."
-    exit 1
-fi
-
-# Step 1: Build the Docker image
+# 2. Configure Environment
 echo ""
-echo -e "${BLUE}[STEP 1/4] Building Docker image...${NC}"
-echo -e "${YELLOW}[INFO] This may take several minutes on first run...${NC}"
+echo -e "${BLUE}[2/4] Configuring Environment...${NC}"
 
-$DOCKER_COMPOSE_CMD build 2>&1 | while IFS= read -r line; do
-    # Add progress indicators
-    if [[ $line == *"Step"* ]]; then
-        echo -e "${BLUE}[BUILD] $line${NC}"
-    elif [[ $line == *"Successfully built"* ]] || [[ $line == *"Successfully tagged"* ]]; then
-        echo -e "${GREEN}[OK] $line${NC}"
-    elif [[ $line == *"error"* ]] || [[ $line == *"ERROR"* ]]; then
-        echo -e "${RED}[ERROR] $line${NC}"
-    else
-        echo "$line"
-    fi
-done
-
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-    echo -e "${RED}[ERROR] Docker build failed!${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}[OK] Build completed successfully!${NC}"
-echo ""
-
-# Step 2: Start the containers
-echo -e "${BLUE}[STEP 2/4] Starting containers...${NC}"
-$DOCKER_COMPOSE_CMD up -d 2>&1 | while IFS= read -r line; do
-    if [[ $line == *"Running"* ]] || [[ $line == *"Started"* ]]; then
-        echo -e "${GREEN}[OK] $line${NC}"
-    elif [[ $line == *"error"* ]] || [[ $line == *"ERROR"* ]]; then
-        echo -e "${RED}[ERROR] $line${NC}"
-    else
-        echo "$line"
-    fi
-done
-
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-    echo -e "${RED}[ERROR] Failed to start containers!${NC}"
-    exit 1
-fi
-
-echo -e "${BLUE}[STEP 3/4] Waiting for container to initialize...${NC}"
-sleep 5
-
-# Check if container is actually running
-echo -e "${BLUE}[STEP 4/4] Verifying container status...${NC}"
-if ! $DOCKER_COMPOSE_CMD ps | grep -q "mc-bot.*Up"; then
-    echo -e "${RED}[ERROR] Container failed to start!${NC}"
-    echo -e "${YELLOW}[WARN] Docker logs:${NC}"
-    $DOCKER_COMPOSE_CMD logs mc-bot
-    exit 1
-fi
-
-echo -e "${GREEN}[OK] Container is running successfully!${NC}"
-
-echo ""
-echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                                                                ║${NC}"
-echo -e "${GREEN}║           Installation Completed Successfully! ✓              ║${NC}"
-echo -e "${GREEN}║                                                                ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-
-# Get current working directory and RCON password for display
-WORKING_DIR=$(pwd)
 if [ -f .env ]; then
-    RCON_PASSWORD=$(grep "RCON_PASSWORD" .env | cut -d '=' -f2 | tr -d '"' | tr -d ' ')
+    echo -e "${GREEN}[OK] .env file exists.${NC}"
+    read -p "      > Reconfigure? (y/N) " reconfig
+    if [[ ! $reconfig =~ ^[Yy]$ ]]; then
+        SKIP_CONFIG=1
+    fi
 fi
 
-echo -e "${BLUE}Installation Summary:${NC}"
-echo ""
-echo -e "${GREEN}•${NC} Working directory: ${CYAN}${WORKING_DIR}${NC}"
-echo -e "${GREEN}•${NC} Docker compose: ${CYAN}${DOCKER_COMPOSE_CMD}${NC}"
-echo -e "${GREEN}•${NC} Container status: ${CYAN}Running${NC}"
-echo -e "${GREEN}•${NC} RCON password: ${CYAN}${RCON_PASSWORD}${NC}"
-echo ""
+if [ -z "$SKIP_CONFIG" ]; then
+    # Discord Token
+    echo ""
+    echo -e "Enter your ${CYAN}Discord Bot Token${NC}:"
+    echo -e "(Get it from https://discord.com/developers/applications)"
+    read -p "> " BOT_TOKEN
+    
+    if [ -z "$BOT_TOKEN" ]; then
+        echo -e "${RED}[ERROR] Token required.${NC}"
+        exit 1
+    fi
 
-echo -e "${BLUE}Files Created/Modified:${NC}"
-echo ""
-echo -e "${GREEN}•${NC} ${CYAN}.env${NC} - Contains bot token and RCON password"
-echo -e "${GREEN}•${NC} ${CYAN}mc-server/${NC} - Minecraft server directory (mounted)"
-echo -e "${GREEN}•${NC} ${CYAN}backups/${NC} - Backup storage directory"
-echo -e "${GREEN}•${NC} ${CYAN}logs/${NC} - Bot logs directory"
-echo ""
+    # Playit.gg
+    echo ""
+    echo -e "Do you want to configure ${CYAN}Playit.gg${NC} for public access?"
+    echo -e "(Requires a specific Secret Key from playit.gg -> Add Agent -> Linux/Docker)"
+    read -p "> [y/N] " setup_playit
+    
+    PLAYIT_KEY=""
+    if [[ $setup_playit =~ ^[Yy]$ ]]; then
+        echo -e "Enter your ${CYAN}Playit Secret Key${NC}:"
+        read -p "> " PLAYIT_KEY
+    fi
 
-echo -e "${BLUE}Next Steps:${NC}"
-echo ""
-echo -e "1. ${CYAN}In Discord, run:${NC} ${GREEN}/setup${NC}"
-echo -e "   This will create the Discord channels and configure the bot"
-echo ""
-echo -e "2. ${CYAN}Install Minecraft Server:${NC}"
-echo -e "   Follow the interactive prompts in Discord to install your server"
-echo ""
-echo -e "3. ${CYAN}Configure server.properties:${NC}"
-echo -e "   Make sure to set these values in ${CYAN}mc-server/server.properties${NC}:"
-echo -e "   ${YELLOW}enable-rcon=true${NC}"
-echo -e "   ${YELLOW}rcon.port=25575${NC}"
-echo -e "   ${YELLOW}rcon.password=${RCON_PASSWORD}${NC}"
-echo ""
+    # Generate RCON
+    RCON_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
 
-echo -e "${BLUE}Useful Commands:${NC}"
-echo ""
-echo -e "   View logs:        ${CYAN}$DOCKER_COMPOSE_CMD logs -f mc-bot${NC}"
-echo -e "   Stop bot:         ${CYAN}$DOCKER_COMPOSE_CMD down${NC}"
-echo -e "   Restart bot:      ${CYAN}$DOCKER_COMPOSE_CMD restart${NC}"
-echo -e "   Access shell:     ${CYAN}$DOCKER_COMPOSE_CMD exec mc-bot bash${NC}"
-echo -e "   Rebuild:          ${CYAN}$DOCKER_COMPOSE_CMD up -d --build${NC}"
-echo ""
+    # Write .env
+    cat > .env <<EOF
+# Generated by install.sh
+BOT_TOKEN=$BOT_TOKEN
+RCON_PASSWORD=$RCON_PASSWORD
+PLAYIT_SECRET_KEY=$PLAYIT_KEY
+EOF
+    echo -e "${GREEN}[OK] Configuration saved.${NC}"
+fi
 
-echo -e "${YELLOW}Important Notes:${NC}"
+# 3. Create Directories
 echo ""
-echo -e "• Your credentials are stored in ${GREEN}.env${NC} (not tracked by git)"
-echo -e "• The RCON password must match in both bot config and server.properties"
-echo -e "• For multiplayer, you'll need to configure port forwarding or use playit.gg"
-echo ""
+echo -e "${BLUE}[3/4] Creating directories...${NC}"
+mkdir -p mc-server backups logs
+echo -e "${GREEN}[OK] Directories ready.${NC}"
 
-echo -e "${GREEN}Happy Minecrafting! 🎮⛏️${NC}"
+# 4. Docker Compose Up
 echo ""
+echo -e "${BLUE}[4/4] Starting Services...${NC}"
+
+# Detect compose command
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
+    echo -e "${RED}[ERROR] docker compose plugin not found.${NC}"
+    exit 1
+fi
+
+echo -e "Building and starting containers..."
+$COMPOSE_CMD up -d --build
+
+echo ""
+echo -e "${GREEN}---------------------------------------------${NC}"
+echo -e "${GREEN}   Setup Complete!   ${NC}"
+echo -e "${GREEN}---------------------------------------------${NC}"
+echo ""
+echo -e "Your bot should be online in Discord."
+echo -e "Run: ${CYAN}/setup${NC} in Discord to initialize channels."
+echo ""
+echo -e "To view logs: ${CYAN}$COMPOSE_CMD logs -f mc-bot${NC}"
+echo -e "To start tunnel: ${CYAN}$COMPOSE_CMD logs -f playit${NC} (if configured)"

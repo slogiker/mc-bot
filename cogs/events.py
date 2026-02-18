@@ -4,6 +4,7 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 from src.config import config
 from src.logger import logger
+from src.utils import has_role
 
 class EventsCog(commands.Cog):
     def __init__(self, bot):
@@ -82,7 +83,7 @@ class EventsCog(commands.Cog):
 
     @app_commands.command(name="event_create", description="Schedule a new server event")
     @app_commands.describe(time="Format: YYYY-MM-DD HH:MM (24h)")
-    # TODO: Add permission check (e.g. @has_role('event_manage'))
+    @has_role('event_manage')
     async def create_event(self, interaction: discord.Interaction, name: str, time: str, description: str = "", mentions: str = ""):
         try:
             event_dt = datetime.strptime(time, "%Y-%m-%d %H:%M")
@@ -140,7 +141,7 @@ class EventsCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="event_delete", description="Delete an event")
-    # TODO: Add permission check
+    @has_role('event_manage')
     async def delete_event(self, interaction: discord.Interaction, index: int):
         bot_config = config.load_bot_config()
         events = bot_config.get('events', [])

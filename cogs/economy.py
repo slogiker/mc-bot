@@ -13,6 +13,13 @@ from src.config import config
 COLORS = [discord.Color.blue(), discord.Color.green(), discord.Color.gold(), discord.Color.purple()]
 
 class EconomyCog(commands.Cog):
+    """
+    Manages the server economy system.
+    Features:
+    - Balance tracking (stored in `bot_config.json`).
+    - /pay and /balance commands.
+    - "Word Hunt" minigame: Spawns a word in chat, first to type it wins coins.
+    """
     def __init__(self, bot):
         self.bot = bot
         self.word_hunt_active = False
@@ -79,33 +86,64 @@ class EconomyCog(commands.Cog):
             self.current_word = None
 
     async def monitor_chat_for_word(self):
-        # TODO: Switch to Docker log tailing or event bus
-        log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
-        if not os.path.exists(log_path): return
-
-        # Seek to end
-        async with aiofiles.open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-            await f.seek(0, os.SEEK_END)
+        """
+        Monitors chat logs via `docker logs -f` for the current word hunt target.
+        Stops when:
+        - The word is found (Winner awarded).
+        - The parent task times out (Game over).
+        """
+        # Use docker logs for cleaner stream
+        container_name = "mc-bot"
+        
+        try:
+            process = await asyncio.create_subprocess_exec(
+                'docker', 'logs', '-f', '--tail', '0', container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            start_time = asyncio.get_event_loop().time()
             
             while self.word_hunt_active:
-                line = await f.readline()
-                if not line:
-                    await asyncio.sleep(0.5)
+                try:
+                    # Timeout to check word_hunt_active flag/total duration
+                    line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=1.0)
+                    if not line_bytes: break
+                    
+                    line = line_bytes.decode('utf-8', errors='ignore').strip()
+                    if not line: continue
+                    
+                    # Regex: <(.*?)> (.*)
+                    # Use a loose regex to catch chat even with prefixes
+                    # Standard Vanilla: <Player> Message
+                    # Paper/Plugins: [Team] <Player> Message or [World] <Player> Message
+                    # Let's look for the pattern <Name>
+                    match = re.search(r'<(.*?)> (.*)', line)
+                    if match:
+                        player, message = match.groups()
+                        # Clean player name (remove prefixes if any inside <>)
+                        # But < > usually strictly encloses name in vanilla
+                        
+                        if self.current_word.lower() in message.lower():
+                            await self.award_winner(player)
+                            return
+
+                    # Total timeout check (e.g. 5 mins?) call ended by wait_for wrapper in start_word_hunt
+                    
+                except asyncio.TimeoutError:
                     continue
-                
-                # Check for chat message: <PlayerName> message
-                # Regex: <(.*?)> (.*)
-                match = re.search(r'<(.*?)> (.*)', line)
-                if match:
-                    player, message = match.groups()
-                    if self.current_word.lower() in message.lower():
-                        # Winner!
-                        await self.award_winner(player)
-                        return
+                    
+        except Exception as e:
+            logger.error(f"Word Hunt log reader error: {e}")
+        finally:
+            if 'process' in locals():
+                try:
+                    process.kill()
+                    await process.wait()
+                except: pass
 
     async def award_winner(self, player_name):
         reward = 100
-        # TODO: Fix NameError
         # bot_config = load_bot_config()
         bot_config = config.load_bot_config()
         economy = bot_config.get('economy', {})

@@ -11,6 +11,11 @@ from src.config import config
 from src.logger import logger
 
 class AutomationCog(commands.Cog):
+    """
+    Handles automated background tasks such as:
+    - Weekly MOTD updates via AI.
+    - Scanning server logs for custom chat triggers (Regex/Keyword).
+    """
     def __init__(self, bot):
         self.bot = bot
         self.motd_loop.start()
@@ -72,61 +77,83 @@ class AutomationCog(commands.Cog):
         await interaction.followup.send(f"🖥️ RCON Response: `{resp}`")
 
     async def scan_logs_for_triggers(self):
-        """Scans logs effectively for context-aware triggers."""
+        """
+        Continuously scans the Docker container logs for Trigger phrases defined in `user_config.json`.
+        
+        Mechanism:
+        - Spawns a `docker logs -f` subprocess.
+        - Reads stdout line-by-line asynchronously.
+        - Checks each line against configured triggers.
+        - Executes RCON commands if a match is found.
+        """
         await self.bot.wait_until_ready()
         logger.info("Starting Trigger Scanner...")
         
         while not self.stop_scan.is_set():
             try:
-                server_path = config.SERVER_DIR
-                # TODO: Verify if latest.log is accessible with new Docker setup or switch to docker logs
-                log_path = os.path.join(server_path, 'logs', 'latest.log')
+                # Use docker logs to follow the stream
+                container_name = "mc-bot" # Assuming standard container name
                 
-                if not os.path.exists(log_path):
-                    await asyncio.sleep(5)
-                    continue
-
-                # We need a position tracker distinct from console cog
-                # Or we risk race conditions/file lock contention if we are not careful?
-                # Actually, reading is fine.
-                # Simplest way: Seek to end initially, then read new lines.
+                process = await asyncio.create_subprocess_exec(
+                    'docker', 'logs', '-f', '--tail', '0', container_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
                 
-                async with aiofiles.open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    await f.seek(0, os.SEEK_END)
-                    
-                    while not self.stop_scan.is_set():
-                        line = await f.readline()
-                        if not line:
-                            await asyncio.sleep(0.5)
-                            continue
+                logger.info("Trigger Scanner connected to docker logs")
+                
+                while not self.stop_scan.is_set():
+                    try:
+                        line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=1.0)
+                        if not line_bytes:
+                            # Process died or EOF
+                            break
                             
+                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                        if not line: continue
+                        
+                        # Parse MC log format if needed, or just scan raw line
+                        # Format: [HH:MM:SS] [Thread/LEVEL]: Message
+                        # We only care about the Message part usually, or the whole line for key phrases
+                        
+                        # Extract message content if possible to avoid triggering on timestamps
+                        # But user might want to trigger on "Server thread/INFO", so raw line is safer for general triggers
+                        # cleanup: remove ANSI codes if any (docker logs sometimes has them)
+                        # Minimal cleanup:
+                        clean_line = line
+                        
+                        if "[Bot]" in clean_line: continue # Skip bot's own messages (via RCON echo)
+
                         user_config = config.load_user_config()
                         triggers = user_config.get('triggers', {})
-                        # Triggers format: { "phrase": "command" }
-                        # User wants context aware: "if phrase in line"
                         
-                        lower_line = line.lower()
+                        lower_line = clean_line.lower()
                         
                         for trigger_phrase, response_cmd in triggers.items():
                             if trigger_phrase.lower() in lower_line:
-                                # Found a match!
-                                # Execute response
-                                # Safety: prevent infinite loops (bot says trigger -> triggers bot)
-                                if "[Bot]" in line: continue
-                                
-                                # Random chance? User didn't specify, but nice to have.
-                                # "it needs to be taken from any context there is happening"
-                                
                                 logger.info(f"Trigger fired: '{trigger_phrase}' -> '{response_cmd}'")
-                                
-                                # Process placeholders if any
-                                # e.g. {player} if we can extract it.
-                                # Simple extraction: if line has <Player>, use it.
-                                
                                 await rcon_cmd(response_cmd)
                                 
-                        # Trigger system for roasts/AI (if enabled and logic fits here)
-                        # e.g. "killed by" -> roast
+                    except asyncio.TimeoutError:
+                        continue
+                    except Exception as e:
+                         logger.error(f"Error processing log line: {e}")
+                         await asyncio.sleep(1)
+
+                # If we broke out of loop, kill process
+                try:
+                    process.kill()
+                    await process.wait()
+                except: pass
+                
+                if not self.stop_scan.is_set():
+                    # Restart loop if not stopped intentionally
+                    logger.warning("Docker log stream ended, restarting scanner in 5s...")
+                    await asyncio.sleep(5)
+
+            except Exception as e:
+                logger.error(f"Trigger Scanner error: {e}")
+                await asyncio.sleep(5)
                         
             except Exception as e:
                 logger.error(f"Trigger Scanner error: {e}")
@@ -138,8 +165,7 @@ class AutomationCog(commands.Cog):
             await interaction.response.send_message("❌ Admin only.", ephemeral=True)
             return
 
-        # TODO: Fix NameError - load_user_config is not defined (should be config.load_user_config)
-        # user_config = load_user_config() 
+        # user_config = config.load_user_config()
         user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         triggers[phrase] = command
@@ -151,7 +177,7 @@ class AutomationCog(commands.Cog):
 
     @app_commands.command(name="trigger_list", description="List custom triggers")
     async def trigger_list(self, interaction: discord.Interaction):
-        user_config = load_user_config()
+        user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         
         if not triggers:
@@ -170,7 +196,7 @@ class AutomationCog(commands.Cog):
             await interaction.response.send_message("❌ Admin only.", ephemeral=True)
             return
 
-        user_config = load_user_config()
+        user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         
         if phrase in triggers:

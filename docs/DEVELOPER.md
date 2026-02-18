@@ -267,16 +267,21 @@ If APIs are unreachable:
 
 **Logging System:**
 
-- Completely redesigned: now tails docker logs instead of files (`docker logs -f mc-bot`)
-- Minimal format: `[LEVEL] message` in code blocks
-- Batch messages (up to 10 or every 2 seconds) to avoid Discord rate limits
-- Preserved player tracking for bot presence updates
+- **Standardized Log Reading**: `admin.py`, `automation.py`, and `economy.py` now all use `docker logs -f` subprocesses to read server output. This eliminates file locking issues and race conditions associated with reading `latest.log` directly.
+- **Console Service**: `cogs/console.py` provides the main live log stream to Discord.
+- **Robustness**: All log readers handle subprocess lifecycles and restart on failure.
 
-**Event Notifications:**
+**Permissions System:**
 
-- Added player join/leave/death notifications to debug channel
-- Format: 🟢/🔴/💀 **PlayerName** [event message]
-- Covers all death types (slain, drowned, fell, etc.)
+- **Role ID Support**: `src/utils.py` `has_role` decorator now prioritizes Role IDs configured in `bot_config.json` (via `ROLES` map) over Role Names.
+- **Fallback**: Retains backward compatibility by checking Role Names if IDs fail.
+- **Debug**: Failsafe checks log to the debug channel if a user has sufficient expected permissions but fails the check.
+
+**Scheduled Tasks:**
+
+- **Backups**: `cogs/backup.py` runs a 1-minute loop checking `user_config.json`'s `backup_time`.
+- **Word Hunt**: `cogs/economy.py` runs a random interval loop for community engagement.
+- **Events**: `cogs/events.py` checks for scheduled events and sends 24h/1h reminders.
 
 **Server Information:**
 

@@ -19,7 +19,6 @@ class Admin(commands.Cog):
     @has_role("sync")
     async def sync(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        # TODO: Implement actual sync logic (self.bot.tree.sync)
         if interaction.guild:
             self.bot.tree.copy_global_to(guild=interaction.guild)
             await self.bot.tree.sync(guild=interaction.guild)
@@ -53,22 +52,48 @@ class Admin(commands.Cog):
     async def logs(self, interaction: discord.Interaction, lines: int = 10):
         import aiofiles
         try:
-            # TODO: Update to use Docker logs instead of file reading to match console.py
-            path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
+            # Use docker logs to get the last N lines
+            # This avoids issues with file locking or path resolution and matches console.py's approach
+            container_name = "mc-bot" # Assuming container name, or we can look it up
+            # Check if running in container or if we can access docker
             
-            # Use asyncio.to_thread for os.path.exists check
-            exists = await asyncio.to_thread(os.path.exists, path)
-            if not exists:
-                await interaction.response.send_message("❌ Log file not found.", ephemeral=True)
-                return
+            proc = await asyncio.create_subprocess_exec(
+                'docker', 'logs', '--tail', str(lines), container_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            
+            if proc.returncode != 0:
+                # Fallback to file reading if docker fails (e.g. not in docker group or name mismatch)
+                # But for now, report error to help debug
+                err_msg = stderr.decode().strip()
+                if "No such container" in err_msg:
+                     # Try fallback to 'mc-server' if that's the container name? 
+                     # The bot tails 'mc-bot' in console.py, so we assume 'mc-bot'.
+                     pass
+                logger.warning(f"Docker logs failed: {err_msg}")
+                
+                # Fallback to file interaction
+                path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
+                if os.path.exists(path):
+                    dq = deque(maxlen=lines)
+                    async with aiofiles.open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                        async for line in f:
+                            dq.append(line.rstrip())
+                    log_output = "\n".join(dq)
+                else:
+                    await interaction.response.send_message(f"❌ Docker logs failed and log file not found.", ephemeral=True)
+                    return
+            else:
+                 log_output = stdout.decode('utf-8', errors='ignore').strip()
 
-            dq = deque(maxlen=lines)
-            # Use aiofiles for reading
-            async with aiofiles.open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                async for line in f:
-                    dq.append(line.rstrip())
+            # Clean up ANSI codes if necessary, or wrap in ansi block
+            # For simplicity, we just send it.
             
-            log_message = "```" + "\n".join(dq) + "```"
+            # Format as code block
+            log_message = "```ansi\n" + log_output + "\n```"
+
             # Send to log channel as per original bot behavior
             log_channel = self.bot.get_channel(config.LOG_CHANNEL_ID)
             if log_channel:

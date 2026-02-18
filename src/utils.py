@@ -7,8 +7,14 @@ from aiomcrcon import Client
 from src.config import config
 from src.logger import logger
 
-async def send_debug(bot, msg: str):
-    """Send a debug message to the debug channel and log it."""
+async def send_debug(bot: discord.Client, msg: str) -> None:
+    """
+    Send a debug message to the configured debug channel and log it.
+    
+    Args:
+        bot (discord.Client): The bot instance.
+        msg (str): The debug message to send.
+    """
     logger.info(f"[DEBUG] {msg}")
     ch = bot.get_channel(config.DEBUG_CHANNEL_ID)
     if ch:
@@ -17,32 +23,65 @@ async def send_debug(bot, msg: str):
         except Exception as e:
             logger.error(f"Failed to send debug message: {e}")
 
-def has_role(cmd_name):
-    """Check if the user has the required role for a command."""
+def has_role(cmd_name: str):
+    """
+    Decorator to check if the user has the required role for a command.
+    
+    It performs a 3-step check:
+    1. Check if user has a role ID that is mapped to the command in `config.ROLES`.
+    2. Check if user has a role NAME that is mapped to the command in `user_config` (Legacy/Fallback).
+    3. Check if @everyone has permission (ID or Name).
+    
+    Args:
+        cmd_name (str): The internal name of the command permission to check.
+    """
     async def predicate(interaction):
-        # Use config.ROLE_PERMISSIONS (Name -> [cmds])
-        # TODO: Switch to using config.ROLES (ID -> [cmds]) for robust checks against role renames
-        role_permissions = config.ROLE_PERMISSIONS
+        # Use config.ROLES which maps Role ID -> [commands]
+        # This is populated by config.resolve_role_permissions(guild)
         
-        # Check user's roles by NAME
+        # 1. Check Permissions by Role ID (Preferred)
         for role in interaction.user.roles:
-            if cmd_name in role_permissions.get(role.name, []):
+            if cmd_name in config.ROLES.get(str(role.id), []):
                 return True
+                
+        # 2. Check Permissions by Role Name (Legacy/Fallback)
+        # This handles cases where ID mapping might be missing or config uses names directly
+        # and resolve_role_permissions hasn't run or missed something.
+        # Although resolve_role_permissions maps names to IDs, we double check config.ROLE_PERMISSIONS
+        # just in case `interaction.user.roles` has a name that matches directly.
         
-        # Check @everyone
-        if cmd_name in role_permissions.get("@everyone", []):
+        user_config = config.load_user_config()
+        permissions = user_config.get('permissions', {})
+        
+        for role in interaction.user.roles:
+            if cmd_name in permissions.get(role.name, []):
+                return True
+
+        # 3. Check @everyone (ID and Name)
+        if cmd_name in config.ROLES.get(str(interaction.guild.default_role.id), []):
+            return True
+        if cmd_name in permissions.get("@everyone", []):
             return True
 
-        await send_debug(interaction.client, f"Check failed: {interaction.user.mention} lacks role for command '{cmd_name}'.")
+        await send_debug(interaction.client, f"Check failed: {interaction.user.mention} ({interaction.user.id}) lacks role for '{cmd_name}'.")
         
-        # Helper to list allowed roles
-        allowed_roles = [r for r, cmds in role_permissions.items() if cmd_name in cmds]
+        # Helper to list allowed roles (friendly names)
+        # We can reconstruct this from permissions dict
+        allowed_roles = [r for r, cmds in permissions.items() if cmd_name in cmds]
         await interaction.response.send_message(f"❌ You need one of these roles: {', '.join(allowed_roles)}", ephemeral=True)
         return False
     return app_commands.check(predicate)
 
-async def rcon_cmd(cmd):
-    """Execute an RCON command on the Minecraft server asynchronously."""
+async def rcon_cmd(cmd: str) -> str:
+    """
+    Execute an RCON command on the Minecraft server asynchronously.
+    
+    Args:
+        cmd (str): The command to execute (e.g., "list", "say hello").
+        
+    Returns:
+        str: The response from the server, or an error message if failed.
+    """
     try:
         async with Client(config.RCON_HOST, config.RCON_PORT, config.RCON_PASSWORD) as client:
             return await client.send_cmd(cmd)
@@ -51,8 +90,16 @@ async def rcon_cmd(cmd):
         logger.error(error_msg)
         return "❌ Server is not running or RCON is unavailable"
 
-async def get_uuid(username):
-    """Retrieve a player's UUID from usercache.json."""
+async def get_uuid(username: str) -> str | None:
+    """
+    Retrieve a player's UUID from the server's `usercache.json`.
+    
+    Args:
+        username (str): The Minecraft username.
+        
+    Returns:
+        str | None: The UUID string including hyphens, or None if not found.
+    """
     import aiofiles
     usercache_path = os.path.join(config.SERVER_DIR, 'usercache.json')
     
@@ -100,7 +147,8 @@ def display_key(key):
 async def parse_server_version():
     """Parse Minecraft version from latest.log asynchronously."""
     import aiofiles
-    # TODO: Update to use Docker logs introspection or configured version
+    # Reading the file directly is acceptable here as we need to scan the start of the log
+    # which docker logs might not return if the container has been running for a long time.
     log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
     
     exists = await asyncio.to_thread(os.path.exists, log_path)

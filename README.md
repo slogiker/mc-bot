@@ -21,19 +21,19 @@ I built this because I was tired of SSH-ing into my server just to manage it. Th
 
 ## 📥 Installation
 
-This project is built for **Docker**. It works natively on Linux (Debian/Ubuntu/Raspberry Pi) and Windows (via WSL2).
+This project is built for **Docker**. It works natively on Linux and Windows (WSL).
 
 ### 1. Requirements
 
 - **Docker Installed**
-- **Discord Bot Token**: Create an application at the [Discord Developer Portal](https://discord.com/developers/applications), create a Bot, and copy the **Token**.
+- **Discord Bot Token**: Create an application at the [Discord Developer Portal](https://discord.com/developers/applications), create a Bot with right permissions, and copy the **Token**.
 
 ### 2. Setup (Linux / Standard)
 
 The standard way to run this is via Docker Compose.
 
 ```bash
-git clone https://github.com/yourusername/mc-bot.git
+git clone https://github.com/slogiker/mc-bot.git
 cd mc-bot
 
 # Configure your environment

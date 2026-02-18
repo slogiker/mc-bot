@@ -8,7 +8,16 @@ from filelock import FileLock
 load_dotenv()
 
 def validate_user_config(data: dict) -> tuple[bool, list[str]]:
-    """Validate user config without external packages"""
+    """
+    Validate user config dictionary without requiring external schema packages.
+    Checks types, ranges, and formats for all required fields.
+    
+    Args:
+        data (dict): The user config dictionary to validate.
+        
+    Returns:
+        tuple[bool, list[str]]: (IsValid, ListOfErrors)
+    """
     errors = []
     
     # RAM format validation
@@ -66,6 +75,11 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
 
 
 class Config:
+    """
+    Singleton configuration manager.
+    Handles loading/saving of `bot_config.json` (system state) and `user_config.json` (preferences).
+    Provides thread-safe access via `FileLock`.
+    """
     _instance = None
 
     def __new__(cls):
@@ -77,6 +91,10 @@ class Config:
         return cls._instance
 
     def load(self):
+        """
+        Load all configuration variables from environment and JSON files.
+        Validates `user_config.json` on load.
+        """
         self.TOKEN = os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
         self.dry_run = False  # Default, set via command line flag
@@ -320,8 +338,14 @@ class Config:
                     from src.logger import logger
                     logger.warning(f"Role '{role_name}' not found in guild")
     
-    def get(self, key, default=None):
-        """Get config value safely (case-insensitive key lookup)"""
+    def get(self, key: str, default=None):
+        """
+        Get a config value safely by key (case-insensitive).
+        
+        Args:
+            key (str): The config key to look up (e.g., "RCON_PORT").
+            default (Any): Value to return if key is not found.
+        """
         # Try to find attribute directly
         if hasattr(self, key.upper()):
             val = getattr(self, key.upper())
