@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from src.config import config
 from src.logger import logger
-from src.setup_views import SetupView
+from src.setup_views import SetupView, fetch_versions
 from discord import ui
 from src.mc_installer import mc_installer
 import os
@@ -26,6 +26,9 @@ class Setup(commands.Cog):
                 ephemeral=True
             )
             return
+
+        # Pre-fetch versions for dropdown
+        await fetch_versions()
 
         # Check if server is already installed
         server_jar = os.path.join(config.SERVER_DIR, "server.jar")

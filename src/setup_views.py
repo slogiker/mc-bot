@@ -9,7 +9,24 @@ from typing import Optional, Dict, Any
 from src.mc_installer import mc_installer
 from src.logger import logger
 from src.config import config
+import aiohttp
 
+GLOBAL_VERSIONS = []
+
+async def fetch_versions():
+    global GLOBAL_VERSIONS
+    if GLOBAL_VERSIONS: return GLOBAL_VERSIONS
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.modrinth.com/v2/tag/game_version") as resp:
+                data = await resp.json()
+                # Get the first 24 release versions
+                GLOBAL_VERSIONS = [v['version'] for v in data if v['version_type'] == 'release'][:24]
+                return GLOBAL_VERSIONS
+    except Exception as e:
+        logger.error(f"Failed to fetch Modrinth versions: {e}")
+        GLOBAL_VERSIONS = ["1.21.4", "1.21.3", "1.21.1", "1.20.4", "1.19.4"] # Fallback
+        return GLOBAL_VERSIONS
 
 class SetupState:
     """Manages the state of the setup process"""
@@ -82,25 +99,7 @@ class PlatformSelect(ui.Select):
 class VersionSelect(ui.Select):
     """Dropdown for selecting Minecraft version"""
     def __init__(self, platform: str = "paper", current_value: str = "latest"):
-        # TODO: Dynamically fetch versions based on platform and cache them for better UX using Modrin's API
-        common_versions = [
-            "latest",
-            "1.21.11",
-            "1.21.10",
-            "1.21.9",
-            "1.21.8",
-            "1.21.7",
-            "1.21.6",
-            "1.21.5",
-            "1.21.4",
-            "1.21.3",
-            "1.21.2",
-            "1.21.1",
-            "1.21",
-            "1.20.6",
-            "1.20.5",
-            "1.20.4"
-        ]
+        common_versions = ["latest"] + (GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["1.21.4", "1.20.4"])
         
         options = []
         for version in common_versions[:24]:  # Discord limit is 25

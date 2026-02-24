@@ -1,7 +1,12 @@
+import os
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime
+from src.config import config
+from src.logger import logger
+from src.backup_manager import backup_manager
 
 class BackupCog(commands.Cog):
     """

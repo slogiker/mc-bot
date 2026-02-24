@@ -50,7 +50,7 @@ class EventsCog(commands.Cog):
                 logger.error(f"Error checking event {event.get('name')}: {e}")
 
         # Cleanup old events (keep for 24h after for history maybe? or delete immediately)
-        # Let's delete events that are > 24h past
+        # Delete events that are > 24h past
         active_events = []
         for event in events:
              try:

@@ -156,8 +156,10 @@ class ServerInfoManager:
         config.update_dynamic_config(updates)
         
         try:
-            # Use centralized config saving with locking
-            await asyncio.to_thread(config.save_bot_config, config.load_bot_config() | updates)
+            # Update config synchronously to avoid async race condition when threading
+            c = config.load_bot_config()
+            c.update(updates)
+            config.save_bot_config(c)
             
             # Trigger update
             await self.update_info()

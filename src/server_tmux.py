@@ -16,7 +16,7 @@ class TmuxServerManager(ServerInterface):
         self._state_lock = asyncio.Lock()  # Prevent race conditions
         
         # Load initial state asynchronously later, for now assume intentional stop
-        # We'll load it properly on first access
+        # Load it properly on first access
 
     def _run_tmux_cmd(self, args):
         """Run tmux command synchronously (only used for quick checks)"""

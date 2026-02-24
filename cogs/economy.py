@@ -24,15 +24,15 @@ class EconomyCog(commands.Cog):
         self.bot = bot
         self.word_hunt_active = False
         self.current_word = None
+        self.economy_lock = asyncio.Lock()
+
+    async def cog_load(self):
         self.word_hunt_task.start()
 
     def cog_unload(self):
         self.word_hunt_task.cancel()
 
-    @tasks.loop(minutes=45) # Random interval handled inside loop via sleep? No, task loop is fixed.
-    # We'll use a fixed check and random chance to start to simulate randomness, OR just set a fixed interval.
-    # User asked for "Random(30,90) min".
-    # Best way: loop every 1 min, check if it's time.
+    @tasks.loop(minutes=45) 
     async def word_hunt_task(self):
         pass
 
@@ -68,15 +68,6 @@ class EconomyCog(commands.Cog):
         await rcon_cmd(f'tellraw @a {{"text":"[Bot] {msg}","color":"gold","bold":true}}')
         
         # Monitor chat logs for winner
-        # We need a way to read chat. LIVE log tailing is in ConsoleCog.
-        # Implemented a quick listener here or hook into ConsoleCog?
-        # A separate log reader might duplicate file handles.
-        # Ideally, ConsoleCog emits an event, but complexity.
-        # Let's just do a quick short-term tail or poll strictly for this event.
-        # OR: Shared log reader service.
-        # For simplicity in this "hackathon" mode:
-        # We'll spin up a task that reads log for next 2 mins.
-        
         try:
             await asyncio.wait_for(self.monitor_chat_for_word(), timeout=60)
         except asyncio.TimeoutError:
@@ -92,37 +83,19 @@ class EconomyCog(commands.Cog):
         - The word is found (Winner awarded).
         - The parent task times out (Game over).
         """
-        # Use docker logs for cleaner stream
-        container_name = "mc-bot"
-        
+        from src.log_dispatcher import log_dispatcher
+        q = log_dispatcher.subscribe()
+        await log_dispatcher.start()
+
         try:
-            process = await asyncio.create_subprocess_exec(
-                'docker', 'logs', '-f', '--tail', '0', container_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            start_time = asyncio.get_event_loop().time()
-            
             while self.word_hunt_active:
                 try:
-                    # Timeout to check word_hunt_active flag/total duration
-                    line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=1.0)
-                    if not line_bytes: break
-                    
-                    line = line_bytes.decode('utf-8', errors='ignore').strip()
-                    if not line: continue
+                    line = await asyncio.wait_for(q.get(), timeout=1.0)
                     
                     # Regex: <(.*?)> (.*)
-                    # Use a loose regex to catch chat even with prefixes
-                    # Standard Vanilla: <Player> Message
-                    # Paper/Plugins: [Team] <Player> Message or [World] <Player> Message
-                    # Let's look for the pattern <Name>
                     match = re.search(r'<(.*?)> (.*)', line)
                     if match:
                         player, message = match.groups()
-                        # Clean player name (remove prefixes if any inside <>)
-                        # But < > usually strictly encloses name in vanilla
                         
                         if self.current_word.lower() in message.lower():
                             await self.award_winner(player)
@@ -136,11 +109,7 @@ class EconomyCog(commands.Cog):
         except Exception as e:
             logger.error(f"Word Hunt log reader error: {e}")
         finally:
-            if 'process' in locals():
-                try:
-                    process.kill()
-                    await process.wait()
-                except: pass
+            log_dispatcher.unsubscribe(q)
 
     async def award_winner(self, player_name):
         reward = 100
@@ -159,9 +128,10 @@ class EconomyCog(commands.Cog):
                 break
         
         if user_id:
-            economy[user_id] = economy.get(user_id, 0) + reward
-            bot_config['economy'] = economy
-            config.save_bot_config(bot_config)
+            async with self.economy_lock:
+                economy[user_id] = economy.get(user_id, 0) + reward
+                bot_config['economy'] = economy
+                config.save_bot_config(bot_config)
             await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won the Word Hunt and got {reward} coins!","color":"green"}}')
         else:
             await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won, but is not linked to Discord! No coins awarded.","color":"yellow"}}')
@@ -190,15 +160,16 @@ class EconomyCog(commands.Cog):
         sender_id = str(interaction.user.id)
         receiver_id = str(user.id)
         
-        sender_bal = economy.get(sender_id, 0)
-        if sender_bal < amount:
-            await interaction.response.send_message(f"❌ Insufficient funds. You have {sender_bal} coins.", ephemeral=True)
-            return
-            
-        economy[sender_id] = sender_bal - amount
-        economy[receiver_id] = economy.get(receiver_id, 0) + amount
-        bot_config['economy'] = economy
-        config.save_bot_config(bot_config)
+        async with self.economy_lock:
+            sender_bal = economy.get(sender_id, 0)
+            if sender_bal < amount:
+                await interaction.response.send_message(f"❌ Insufficient funds. You have {sender_bal} coins.", ephemeral=True)
+                return
+                
+            economy[sender_id] = sender_bal - amount
+            economy[receiver_id] = economy.get(receiver_id, 0) + amount
+            bot_config['economy'] = economy
+            config.save_bot_config(bot_config)
         
         await interaction.response.send_message(f"✅ Paid **{amount}** coins to {user.mention}.", ephemeral=True)
         try:
@@ -206,17 +177,15 @@ class EconomyCog(commands.Cog):
         except: pass
 
     @app_commands.command(name="economy_set", description="Set a user's balance (Admin)")
-    @has_role("economy_admin") # Or check admin perms
+    @has_role("economy_admin")
     async def set_balance(self, interaction: discord.Interaction, user: discord.Member, amount: int):
-        if not interaction.user.guild_permissions.administrator: # Fallback check
-             await interaction.response.send_message("❌ Admin only.", ephemeral=True)
-             return
              
-        bot_config = config.load_bot_config()
-        economy = bot_config.get('economy', {})
-        economy[str(user.id)] = amount
-        bot_config['economy'] = economy
-        config.save_bot_config(bot_config)
+        async with self.economy_lock:
+            bot_config = config.load_bot_config()
+            economy = bot_config.get('economy', {})
+            economy[str(user.id)] = amount
+            bot_config['economy'] = economy
+            config.save_bot_config(bot_config)
         
         await interaction.response.send_message(f"✅ Set {user.mention}'s balance to **{amount}**.", ephemeral=True)
 

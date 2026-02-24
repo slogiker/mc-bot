@@ -6,7 +6,7 @@ import os
 import random
 import aiofiles
 from datetime import datetime
-from src.utils import rcon_cmd
+from src.utils import rcon_cmd, has_role
 from src.config import config
 from src.logger import logger
 
@@ -24,12 +24,15 @@ class AutomationCog(commands.Cog):
 
     def cog_unload(self):
         self.motd_loop.cancel()
-        if self.log_scan_task:
+        if self.log_task: # Changed from log_scan_task
             self.stop_scan.set()
-            self.log_scan_task.cancel()
+            self.log_task.cancel() # Changed from log_scan_task.cancel()
 
     async def cog_load(self):
-        self.log_scan_task = asyncio.create_task(self.scan_logs_for_triggers())
+        from src.log_dispatcher import log_dispatcher
+        self.log_queue = log_dispatcher.subscribe()
+        await log_dispatcher.start()
+        self.log_task = asyncio.create_task(self.scan_logs_for_triggers())
 
     @tasks.loop(hours=168) # Weekly
     async def motd_loop(self):
@@ -91,26 +94,11 @@ class AutomationCog(commands.Cog):
         
         while not self.stop_scan.is_set():
             try:
-                # Use docker logs to follow the stream
-                container_name = "mc-bot" # Assuming standard container name
-                
-                process = await asyncio.create_subprocess_exec(
-                    'docker', 'logs', '-f', '--tail', '0', container_name,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                logger.info("Trigger Scanner connected to docker logs")
+                logger.info("Trigger Scanner connected to log_dispatcher")
                 
                 while not self.stop_scan.is_set():
                     try:
-                        line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=1.0)
-                        if not line_bytes:
-                            # Process died or EOF
-                            break
-                            
-                        line = line_bytes.decode('utf-8', errors='ignore').strip()
-                        if not line: continue
+                        line = await asyncio.wait_for(self.log_queue.get(), timeout=1.0)
                         
                         # Parse MC log format if needed, or just scan raw line
                         # Format: [HH:MM:SS] [Thread/LEVEL]: Message
@@ -140,32 +128,19 @@ class AutomationCog(commands.Cog):
                          logger.error(f"Error processing log line: {e}")
                          await asyncio.sleep(1)
 
-                # If we broke out of loop, kill process
-                try:
-                    process.kill()
-                    await process.wait()
-                except: pass
-                
                 if not self.stop_scan.is_set():
-                    # Restart loop if not stopped intentionally
-                    logger.warning("Docker log stream ended, restarting scanner in 5s...")
+                    logger.warning("Log stream ended, restarting scanner in 5s...")
                     await asyncio.sleep(5)
 
             except Exception as e:
                 logger.error(f"Trigger Scanner error: {e}")
                 await asyncio.sleep(5)
                         
-            except Exception as e:
-                logger.error(f"Trigger Scanner error: {e}")
-                await asyncio.sleep(5)
+
 
     @app_commands.command(name="trigger_add", description="Add a custom chat trigger")
+    @has_role("trigger_admin")
     async def trigger_add(self, interaction: discord.Interaction, phrase: str, command: str):
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Admin only.", ephemeral=True)
-            return
-
-        # user_config = config.load_user_config()
         user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         triggers[phrase] = command
@@ -176,6 +151,7 @@ class AutomationCog(commands.Cog):
         await interaction.response.send_message(f"✅ Added trigger: `{phrase}` -> `{command}`")
 
     @app_commands.command(name="trigger_list", description="List custom triggers")
+    @has_role("trigger_list")
     async def trigger_list(self, interaction: discord.Interaction):
         user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
@@ -191,11 +167,8 @@ class AutomationCog(commands.Cog):
         await interaction.response.send_message(msg, ephemeral=True)
 
     @app_commands.command(name="trigger_remove", description="Remove a trigger")
+    @has_role("trigger_admin")
     async def trigger_remove(self, interaction: discord.Interaction, phrase: str):
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Admin only.", ephemeral=True)
-            return
-
         user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         

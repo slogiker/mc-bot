@@ -18,6 +18,9 @@ class ConsoleCog(commands.Cog):
         self.stop_event = asyncio.Event()
 
     async def cog_load(self):
+        from src.log_dispatcher import log_dispatcher
+        self.log_queue = log_dispatcher.subscribe()
+        await log_dispatcher.start()
         self.log_task = asyncio.create_task(self.tail_logs())
 
     async def cog_unload(self):
@@ -45,14 +48,7 @@ class ConsoleCog(commands.Cog):
                     await asyncio.sleep(10)
                     continue
 
-                # Start docker logs process
-                process = await asyncio.create_subprocess_exec(
-                    'docker', 'logs', '-f', '--tail', '0', 'mc-bot',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT
-                )
-
-                logger.info("Connected to docker logs stream")
+                logger.info("Connected to docker logs stream via log dispatcher")
                 
                 # Batch buffer for messages
                 batch = []
@@ -62,15 +58,7 @@ class ConsoleCog(commands.Cog):
 
                 while not self.stop_event.is_set():
                     try:
-                        line_bytes = await asyncio.wait_for(
-                            process.stdout.readline(),
-                            timeout=1.0
-                        )
-                        
-                        if not line_bytes:
-                            break  # EOF
-                        
-                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                        line = await asyncio.wait_for(self.log_queue.get(), timeout=1.0)
                         if not line:
                             continue
 
@@ -90,28 +78,30 @@ class ConsoleCog(commands.Cog):
                             
                             # --- Player tracking for presence ---
                             if "joined the game" in msg:
-                                player_name = msg.split(" joined the game")[0].strip()
-                                bot_config = config.load_bot_config()
-                                current_players = bot_config.get('online_players', [])
-                                if player_name not in current_players:
-                                    current_players.append(player_name)
-                                    bot_config['online_players'] = current_players
-                                    config.save_bot_config(bot_config)
-                                await self.update_presence(len(current_players))
-                                # Send notification to debug channel
-                                await self.send_event_notification("join", player_name)
+                                match = re.match(r'^(\w+) joined the game', msg)
+                                if match:
+                                    player_name = match.group(1)
+                                    bot_config = config.load_bot_config()
+                                    current_players = bot_config.get('online_players', [])
+                                    if player_name not in current_players:
+                                        current_players.append(player_name)
+                                        bot_config['online_players'] = current_players
+                                        config.save_bot_config(bot_config)
+                                    await self.update_presence(len(current_players))
+                                    await self.send_event_notification("join", player_name)
                                 
                             elif "left the game" in msg:
-                                player_name = msg.split(" left the game")[0].strip()
-                                bot_config = config.load_bot_config()
-                                current_players = bot_config.get('online_players', [])
-                                if player_name in current_players:
-                                    current_players.remove(player_name)
-                                    bot_config['online_players'] = current_players
-                                    config.save_bot_config(bot_config)
-                                await self.update_presence(len(current_players))
-                                # Send notification to debug channel
-                                await self.send_event_notification("leave", player_name)
+                                match = re.match(r'^(\w+) left the game', msg)
+                                if match:
+                                    player_name = match.group(1)
+                                    bot_config = config.load_bot_config()
+                                    current_players = bot_config.get('online_players', [])
+                                    if player_name in current_players:
+                                        current_players.remove(player_name)
+                                        bot_config['online_players'] = current_players
+                                        config.save_bot_config(bot_config)
+                                    await self.update_presence(len(current_players))
+                                    await self.send_event_notification("leave", player_name)
                             
                             # Death detection (various death messages)
                             elif any(death_word in msg for death_word in ["was slain", "was shot", "drowned", "experienced kinetic energy", "blew up", "was killed", "hit the ground", "fell from", "went up in flames", "burned to death", "walked into fire", "tried to swim in lava", "died", "was squashed", "was pummeled", "was pricked", "starved to death", "suffocated", "was impaled", "was frozen", "withered away"]):
@@ -147,9 +137,8 @@ class ConsoleCog(commands.Cog):
                                 last_send = current_time
                         continue
 
-                # Process terminated, restart after delay
-                await process.wait()
-                logger.warning("Docker logs process ended, restarting in 5 seconds...")
+                # Process disconnected, reconnect
+                logger.warning("Log queue lost, checking state...")
                 await asyncio.sleep(5)
 
             except Exception as e:
@@ -176,6 +165,8 @@ class ConsoleCog(commands.Cog):
                 message = f"🔴 **{player_name}** left the game"
             elif event_type == "death":
                 message = f"💀 **{player_name}** died: {extra_msg}" if extra_msg else f"💀 **{player_name}** died"
+            elif event_type == "command":
+                message = f"🛡️ **{player_name}** {extra_msg}"
             else:
                 return
             
@@ -219,6 +210,11 @@ class ConsoleCog(commands.Cog):
 
         # Execute
         await interaction.response.defer()
+        
+        # Command Audit Logging
+        logger.info(f"User {interaction.user.name} ({interaction.user.id}) executed RCON: {command}")
+        await self.send_event_notification("command", interaction.user.name, f"executed RCON command: `{command}`")
+        
         response = await rcon_cmd(command)
         
         # Reply in thread logic (optional, but user requested 'replies appear in thread or as reply')

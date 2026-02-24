@@ -94,7 +94,6 @@ class StatsCog(commands.Cog):
                 return
         elif player:
             # Try to determine if online or offline based on existing files or config
-            # For now, let's try Mojang first, then fallback to offline UUID if not found or if server is 'cracked' mode?
             # User request: "Legit players -> Mojang API... Offline players -> parse .dat"
             
             # Check mappings first

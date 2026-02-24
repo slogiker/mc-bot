@@ -34,7 +34,7 @@ class Admin(commands.Cog):
             from src.backup_manager import backup_manager
             
             await interaction.followup.send("⏳ Starting backup...", ephemeral=True)
-            success, result = await backup_manager.create_backup(custom_name=name)
+            success, result, filepath = await backup_manager.create_backup(custom_name=name)
             
             if success:
                 await interaction.followup.send(f"✅ Backup created: `{result}`", ephemeral=True)

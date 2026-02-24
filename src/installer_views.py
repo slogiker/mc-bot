@@ -22,11 +22,17 @@ class PlatformSelectView(ui.View):
         await self.manager.set_platform(interaction, "vanilla")
         self.stop()
     
-    @ui.button(label="Fabric", style=discord.ButtonStyle.secondary, emoji="🧵")
-    async def fabric_button(self, interaction: discord.Interaction, button: ui.Button):
-        self.value = "fabric"
-        await self.manager.set_platform(interaction, "fabric")
-        self.stop()
+    # @ui.button(label="Fabric", style=discord.ButtonStyle.secondary, emoji="🧵")
+    # async def fabric_button(self, interaction: discord.Interaction, button: ui.Button):
+    #     self.value = "fabric"
+    #     await self.manager.set_platform(interaction, "fabric")
+    #     self.stop()
+    
+    # @ui.button(label="Forge", style=discord.ButtonStyle.secondary, emoji="🔨")
+    # async def forge_button(self, interaction: discord.Interaction, button: ui.Button):
+    #     self.value = "forge"
+    #     await self.manager.set_platform(interaction, "forge")
+    #     self.stop()
     
     @ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="❌")
     async def cancel_button(self, interaction: discord.Interaction, button: ui.Button):
@@ -298,8 +304,8 @@ class InstallationManager:
                 ),
                 ephemeral=True
             )
-            # This is tricky - we need to wait for modal. Let's simplify.
-            # For now, skip modal and let them add via command later
+            # Wait for modal logic is complex here, skip for now
+            # and let them add players via command later
             await self.finalize_installation(interaction)
         else:
             await self.finalize_installation(interaction)

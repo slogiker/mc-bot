@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from dotenv import load_dotenv
 from filelock import FileLock
+import discord
 
 load_dotenv()
 
@@ -97,9 +98,10 @@ class Config:
         """
         self.TOKEN = os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
-        self.dry_run = False  # Default, set via command line flag
+        _dry_run = getattr(self, 'dry_run', False)
+        self.dry_run = _dry_run
         
-        # Check for old config.json and migrate
+        # Check for old config and migrate
         if os.path.exists('config.json') and not os.path.exists(os.path.join('data', 'user_config.json')):
             self._migrate_old_config()
         
@@ -133,7 +135,19 @@ class Config:
         self.BACKUP_TIME = user_cfg['backup_time']
         self.BACKUP_RETENTION_DAYS = user_cfg['backup_keep_days']
         self.RESTART_TIME = user_cfg['restart_time']
-        self.TIMEZONE = user_cfg.get('timezone', 'UTC')
+        
+        user_tz = user_cfg.get('timezone', 'auto')
+        if user_tz.lower() == 'auto':
+            try:
+                import urllib.request
+                with urllib.request.urlopen("http://ip-api.com/json/", timeout=3) as response:
+                    import json
+                    self.TIMEZONE = json.loads(response.read().decode()).get('timezone', 'UTC')
+            except Exception:
+                self.TIMEZONE = 'UTC'
+        else:
+            self.TIMEZONE = user_tz
+            
         self.ROLE_PERMISSIONS = user_cfg['permissions']
         
         # Apply bot config
@@ -145,6 +159,7 @@ class Config:
         self.SPAWN_X = bot_cfg.get('spawn_x')
         self.SPAWN_Y = bot_cfg.get('spawn_y')
         self.SPAWN_Z = bot_cfg.get('spawn_z')
+        self.OWNER_ID = bot_cfg.get('owner_id')
         
         # Hardcoded/default values (not user-configurable)
         # TODO: Make RCON_HOST configurable for multi-container setups
@@ -180,7 +195,7 @@ class Config:
                 "backup_time": old_cfg.get('backup_time', '03:00'),
                 "backup_keep_days": old_cfg.get('backup_retention_days', 7),
                 "restart_time": old_cfg.get('restart_time', '04:00'),
-                "timezone": old_cfg.get('timezone', 'UTC'),
+                "timezone": old_cfg.get('timezone', 'auto'),
                 "permissions": self._convert_old_roles(old_cfg.get('roles', {}))
             }
             
@@ -235,7 +250,7 @@ class Config:
             "backup_time": "03:00",
             "backup_keep_days": 7,
             "restart_time": "04:00",
-            "timezone": "Europe/Ljubljana",
+            "timezone": "auto",
             "permissions": self._convert_old_roles({})
         }
         
@@ -299,8 +314,6 @@ class Config:
         with lock:
             with open(self.BOT_CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent='\t')
-        # Refresh current config object
-        self.load()
 
     def load_user_config(self) -> dict:
         """Load user preferences with file locking."""
@@ -318,8 +331,6 @@ class Config:
         with lock:
             with open(self.USER_CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent='\t')
-        # Refresh current config object
-        self.load()
     
     def resolve_role_permissions(self, guild):
         """Resolve role names to IDs for permission checking"""

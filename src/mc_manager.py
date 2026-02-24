@@ -16,29 +16,7 @@ from typing import Dict, Optional
 from src.config import config
 from src.server_interface import ServerInterface
 
-# Global instance - will be initialized on first import
-mc_manager: ServerInterface = None
 
-
-def get_server_manager() -> ServerInterface:
-    """
-    Get or create the global server manager instance.
-    
-    Returns:
-        ServerInterface: The active server manager (Tmux or Mock)
-    """
-    global mc_manager
-    
-    if mc_manager is None:
-        # Initialize based on simulation mode
-        if config.SIMULATION_MODE:
-            from src.server_mock import MockServerManager
-            mc_manager = MockServerManager()
-        else:
-            from src.server_tmux import TmuxServerManager
-            mc_manager = TmuxServerManager()
-    
-    return mc_manager
 
 
 def get_server_properties() -> Optional[Dict[str, str]]:
@@ -71,7 +49,4 @@ def get_server_properties() -> Optional[Dict[str, str]]:
         return None
 
 
-# Initialize the global instance immediately
-mc_manager = get_server_manager()
-# Attach the get_server_properties method to the instance for backward compatibility
-mc_manager.get_server_properties = get_server_properties
+

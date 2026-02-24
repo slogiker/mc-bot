@@ -284,9 +284,17 @@ class MinecraftInstaller:
     
     async def add_to_whitelist(self, username: str) -> bool:
         """Add a player to whitelist.json"""
-        # TODO: Support offline mode whitelist (UUID generation based on name)
+        # TODO: make it mascan proof
         try:
             whitelist_path = os.path.join(self.server_dir, "whitelist.json")
+            props_path = os.path.join(self.server_dir, "server.properties")
+            
+            online_mode = True
+            if os.path.exists(props_path):
+                async with aiofiles.open(props_path, 'r') as f:
+                    content = await f.read()
+                    if "online-mode=false" in content.lower():
+                        online_mode = False
             
             # Load existing whitelist
             whitelist = []
@@ -295,18 +303,37 @@ class MinecraftInstaller:
                     content = await f.read()
                     whitelist = json.loads(content) if content else []
             
+            if not online_mode:
+                import hashlib
+                import uuid
+                data = f"OfflinePlayer:{username}".encode('utf-8')
+                md5_hash = bytearray(hashlib.md5(data).digest())
+                md5_hash[6] = (md5_hash[6] & 0x0f) | 0x30
+                md5_hash[8] = (md5_hash[8] & 0x3f) | 0x80
+                player_uuid = str(uuid.UUID(bytes=bytes(md5_hash)))
+                
+                whitelist.append({
+                    "uuid": player_uuid,
+                    "name": username
+                })
+                
+                async with aiofiles.open(whitelist_path, 'w') as f:
+                    await f.write(json.dumps(whitelist, indent=2))
+                logger.info(f"Added {username} to offline whitelist")
+                return True
+            
             # Get UUID from Mojang API
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"https://api.mojang.com/users/profiles/minecraft/{username}") as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        uuid = data['id']
+                        player_uuid = data['id']
                         # Format UUID with dashes
-                        uuid = f"{uuid[:8]}-{uuid[8:12]}-{uuid[12:16]}-{uuid[16:20]}-{uuid[20:]}"
+                        player_uuid = f"{player_uuid[:8]}-{player_uuid[8:12]}-{player_uuid[12:16]}-{player_uuid[16:20]}-{player_uuid[20:]}"
                         
                         # Add to whitelist
                         whitelist.append({
-                            "uuid": uuid,
+                            "uuid": player_uuid,
                             "name": username
                         })
                         

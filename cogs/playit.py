@@ -14,6 +14,7 @@ class PlayitCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.cached_address = None
+        self.tunnels = []
 
     @app_commands.command(name="ip", description="Get the public Playit.gg address")
     async def get_ip(self, interaction: discord.Interaction):
@@ -29,6 +30,7 @@ class PlayitCog(commands.Cog):
         
         if address:
             self.cached_address = address
+            self.tunnels = [address]
             await interaction.followup.send(f"🌍 **Public Address**: `{address}`")
         else:
             await interaction.followup.send("❌ Could not determine Playit address. Is the tunnel running?")
@@ -66,10 +68,12 @@ class PlayitCog(commands.Cog):
             # Simple heuristic: Look for lines containing "tunnel defined" or "tunnel running"
             # and extract the domain part.
             
-            # Let's look for valid domain patterns that are NOT playit.gg website URLs
-            # Regex: ([\w-]+\.[\w-]+\.[a-z]+(?::\d+)?)
+            # Parse allocated playit domain pattern
+            domains = re.findall(r'([a-zA-Z0-9-]+\.playit\.gg|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\b)', logs)
             
-            # Better specific heuristic based on known output:
+            # Filter non-app domains
+            valid_domains = [d for d in domains if 'playit.gg' not in d or len(d.split('.')[0]) > 4]
+            
             lines = logs.split('\n')
             for line in reversed(lines):
                 # Search for typical allocation line

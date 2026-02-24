@@ -169,7 +169,7 @@ class Tasks(commands.Cog):
             
             # Server stopped (Saving chunks is usually last)
             elif "Saving chunks for level" in line:
-                 pass # Waiting for process to actually die
+                 pass
 
         except Exception as e:
             logger.error(f"Error processing log line: {e}")

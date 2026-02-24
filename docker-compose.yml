@@ -13,14 +13,18 @@ services:
     container_name: mc-bot
     restart: unless-stopped
 
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import psutil; psutil.pid_exists(1)' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
     dns:
       - 8.8.8.8
       - 1.1.1.1
 
-    # Port mappings
     ports:
       - "25565:25565" # Minecraft server
-      - "25575:25575" # RCON
 
     # Volume mappings for persistent data
     volumes:
@@ -50,9 +54,5 @@ services:
     environment:
       - SECRET_KEY=${PLAYIT_SECRET_KEY}
     network_mode: "service:mc-bot" # Share network namespace for localhost access if needed, OR explicit link
-    # Actually, user wants "mc-bot:25565" to be the target.
-    # If we use default network, playit can reach mc-bot by name.
-    # network_mode: service:mc-bot would make localhost:25565 work inside playit container.
-    # But standard compose network is cleaner if we assume target is "mc-bot".
     depends_on:
       - mc-bot

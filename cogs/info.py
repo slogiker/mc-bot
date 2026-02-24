@@ -3,11 +3,9 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import psutil
-import json
 import asyncio
-import aiofiles
 from src.config import config
-from src.utils import rcon_cmd, get_uuid, display_key, map_key, has_role, parse_server_version
+from src.utils import rcon_cmd, has_role, parse_server_version
 
 from src.server_info_manager import ServerInfoManager
 
@@ -153,9 +151,14 @@ class Info(commands.Cog):
             from src.logger import logger
             ver = await parse_server_version()
             
-            # Get IP
-            # TODO: Make server address configurable in user_config.json
-            ip = getattr(config, 'SERVER_ADDRESS', 'slogikerserver.ddns.net')
+            # Get IP from playit.gg cache if available
+            ip = "Unknown (Check /ip)"
+            try:
+                playit_cog = self.bot.get_cog("PlayitCog")
+                if playit_cog and playit_cog.tunnels:
+                    ip = playit_cog.tunnels[0]
+            except Exception as e:
+                logger.error(f"Failed to fetch IP from PlayitCog: {e}")
             
             # Get spawn
             spawn = self.info_manager._get_spawn() or "Not set"

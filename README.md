@@ -10,8 +10,8 @@ I built this because I was tired of SSH-ing into my server just to manage it. Th
 
 ## ⚡ Core Features
 
-- **Control**: Start, Stop, Restart your server from Discord.
-- **No Port Forwarding**: Integrated **Playit.gg** support for instant public access.
+- **Control**: Start, Stop, Restart your server directly from a sticky interactive Control Panel in Discord.
+- **No Port Forwarding**: Integrated **Playit.gg** support for instant public access with automatic IP fetching (`/info`).
 - **Live Logs**: Stream the server console directly to a Discord channel.
 - **Backups**: Automated daily backups with manual triggers.
 - **Permissions**: Granular control over who can do what (Mods vs Admins).
@@ -75,7 +75,7 @@ If you're hosting at home and don't want to mess with router ports:
 2.  Add it to your `.env` file: `PLAYIT_SECRET_KEY=...`
 3.  Restart: `docker compose up -d`.
 4.  In the Playit dashboard, create a tunnel to `mc-bot:25565`.
-5.  Type `/ip` in Discord to get the address.
+5.  Type `/info` or `/ip` in Discord. The bot will automatically fetch and display your live Playit.gg address!
 
 ---
 
@@ -91,4 +91,11 @@ Check the `data/` folder after the first run.
 ## 📜 Commands & Docs
 
 - **Commands**: See [docs/commands.md](docs/commands.md) for a list of `/start`, `/pay`, `/ip`, and others.
-- **Developers**: See [docs/DEVELOPER.md](docs/DEVELOPER.md) for architecture and contribution guide.
+- **Developers**: See [docs/DEVELOPER.md](docs/DEVELOPER.md) for architecture and contribution guides.
+- **Roadmap**: See [docs/TODO.md](docs/TODO.md) for future project plans.
+
+---
+
+## 🔒 Offline Mode Support
+
+The bot supports offline mode servers by generating MD5 based UUIDs natively. To use offline mode, select 'No' for Online Mode during the `/setup` procedure. The whitelist function will then automatically use local UUID generation instead of checking Mojang servers.

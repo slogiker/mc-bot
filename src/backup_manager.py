@@ -9,7 +9,7 @@ from pyonesend import OneSend
 
 class BackupManager:
     def __init__(self):
-        self.backup_dir = os.path.join(config.SERVER_DIR, 'backups')
+        self.backup_dir = '/app/backups'
         self.auto_dir = os.path.join(self.backup_dir, 'auto')
         self.custom_dir = os.path.join(self.backup_dir, 'custom')
         

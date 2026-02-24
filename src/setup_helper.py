@@ -36,10 +36,15 @@ class SetupHelper:
             
             # Special Case: Assign 'MC Admin' to Owner
             if role_name == "MC Admin":
+                updates['admin_role_id'] = role.id
                 await self._assign_admin_role(guild, role)
+            elif role_name == "MC Player":
+                updates['player_role_id'] = role.id
 
         # updates['roles'] is no longer needed as permissions are in user_config by name
         updates['guild_id'] = str(guild.id)
+        if guild.owner:
+            updates['owner_id'] = guild.owner.id
 
         # 2. CATEGORY
         cat_name = "Minecraft Server"

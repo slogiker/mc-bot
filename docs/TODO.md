@@ -141,6 +141,7 @@ python install/simulate.py
 ### Updating Minecraft Versions
 
 To add new versions to the quick-select list:
+
 1. Edit `src/setup_views.py` - Update `common_versions` list
 2. Edit `src/version_fetcher.py` - Update fallback versions
 3. Versions are auto-fetched from APIs on first use
@@ -148,7 +149,17 @@ To add new versions to the quick-select list:
 ### Troubleshooting Installation Issues
 
 If installation fails:
+
 1. Check Docker Desktop is running
 2. Ensure WSL 2 integration is enabled
 3. Review logs: `docker compose logs mc-bot`
 4. Try cache busting: `CACHEBUST=$(date +%s) docker compose up -d --build`
+
+### Future Improvements
+
+- [ ] Mascan-proof the offline mode whitelist system (implement secondary layer of UUID verification if proxy headers imply otherwise)
+- [ ] Expand Forge API fetching in `mc_installer.py` (currently hardcoded gracefully to `1.20.1`)
+- [ ] Expose an interactive Control Panel view that stays sticky in the `#command` channel
+- [ ] Add full translation support (i18n) for discord bot replies
+- [ ] Complete unit testing for `LogDispatcher` parsing mechanics
+- [ ] Introduce a simple SQLite fallback for large servers instead of heavy json dictionary memory loads (although strictly requested JSON so far)
