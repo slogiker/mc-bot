@@ -80,6 +80,7 @@
   - [ ] Scheduled automatic backups.
   - [ ] Backup versioning and retention.
   - [ ] Incremental backups.
+  - [ ] Change py-onesend to transfer.sh
 
 ## Known Issues & Fixes (v2.5.4)
 
