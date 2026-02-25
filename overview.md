@@ -182,6 +182,9 @@ The `categories` dictionary hardcodes command names as strings. Adding a new com
 
 Fix those three and the bot won't hard-crash during a live demo.
 
+---
+---
+---
 
 NEW CHANGES RELATED TO THE CODE:
 # MC-Bot — Complete Issue Tracker & Feature Roadmap
