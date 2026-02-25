@@ -84,6 +84,7 @@ echo %BLUE%[STEP 2/4] Checking Docker configuration...%NC%
 echo.
 
 :: Check if Docker Desktop is installed
+:: TODO: install Docker Desktop if not installed if possible, do if from console
 where docker.exe >nul 2>&1
 if %errorlevel% neq 0 (
     echo %YELLOW%[WARN] Docker Desktop does not appear to be installed.%NC%
