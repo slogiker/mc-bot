@@ -211,11 +211,62 @@ class MinecraftInstaller:
                             await f.write(chunk)
                 
                 size_mb = os.path.getsize(jar_path) / (1024 * 1024)
-                return True, f"Downloaded Fabric {version} ({size_mb:.1f}MB)"
+                
+                # Fetch default fabric mods (performance optimization)
+                if callback:
+                    await callback(f"📥 Downloading recommended Fabric optimization mods...")
+                await self._download_default_fabric_mods(version, callback)
+                
+                return True, f"Downloaded Fabric {version} ({size_mb:.1f}MB) + Optimization Mods"
                 
         except Exception as e:
             logger.error(f"Fabric download failed: {e}")
             return False, str(e)
+            
+    async def _download_default_fabric_mods(self, version: str, callback) -> None:
+        """Download recommended Fabric optimization mods via Modrinth"""
+        # Lithium, FerriteCore, Krypton, Starlight, Chunky, Spark
+        mod_slugs = ["lithium", "ferrite-core", "krypton", "starlight", "chunky", "spark"]
+        mods_dir = os.path.join(self.server_dir, "mods")
+        os.makedirs(mods_dir, exist_ok=True)
+        
+        try:
+            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
+                for slug in mod_slugs:
+                    try:
+                        # Find compatible version
+                        api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
+                        params = {
+                            "loaders": '["fabric"]',
+                            "game_versions": f'["{version}"]'
+                        }
+                        async with session.get(api_url, params=params) as resp:
+                            if resp.status == 200:
+                                versions = await resp.json()
+                                if versions and len(versions) > 0:
+                                    # Get the primary file of the latest compatible version
+                                    latest = versions[0]
+                                    files = latest.get("files", [])
+                                    primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
+                                    
+                                    if primary_file:
+                                        download_url = primary_file["url"]
+                                        filename = primary_file["filename"]
+                                        file_path = os.path.join(mods_dir, filename)
+                                        
+                                        # Download the mod JAR
+                                        async with session.get(download_url) as mod_resp:
+                                            if mod_resp.status == 200:
+                                                async with aiofiles.open(file_path, 'wb') as f:
+                                                    async for chunk in mod_resp.content.iter_chunked(8192):
+                                                        await f.write(chunk)
+                                                if callback:
+                                                    await callback(f"✅ Added {filename}")
+                    except Exception as e:
+                        logger.warning(f"Failed to download mod {slug}: {e}")
+                        continue
+        except Exception as e:
+            logger.error(f"Error during default Fabric mods download: {e}")
     
     async def _download_forge(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """

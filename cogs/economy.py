@@ -28,7 +28,9 @@ class EconomyCog(commands.Cog):
 
     async def cog_load(self):
         # Spawn the word hunt loop directly instead of using an empty tasks.loop
-        self.hunt_task = asyncio.create_task(self.random_word_hunt_loop())
+        # THEORETICAL WORD HUNT FOR FUTURE:
+        # self.hunt_task = asyncio.create_task(self.random_word_hunt_loop())
+        pass
 
     def cog_unload(self):
         if hasattr(self, 'hunt_task') and self.hunt_task:
@@ -50,6 +52,11 @@ class EconomyCog(commands.Cog):
             await self.start_word_hunt()
 
     async def start_word_hunt(self):
+        # THEORETICAL IMPLEMENTATION NOTE:
+        # In a fully functional future version without addons, this method should pull
+        # a random Minecraft item/block word from a public JSON directory/API rather 
+        # than using a hardcoded list, making the game dynamic.
+        
         # Pick a word
         words = ["creeper", "diamond", "netherite", "elytra", "phantom", "redstone", "obsidian", "emerald"]
         self.current_word = random.choice(words)
@@ -129,57 +136,58 @@ class EconomyCog(commands.Cog):
             await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won, but is not linked to Discord! No coins awarded.","color":"yellow"}}')
             logger.warning(f"Word Hunt winner {player_name} has no Discord mapping.")
 
-    @app_commands.command(name="balance", description="Check your or another user's balance")
-    async def balance(self, interaction: discord.Interaction, user: discord.Member = None):
-        target = user or interaction.user
-        bot_config = config.load_bot_config()
-        bal = bot_config.get('economy', {}).get(str(target.id), 0)
-        
-        embed = discord.Embed(title=f"💰 Balance: {target.display_name}", description=f"**{bal}** coins", color=discord.Color.gold())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="pay", description="Pay another user")
-    async def pay(self, interaction: discord.Interaction, user: discord.Member, amount: int):
-        if amount <= 0:
-            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
-            return
-        if user.id == interaction.user.id:
-             await interaction.response.send_message("❌ You cannot pay yourself.", ephemeral=True)
-             return
-
-        bot_config = config.load_bot_config()
-        economy = bot_config.get('economy', {})
-        sender_id = str(interaction.user.id)
-        receiver_id = str(user.id)
-        
-        async with self.economy_lock:
-            sender_bal = economy.get(sender_id, 0)
-            if sender_bal < amount:
-                await interaction.response.send_message(f"❌ Insufficient funds. You have {sender_bal} coins.", ephemeral=True)
-                return
-                
-            economy[sender_id] = sender_bal - amount
-            economy[receiver_id] = economy.get(receiver_id, 0) + amount
-            bot_config['economy'] = economy
-            config.save_bot_config(bot_config)
-        
-        await interaction.response.send_message(f"✅ Paid **{amount}** coins to {user.mention}.", ephemeral=True)
-        try:
-            await user.send(f"💸 You received **{amount}** coins from {interaction.user.display_name}!")
-        except: pass
-
-    @app_commands.command(name="economy_set", description="Set a user's balance (Admin)")
-    @has_role("economy_admin")
-    async def set_balance(self, interaction: discord.Interaction, user: discord.Member, amount: int):
-             
-        async with self.economy_lock:
-            bot_config = config.load_bot_config()
-            economy = bot_config.get('economy', {})
-            economy[str(user.id)] = amount
-            bot_config['economy'] = economy
-            config.save_bot_config(bot_config)
-        
-        await interaction.response.send_message(f"✅ Set {user.mention}'s balance to **{amount}**.", ephemeral=True)
+    # --- ECONOMY DISABLED ---
+    # @app_commands.command(name="balance", description="Check your or another user's balance")
+    # async def balance(self, interaction: discord.Interaction, user: discord.Member = None):
+    #     target = user or interaction.user
+#         bot_config = config.load_bot_config()
+#         bal = bot_config.get('economy', {}).get(str(target.id), 0)
+#         
+#         embed = discord.Embed(title=f"💰 Balance: {target.display_name}", description=f"**{bal}** coins", color=discord.Color.gold())
+#         await interaction.response.send_message(embed=embed, ephemeral=True)
+# 
+#     # @app_commands.command(name="pay", description="Pay another user")
+#     # async def pay(self, interaction: discord.Interaction, user: discord.Member, amount: int):
+#     #     if amount <= 0:
+#     #         await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+#     #         return
+#     #     if user.id == interaction.user.id:
+#     #          await interaction.response.send_message("❌ You cannot pay yourself.", ephemeral=True)
+#     #          return
+#     # 
+#     #     bot_config = config.load_bot_config()
+#     #     economy = bot_config.get('economy', {})
+#     #     sender_id = str(interaction.user.id)
+#     #     receiver_id = str(user.id)
+#     #     
+#     #     async with self.economy_lock:
+#     #         sender_bal = economy.get(sender_id, 0)
+#     #         if sender_bal < amount:
+#     #             await interaction.response.send_message(f"❌ Insufficient funds. You have {sender_bal} coins.", ephemeral=True)
+#     #             return
+#     #             
+#     #         economy[sender_id] = sender_bal - amount
+#     #         economy[receiver_id] = economy.get(receiver_id, 0) + amount
+#     #         bot_config['economy'] = economy
+#     #         config.save_bot_config(bot_config)
+#     #     
+#     #     await interaction.response.send_message(f"✅ Paid **{amount}** coins to {user.mention}.", ephemeral=True)
+#     #     try:
+#     #         await user.send(f"💸 You received **{amount}** coins from {interaction.user.display_name}!")
+#     #     except: pass
+# 
+#     # @app_commands.command(name="economy_set", description="Set a user's balance (Admin)")
+#     # @has_role("economy_admin")
+#     # async def set_balance(self, interaction: discord.Interaction, user: discord.Member, amount: int):
+#     #          
+#     #     async with self.economy_lock:
+#     #         bot_config = config.load_bot_config()
+#     #         economy = bot_config.get('economy', {})
+#     #         economy[str(user.id)] = amount
+#     #         bot_config['economy'] = economy
+#     #         config.save_bot_config(bot_config)
+#     #     
+#     #     await interaction.response.send_message(f"✅ Set {user.mention}'s balance to **{amount}**.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(EconomyCog(bot))

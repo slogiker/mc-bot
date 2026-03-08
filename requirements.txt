@@ -11,4 +11,3 @@ filelock
 nbtlib
 
 pyonesend
-xai-sdk
