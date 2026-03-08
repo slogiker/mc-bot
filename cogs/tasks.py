@@ -97,8 +97,11 @@ class Tasks(commands.Cog):
             
             # If intentionally stopped, ensure status is DND/Idle
             elif self.bot.server.is_intentionally_stopped():
-                 # We don't want to override if already set, but just to be safe
-                 pass 
+                 if self.bot.status != discord.Status.dnd:
+                     await self.bot.change_presence(
+                        activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
+                        status=discord.Status.dnd
+                     ) 
 
         except Exception as e:
             logger.error(f"Error in crash_check: {e}")

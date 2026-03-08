@@ -7,7 +7,9 @@ The project runs entirely inside a single Docker container, managing the Minecra
 ## Features
 
 - **Discord Control Panel:** Start, stop, and restart the server using Discord commands.
+- **Dedicated Command Channel:** To keep your main chat clean, the bot will silently block and delete its own slash-commands if used outside the designated `#command` channel.
 - **Built-in Tunneling:** Integrated Playit.gg support exposes the server to the internet without manual port forwarding.
+- **Dynamic Presence:** The bot's Discord status (🟢 Online, 🌙 Idle, 🔴 DND) accurately reflects if the Minecraft server is online, starting/stopping, or fully offline.
 - **Log Streaming:** Forwards live server console logs, chat messages, and player events (joins, leaves, deaths) to Discord channels.
 - **Automated Backups:** Handles scheduled daily backups and manual backup triggers.
 - **Role-based Permissions:** Restricts server management commands to authorized users.

@@ -171,57 +171,49 @@ class ModsCog(commands.Cog):
             logger.error(f"Modrinth search failed: {e}")
             await interaction.followup.send("❌ Error searching Modrinth.")
 
-    @app_commands.command(name="mods_manage", description="View and delete installed mods or plugins")
-    @has_role("mods")
-    async def mods_manage(self, interaction: discord.Interaction):
-        # Determine if we use mods/ or plugins/
-        folder_name = "plugins"
-        folder_path = os.path.join(config.SERVER_DIR, "plugins")
-        
-        if not os.path.exists(folder_path):
-            folder_name = "mods"
-            folder_path = os.path.join(config.SERVER_DIR, "mods")
-            
-        if not os.path.exists(folder_path):
-             await interaction.response.send_message("❌ Neither a `mods/` nor `plugins/` folder exists yet.", ephemeral=True)
-             return
-             
-        try:
-            files = [f for f in os.listdir(folder_path) if f.endswith('.jar')]
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Cannot read library folder: {e}", ephemeral=True)
-            return
 
-        if not files:
-            await interaction.response.send_message(f"ℹ️ No `.jar` files found in the `{folder_name}/` directory.", ephemeral=True)
-            return
 
-        view = InstalledModsView(files, folder_path)
-        embed = discord.Embed(
-            title=f"📂 Installed {folder_name.capitalize()}",
-            description=f"Found **{len(files)}** items.\nSelect a file below to permanently delete it from the server.",
-            color=discord.Color.red()
-        )
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    @app_commands.command(name="mods_update", description="Update all installed mods to match a Minecraft version")
+    @app_commands.command(name="update", description="Holistic server upgrade: downloads the latest JAR for the target version and updates all mods")
     @app_commands.describe(version="The target Minecraft version (e.g., 1.21.1)")
     @has_role("mods")
-    async def mods_update(self, interaction: discord.Interaction, version: str):
+    async def update_everything(self, interaction: discord.Interaction, version: str):
         await interaction.response.defer(ephemeral=False)
-        msg_obj = await interaction.followup.send(f"🔄 Starting Universal Mod Updater for target version: `{version}`...")
+        msg_obj = await interaction.followup.send(f"🔄 **Starting Universal Server Upgrader** for target version: `{version}`...")
         
         async def updater_callback(status_text):
             try:
-                # Append to message or edit (simplest is edit if small, or keep a rolling log)
-                await msg_obj.edit(content=f"🔄 **Mod Updater ({version})**\n{status_text}")
+                await msg_obj.edit(content=f"🔄 **Upgrading to {version}...**\n{status_text}")
             except Exception:
                 pass
                 
+        # 1. Server Installer Phase
+        await updater_callback("🛠️ Checking server platform...")
+        from src.mc_installer import mc_installer
+        
+        # We need to guess the platform based on folder structure
+        platform = "vanilla"
+        if os.path.exists(os.path.join(config.SERVER_DIR, "plugins")):
+            platform = "paper"
+        elif getattr(config, 'INSTALLED_VERSION', '').lower().find('fabric') != -1 or os.path.exists(os.path.join(config.SERVER_DIR, "mods")):
+            platform = "fabric"
+            
+        await updater_callback(f"🛠️ Detected platform `{platform}`. Fetching core server JAR...")
+        
+        success, install_msg = await mc_installer.download_server(platform, version, updater_callback)
+        if not success:
+             await msg_obj.edit(content=f"❌ **Server Core Upgrade Failed:** {install_msg}")
+             return
+             
+        # Cache the new version
+        config.update_dynamic_config({"installed_version": f"{platform}-{version}"})
+        
+        # 2. Mod Updater Phase
+        await updater_callback("✅ Server Core updated. Initializing Mod/Plugin Upgrader...")
         from src.mod_updater import ModUpdater
         updater = ModUpdater(callback=updater_callback)
-        
         await updater.update_all(game_version=version)
+        
+        await msg_obj.reply(f"✅ **Update Complete!** The server core and all compatible mods/plugins have been updated to `{version}`.\nYou can now `/start` the server.")
 
 
 async def setup(bot):

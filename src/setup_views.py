@@ -42,6 +42,7 @@ class SetupState:
         self.online_mode: bool = True
         self.view_distance: int = 16
         self.seed: str = ""
+        self.plugins: str = ""
         self.current_step: int = 0
         
     def to_dict(self) -> Dict[str, Any]:
@@ -56,7 +57,8 @@ class SetupState:
             'view_distance': self.view_distance,
             'seed': self.seed,
             'max_ram': self.ram,
-            'min_ram': max(1, self.ram // 2)
+            'min_ram': max(1, self.ram // 2),
+            'plugins': self.plugins
         }
 
 
@@ -357,6 +359,41 @@ class CustomNumberModal(ui.Modal):
                 ephemeral=True
             )
 
+class PluginsModal(ui.Modal, title="Plugins & Mods"):
+    """Modal for entering Modrinth project slugs"""
+    def __init__(self, current_value: str):
+        super().__init__()
+        self.value: Optional[str] = None
+        
+        self.plugins_input = ui.TextInput(
+            label="Modrinth Slugs (Comma-separated)",
+            style=discord.TextStyle.paragraph,
+            placeholder="e.g. essentials, clear-lagg, vault\nLeave empty to skip.",
+            default=current_value,
+            max_length=2000,
+            required=False
+        )
+        self.add_item(self.plugins_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        self.value = self.plugins_input.value.strip()
+        await interaction.response.defer()
+
+class PluginsButton(ui.Button):
+    """Button to set plugins"""
+    def __init__(self):
+        super().__init__(label="Enter Plugins/Mods", style=discord.ButtonStyle.primary, emoji="🧩")
+    
+    async def callback(self, interaction: discord.Interaction):
+        view: SetupView = self.view
+        modal = PluginsModal(view.state.plugins)
+        await interaction.response.send_modal(modal)
+        await modal.wait()
+        if modal.value is not None:
+            view.state.plugins = modal.value
+            # Explicitly edit message to show updated plugins list
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+
 
 class SetupView(ui.View):
     """Main view controller for multi-step setup"""
@@ -368,6 +405,7 @@ class SetupView(ui.View):
         "Seed",
         "Max Players",
         "Advanced Settings",
+        "Plugins/Mods",
         "Confirmation"
     ]
     
@@ -480,6 +518,26 @@ class SetupView(ui.View):
             )
             return embed, [self._back_button(), self._configure_advanced_button(), self._next_button()]
             
+        elif step == 6:  # Plugins/Mods
+            embed = discord.Embed(
+                title="🔧 Minecraft Server Setup",
+                description=f"**{progress}** - Plugins & Mods\nYou can enter a comma-separated list of Modrinth project slugs (e.g. `essentials, vault, clear-lagg`) to auto-download them during setup.",
+                color=discord.Color.blue()
+            )
+            
+            display_plugins = self.state.plugins
+            if not display_plugins:
+                display_plugins = "*None*"
+            elif len(display_plugins) > 1000:
+                display_plugins = display_plugins[:1000] + "... (truncated)"
+                
+            embed.add_field(
+                name="Items to Install",
+                value=f"```\n{display_plugins}\n```",
+                inline=False
+            )
+            return embed, [PluginsButton(), self._back_button(), self._next_button()]
+            
         else:  # Confirmation (step 6)
             embed = discord.Embed(
                 title="✅ Ready to Install",
@@ -505,7 +563,8 @@ class SetupView(ui.View):
                     f"**Max Players:** {self.state.max_players}\n"
                     f"**RAM:** {self.state.ram} GB\n"
                     f"**Whitelist:** {'Enabled' if self.state.whitelist else 'Disabled'}\n"
-                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}"
+                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}\n"
+                    f"**Plugins/Mods:** {len(self.state.plugins.split(',')) if self.state.plugins else '0'} specified"
                 ),
                 inline=False
             )
@@ -661,7 +720,7 @@ class SetupView(ui.View):
             await self._save_config_to_file(version_update)
             
             # STEP 4.5: Update Mods/Plugins to match new Version
-            embed.description = "**Step 4.5/5:** Updating installed mods/plugins..."
+            embed.description = "**Step 4.5/5:** Processing Mods/Plugins..."
             await message.edit(embed=embed)
             
             from src.mod_updater import ModUpdater
@@ -675,6 +734,50 @@ class SetupView(ui.View):
                     
             updater = ModUpdater(callback=updater_callback)
             loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
+            
+            # Install specific plugins if provided
+            if setup_config.get('plugins'):
+                plugin_slugs = [slug.strip() for slug in setup_config['plugins'].split(',') if slug.strip()]
+                if plugin_slugs:
+                    await updater_callback(f"Fetching {len(plugin_slugs)} user-specified plugins...")
+                    for slug in plugin_slugs:
+                        try:
+                            # Use ModUpdater's search or direct DL. 
+                            # ModUpdater doesn't have a direct 'download by slug' method exposed easily for new installs,
+                            # so we'll simulate passing it to the config and letting update_all handle it, 
+                            # OR we can manually fetch them. We'll add them to the mod_updater's config.
+                            
+                            # Easiest way: just call the API to find the versions
+                            await updater_callback(f"Downloading '{slug}'...")
+                            project = await updater.client.get_project(slug)
+                            if project:
+                                versions = await updater.client.get_project_versions(
+                                    project.id, 
+                                    game_versions=[setup_config['version']], 
+                                    loaders=[loader_override]
+                                )
+                                if versions:
+                                    # Get primary file of latest valid version
+                                    version = versions[0]
+                                    primary_file = next((f for f in version.files if f.primary), version.files[0])
+                                    
+                                    # Create mods dir if missing
+                                    import os
+                                    from src.config import config as app_config
+                                    mods_dir = os.path.join(app_config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
+                                    os.makedirs(mods_dir, exist_ok=True)
+                                    
+                                    # Download
+                                    filepath = os.path.join(mods_dir, primary_file.filename)
+                                    async with aiohttp.ClientSession() as session:
+                                        async with session.get(primary_file.url) as resp:
+                                            with open(filepath, 'wb') as f:
+                                                f.write(await resp.read())
+                                    logger.info(f"Downloaded plugin {project.title} to {filepath}")
+                        except Exception as e:
+                            logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
+            
+            # Then run the standard update_all to catch any existing
             await updater.update_all(game_version=setup_config['version'], loader=loader_override)
             
             # STEP 5: Start server

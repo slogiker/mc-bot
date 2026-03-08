@@ -59,7 +59,7 @@ class LogDispatcher:
                     while self._running:
                         line = await f.readline()
                         if not line:
-                            await asyncio.sleep(0.5)
+                            await asyncio.sleep(0.1)
                             
                             # Check if the file was rotated/truncated (size became smaller than current position)
                             current_pos = await f.tell()

@@ -49,6 +49,8 @@ MC-Bot is a self-hosted Discord bot that manages a Minecraft Java server running
 - Everything runs in one Docker container (bot + MC server via tmux) to keep networking simple — RCON connects to `127.0.0.1` and is never exposed to the host.
 - Config is split: `bot_config.json` is machine state (channel IDs, player lists), `user_config.json` is human preferences (RAM, schedules, role permissions).
 - Log streaming is centralized through `LogDispatcher` — one `docker logs -f` subprocess fans out to all subscribers via `asyncio.Queue`.
+- **Command Isolation:** The bot enforces slash commands to only be run in the designated `#command` channel (with ephemeral warnings for violations) to keep the main chat clean.
+- **Dynamic Presence:** The Bot's status natively reflects the Docker process (Online, Idle/Starting, Offline/DND).
 
 ---
 
@@ -230,15 +232,17 @@ Step 3: Difficulty
 Step 4: Seed         (optional custom or random)
 Step 5: Max Players
 Step 6: Advanced     (RAM, view distance, whitelist, online mode)
-Step 7: Confirm → Install
+Step 7: Plugins/Mods (Modrinth project slugs to auto-download)
+Step 8: Confirm → Install
 
 Install flow:
   1. SetupHelper.ensure_setup()     → Discord roles & channels
   2. mc_installer.download_server() → Download JAR
   3. mc_installer.accept_eula()     → Write eula.txt
   4. mc_installer.configure_server_properties()
-  5. server.start()
-  6. ServerInfoManager.update_info()
+  5. ModUpdater                     → Fetches specific plugins, updates existing
+  6. server.start()
+  7. ServerInfoManager.update_info()
 ```
 
 ---
@@ -379,13 +383,13 @@ config.get(key, default=None)                  → safe attribute getter
 
 ### Administration
 
-| Command                     | Permission      | Description                                                                                            |
-| --------------------------- | --------------- | ------------------------------------------------------------------------------------------------------ |
-| `/setup`                    | server admin    | Full interactive multi-step install wizard. Creates channels, downloads server, configures everything. |
-| `/sync`                     | `sync`          | Re-syncs slash commands to guild.                                                                      |
-| `/backup_now [name]`        | `backup_now`    | Triggers immediate backup. Cooldown: 5min.                                                             |
-| `/logs [lines]`             | `logs`          | Shows last N lines from `docker logs`. Sent to log channel.                                            |
-| `/whitelist_add <username>` | `whitelist_add` | RCON `whitelist add` + `whitelist reload`.                                                             |
+| Command                     | Permission      | Description                                                                                                             |
+| --------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `/setup`                    | server admin    | Full interactive multi-step install wizard. Creates channels, downloads server, fetches plugins, configures everything. |
+| `/sync`                     | `sync`          | Re-syncs slash commands to guild.                                                                                       |
+| `/backup_now [name]`        | `backup_now`    | Triggers immediate backup. Cooldown: 5min.                                                                              |
+| `/logs [lines]`             | `logs`          | Shows last N lines from `docker logs`. Sent to log channel.                                                             |
+| `/whitelist_add <username>` | `whitelist_add` | RCON `whitelist add` + `whitelist reload`.                                                                              |
 
 ### Backup
 

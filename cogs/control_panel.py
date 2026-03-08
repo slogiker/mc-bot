@@ -129,18 +129,34 @@ class ControlPanelCog(commands.Cog):
         channel = self.bot.get_channel(int(channel_id))
         if not channel: return
 
-        embed = discord.Embed(
-            title="🎛️ Server Control Panel",
-            description="Use the buttons below to manage the Minecraft Server.",
-            color=0x5865F2
-        )
-        
-        status_text = "🟢 **Online**" if self.bot.server.is_running() else "🔴 **Offline**"
-        embed.add_field(name="Current Status", value=status_text)
-        from datetime import datetime
-        embed.set_footer(text=f"Auto-updates • Last checked: {datetime.now().strftime('%H:%M:%S')}")
+        import os
+        # Check if setup is complete by checking for server.jar
+        server_jar_path = os.path.join(config.SERVER_DIR, "server.jar")
+        if not os.path.exists(server_jar_path):
+            embed = discord.Embed(
+                title="👋 Welcome to MC-Bot!",
+                description=(
+                    "This channel is for users to give the bot commands.\n"
+                    "*(The bot will **not** listen to commands in other channels)*\n\n"
+                    "**First thing you must do is `/setup`** to setup the Minecraft server itself."
+                ),
+                color=0x5865F2
+            )
+            # Send an empty view to remove any buttons
+            view = ui.View()
+        else:
+            embed = discord.Embed(
+                title="🎛️ Server Control Panel",
+                description="Use the buttons below to manage the Minecraft Server.",
+                color=0x5865F2
+            )
+            
+            status_text = "🟢 **Online**" if self.bot.server.is_running() else "🔴 **Offline**"
+            embed.add_field(name="Current Status", value=status_text)
+            from datetime import datetime
+            embed.set_footer(text=f"Auto-updates • Last checked: {datetime.now().strftime('%H:%M:%S')}")
 
-        view = ControlPanelView(self.bot)
+            view = ControlPanelView(self.bot)
 
         # Try to find the existing message or send a new one
         if self.message_id:

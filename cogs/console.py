@@ -63,8 +63,8 @@ class ConsoleCog(commands.Cog):
                 # Batch buffer for messages
                 batch = []
                 last_send = asyncio.get_running_loop().time()
-                batch_interval = 2.0  # Send every 2 seconds or when batch is full
-                max_batch_size = 10  # Max messages per batch
+                batch_interval = 1.0  # Send every 1 second or when batch is full
+                max_batch_size = 5  # Max messages per batch
 
                 while not self.stop_event.is_set():
                     try:
@@ -87,7 +87,19 @@ class ConsoleCog(commands.Cog):
                             batch.append(formatted)
                             
                             # --- Player tracking for presence ---
-                            if "joined the game" in msg:
+                            if "Starting minecraft server version" in msg:
+                                await self.bot.change_presence(
+                                    activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
+                                    status=discord.Status.idle
+                                )
+                            elif "Done (" in msg and "! For help, type" in msg:
+                                bot_config = config.load_bot_config()
+                                current_players = bot_config.get('online_players', [])
+                                await self.bot.change_presence(
+                                    activity=discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft: {len(current_players)} Players"),
+                                    status=discord.Status.online
+                                )
+                            elif "joined the game" in msg:
                                 match = re.match(r'^(\w+) joined the game', msg)
                                 if match:
                                     player_name = match.group(1)
@@ -97,7 +109,11 @@ class ConsoleCog(commands.Cog):
                                         current_players.append(player_name)
                                         bot_config['online_players'] = current_players
                                         config.save_bot_config(bot_config)
-                                    await self.update_presence(len(current_players))
+                                    
+                                    await self.bot.change_presence(
+                                        activity=discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft: {len(current_players)} Players"),
+                                        status=discord.Status.online
+                                    )
                                     await self.send_event_notification("join", player_name)
                                 
                             elif "left the game" in msg:
@@ -110,7 +126,11 @@ class ConsoleCog(commands.Cog):
                                         current_players.remove(player_name)
                                         bot_config['online_players'] = current_players
                                         config.save_bot_config(bot_config)
-                                    await self.update_presence(len(current_players))
+                                        
+                                    await self.bot.change_presence(
+                                        activity=discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft: {len(current_players)} Players"),
+                                        status=discord.Status.online
+                                    )
                                     await self.send_event_notification("leave", player_name)
                             
                             # Death detection (various death messages)

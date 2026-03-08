@@ -40,6 +40,12 @@ class Management(commands.Cog):
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
+            
+            # Update explicit presence
+            await self.bot.change_presence(
+                activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
+                status=discord.Status.idle
+            )
         else:
             embed = discord.Embed(
                 title="❌ Failed to Start Server",
@@ -58,6 +64,11 @@ class Management(commands.Cog):
         embed = discord.Embed(description="🛑 Stopping server...", color=0xFEE75C)
         await interaction.followup.send(embed=embed, ephemeral=True)
         
+        await self.bot.change_presence(
+            activity=discord.Activity(type=discord.ActivityType.playing, name="Server Stopping..."),
+            status=discord.Status.idle
+        )
+        
         success, message = await self.bot.server.stop()
         if success:
             embed = discord.Embed(
@@ -68,6 +79,12 @@ class Management(commands.Cog):
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
+            
+            # Update explicit presence
+            await self.bot.change_presence(
+                activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
+                status=discord.Status.dnd
+            )
         else:
             embed = discord.Embed(
                 title="❌ Failed to Stop Server",
@@ -86,6 +103,11 @@ class Management(commands.Cog):
         embed = discord.Embed(description="🔄 Restarting server...", color=0xFEE75C)
         await interaction.followup.send(embed=embed, ephemeral=True)
         
+        await self.bot.change_presence(
+            activity=discord.Activity(type=discord.ActivityType.playing, name="Server Restarting..."),
+            status=discord.Status.idle
+        )
+        
         success, message = await self.bot.server.restart()
         if success:
             embed = discord.Embed(
@@ -96,6 +118,12 @@ class Management(commands.Cog):
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
+            
+            # Update explicit presence (will be eventually overidden by the log monitor but good for instant feedback)
+            await self.bot.change_presence(
+                activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
+                status=discord.Status.idle
+            )
         else:
             embed = discord.Embed(
                 title="❌ Failed to Restart Server",

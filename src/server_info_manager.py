@@ -106,14 +106,28 @@ class ServerInfoManager:
         return config.get('installed_version', 'Unknown') 
 
     def _get_seed(self) -> str:
-        # Read seed from server.properties
+        # 1. Try to read seed from server.properties first
         try:
             from src.mc_manager import get_server_properties
             props = get_server_properties()
-            if props:
-                return props.get('level-seed', 'Random/Hidden')
+            if props and props.get('level-seed'):
+                return props.get('level-seed')
         except Exception:
             pass
+            
+        # 2. If not defined, it was generated randomly. Read from world/level.dat using nbtlib.
+        try:
+            import os
+            import nbtlib
+            level_dat_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'level.dat')
+            if os.path.exists(level_dat_path):
+                nbt_file = nbtlib.load(level_dat_path)
+                seed = nbt_file.root['Data'].get('RandomSeed')
+                if seed is not None:
+                    return str(int(seed))
+        except Exception as e:
+            logger.debug(f"Failed to read seed from level.dat: {e}")
+            
         return 'Random/Hidden'
 
     def _get_spawn(self) -> Optional[str]:

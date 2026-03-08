@@ -31,15 +31,15 @@ echo ""
 # 1. Check & Install Dependencies
 echo -e "${BLUE}[1/4] Checking dependencies...${NC}"
 
-if ! command -v git &> /dev/null; then
-    echo -e "${YELLOW}[WARN] Git is not installed.${NC}"
-    echo -e "${BLUE}Installing Git...${NC}"
+if ! command -v git &> /dev/null || ! command -v curl &> /dev/null || ! command -v wget &> /dev/null || ! command -v jq &> /dev/null || ! command -v unzip &> /dev/null || ! command -v tar &> /dev/null; then
+    echo -e "${YELLOW}[WARN] Missing some required base packages.${NC}"
+    echo -e "${BLUE}Installing required packages (git, curl, wget, jq, unzip, tar)...${NC}"
     if command -v apt-get &> /dev/null; then
-        sudo apt-get update && sudo apt-get install -y git
+        sudo apt-get update && sudo apt-get install -y git curl wget jq unzip tar
     elif command -v apk &> /dev/null; then
-        sudo apk add git
+        sudo apk add git curl wget jq unzip tar
     else
-        echo -e "${RED}[ERROR] Could not install Git automatically. Please install it manually.${NC}"
+        echo -e "${RED}[ERROR] Could not install packages automatically. Please install them manually.${NC}"
         exit 1
     fi
 fi

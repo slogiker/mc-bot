@@ -202,31 +202,31 @@ class Info(commands.Cog):
 
                 try:
                     players_raw = await rcon_cmd("list")
-                    # Parse: "There are 2 of a max of 20 players online: player1, player2"
+                    
                     if "players online:" in players_raw:
                         parts = players_raw.split("players online:")
-                        count_part = parts[0].strip()
-                        players_part = parts[1].strip() if len(parts) > 1 else ""
+                        counts_str = parts[0]
                         
-                        # Extract count
                         import re
-                        match = re.search(r'(\d+) of a max of (\d+)', count_part)
-                        if match:
-                            current = match.group(1)
-                            max_players = match.group(2)
-                            
-                            if players_part and players_part != "There are no players online.":
-                                player_names = [p.strip() for p in players_part.split(',')]
-                                player_list = "\n".join([f"👤 {name}" for name in player_names])
-                                embed.add_field(name="Players", value=f"**{current}/{max_players}:**\n{player_list}", inline=False)
-                            else:
-                                embed.add_field(name="Players", value=f"{current}/{max_players}", inline=False)
+                        numbers = re.findall(r'\d+', counts_str)
+                        if len(numbers) >= 2:
+                            current = numbers[-2] # e.g., "There are 2 of a max of 20" -> "2", "20"
+                            max_players = numbers[-1]
                         else:
-                            embed.add_field(name="Players", value=players_raw, inline=False)
+                            current = "?"
+                            max_players = "?"
+                        
+                        players_clean = parts[1].strip() if len(parts) > 1 else ""
+                        if players_clean and players_clean != "There are no players online.":
+                            names = [n.strip() for n in players_clean.split(",")]
+                            player_list = "\n".join([f"👤 {n}" for n in names if n])
+                            embed.add_field(name="Players", value=f"**{current}/{max_players}**\n{player_list}", inline=False)
+                        else:
+                            embed.add_field(name="Players", value=f"{current}/{max_players}", inline=False)
                     else:
                         embed.add_field(name="Players", value=players_raw, inline=False)
-                except:
-                 embed.add_field(name="Players", value="Unknown", inline=False)
+                except Exception as e:
+                    embed.add_field(name="Players", value="Unknown", inline=False)
             else:
                 embed.add_field(name="Status", value="🔴 Offline", inline=True)
             

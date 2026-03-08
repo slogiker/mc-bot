@@ -54,17 +54,11 @@ services:
 
   # -------------------------------------------------------------------------------------------------
   # OPTIONAL DEPENDENCY: Playit.gg
-  # The official playitcloud/playit:0.15.19 image is strictly linux/amd64.
-  # To avoid 'exec format error' on linux/arm64 (e.g. Raspberry Pi), 
-  # this service is disabled by default. Uncomment if you are on amd64 and need playit.
   # -------------------------------------------------------------------------------------------------
-  # playit:
-  #   image: playitcloud/playit:0.15.19
-  #   container_name: mc-bot-playit
-  #   restart: unless-stopped
-  #   mem_limit: 256m
-  #   environment:
-  #     - SECRET_KEY=${PLAYIT_SECRET_KEY}
-  #   network_mode: "service:mc-bot" # Share network namespace for localhost access if needed, OR explicit link
-  #   depends_on:
-  #     - mc-bot
+  playit:
+    image: ghcr.io/playit-cloud/playit-agent:0.17
+    container_name: mc-bot-playit
+    restart: unless-stopped
+    network_mode: host
+    environment:
+    - SECRET_KEY=${PLAYIT_SECRET_KEY}

@@ -96,6 +96,28 @@ class MinecraftBot(commands.Bot):
         """Called during bot startup - load extensions but DON'T sync yet"""
         self.tree.on_error = self.on_tree_error
         
+        # Global command channel check
+        @self.tree.interaction_check
+        async def restrict_command_channel(interaction: discord.Interaction) -> bool:
+            # We only restrict actual slash commands
+            if interaction.type != discord.InteractionType.application_command:
+                return True
+                
+            cmd_channel_id = config.COMMAND_CHANNEL_ID
+            if not cmd_channel_id:
+                return True # If it's not setup yet, allow anywhere (or setup command wouldn't work)
+                
+            # Allow /setup to be run anywhere by admins to fix channels if broken
+            if interaction.command and interaction.command.name == "setup":
+                return True
+                
+            if interaction.channel_id != int(cmd_channel_id):
+                error_msg = f"❌ Commands can only be used in <#{cmd_channel_id}>."
+                await interaction.response.send_message(error_msg, ephemeral=True)
+                return False
+                
+            return True
+            
         logger.info("=== Bot Startup: Loading Extensions ===")
         # Load cogs - wrap os.listdir for async
         try:
