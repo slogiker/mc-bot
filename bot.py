@@ -249,6 +249,20 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user (Ctrl+C)")
-        # Shutdown handler already called via signal
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
+        # Print readable crash message to terminal
+        import traceback
+        print("\n" + "=" * 60)
+        print("  MC-BOT CRASHED - Debug Information")
+        print("=" * 60)
+        print(f"  Error: {type(e).__name__}: {e}")
+        print("-" * 60)
+        traceback.print_exc()
+        print("=" * 60)
+    finally:
+        # Keep terminal open on both crash and normal shutdown
+        try:
+            input("\nPress Enter to close...")
+        except EOFError:
+            pass  # Running in non-interactive mode (Docker, pipe, etc.)

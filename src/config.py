@@ -141,7 +141,6 @@ class Config:
             try:
                 import urllib.request
                 with urllib.request.urlopen("http://ip-api.com/json/", timeout=3) as response:
-                    import json
                     self.TIMEZONE = json.loads(response.read().decode()).get('timezone', 'UTC')
             except Exception:
                 self.TIMEZONE = 'UTC'

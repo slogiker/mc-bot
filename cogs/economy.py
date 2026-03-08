@@ -10,7 +10,7 @@ from src.utils import rcon_cmd, has_role
 from src.logger import logger
 from src.config import config
 
-COLORS = [discord.Color.blue(), discord.Color.green(), discord.Color.gold(), discord.Color.purple()]
+COLORS = [discord.Color.blue(), discord.Color.green(), discord.Color.gold(), discord.Color.purple()]  # Currently unused, kept for future UI enhancements
 
 class EconomyCog(commands.Cog):
     """
@@ -27,20 +27,12 @@ class EconomyCog(commands.Cog):
         self.economy_lock = asyncio.Lock()
 
     async def cog_load(self):
-        self.word_hunt_task.start()
+        # Spawn the word hunt loop directly instead of using an empty tasks.loop
+        self.hunt_task = asyncio.create_task(self.random_word_hunt_loop())
 
     def cog_unload(self):
-        self.word_hunt_task.cancel()
-
-    @tasks.loop(minutes=45) 
-    async def word_hunt_task(self):
-        pass
-
-    @word_hunt_task.before_loop
-    async def before_word_hunt(self):
-        await self.bot.wait_until_ready()
-        # Start the actual random loop logic
-        self.bot.loop.create_task(self.random_word_hunt_loop())
+        if hasattr(self, 'hunt_task') and self.hunt_task:
+            self.hunt_task.cancel()
 
     async def random_word_hunt_loop(self):
         while not self.bot.is_closed():

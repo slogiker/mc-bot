@@ -109,9 +109,11 @@ class Management(commands.Cog):
     @has_role("bot_restart")
     async def api_bot_restart(self, interaction: discord.Interaction):
         import sys
-        import os
-        await interaction.response.send_message("🔄 Restarting bot...", ephemeral=True)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        await interaction.response.send_message("Restarting bot...", ephemeral=True)
+        # Use sys.exit instead of os.execv - Docker restart policy handles the actual restart
+        # os.execv replaces PID 1 in Docker which can cause the container to exit uncleanly
+        await self.bot.close()
+        sys.exit(0)
 
 
 async def setup(bot):

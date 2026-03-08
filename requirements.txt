@@ -9,7 +9,6 @@ aiohttp
 
 filelock
 nbtlib
-mcrcon
 
 pyonesend
 xai-sdk

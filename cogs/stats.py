@@ -19,11 +19,15 @@ class StatsCog(commands.Cog):
         Fetches UUID from Mojang API.
         Used for legitimate (premium) accounts to get accurate skins and IDs.
         """
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f'https://api.mojang.com/users/profiles/minecraft/{username}') as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data.get('id'), data.get('name')
+        timeout = aiohttp.ClientTimeout(total=10)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f'https://api.mojang.com/users/profiles/minecraft/{username}') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data.get('id'), data.get('name')
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            logger.warning(f"Mojang API request failed for '{username}': {e}")
         return None, None
 
     async def get_offline_uuid(self, username: str):

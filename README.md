@@ -38,7 +38,12 @@ A Linux host (Ubuntu/Debian) with Docker installed is recommended.
 
 ## Installation (Windows)
 
-A preliminary Windows setup script (`install\install.bat`) is provided, but **it is currently a work in progress**. It attempts to automatically configure WSL2 and Docker, but you may encounter bugs if you attempt to use it natively on Windows.
+Windows native installation is **not supported yet**. The `install\install.bat` script will display setup instructions for using WSL (Windows Subsystem for Linux) as a workaround. To install on Windows:
+
+1. Open PowerShell as Admin and run `wsl --install`
+2. Reboot your computer
+3. Open your WSL terminal (Ubuntu)
+4. Follow the Linux installation steps above
 
 ## Maintenance and Updates
 

@@ -4,6 +4,7 @@ Multi-step form using Discord Select menus and Buttons for beautiful UX
 """
 
 import discord
+import asyncio
 from discord import ui
 from typing import Optional, Dict, Any
 from src.mc_installer import mc_installer
@@ -571,7 +572,7 @@ class SetupView(ui.View):
     
     async def _start_installation(self, interaction: discord.Interaction):
         """Start the installation process in background"""
-        import asyncio
+        # asyncio is now imported at module level
         
         # Create initial progress embed
         embed = discord.Embed(
@@ -651,8 +652,11 @@ class SetupView(ui.View):
             
             await mc_installer.configure_server_properties(setup_config)
             
-            # Save resolved version to config
-            version_update = {'installed_version': setup_config['version']}
+            # Save resolved version and platform to config
+            version_update = {
+                'installed_version': setup_config['version'],
+                'installed_platform': setup_config['platform'],
+            }
             config.update_dynamic_config(version_update)
             await self._save_config_to_file(version_update)
             

@@ -42,7 +42,7 @@ class SetupHelper:
                 updates['player_role_id'] = role.id
 
         # updates['roles'] is no longer needed as permissions are in user_config by name
-        updates['guild_id'] = str(guild.id)
+        updates['guild_id'] = guild.id  # Store as int for consistency
         if guild.owner:
             updates['owner_id'] = guild.owner.id
 

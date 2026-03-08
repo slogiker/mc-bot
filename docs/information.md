@@ -1,7 +1,9 @@
 # MC-Bot — Complete Developer Reference
 
-**Version:** `v2.5.5`  
-**Last Updated:** February 2026  
+_(Note: The `DEVELOPER.md` file has been merged into this document)._
+
+**Version:** `v2.6.0`  
+**Last Updated:** March 2026  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
 
@@ -788,27 +790,73 @@ Key functions:
 | 5   | JSON Economy Race Condition                       | Wrapped JSON reads/writes with `asyncio.Lock` since all bot reads/writes happen sequentially in the same Thread.                               |
 | 6   | missing `OWNER_ID` population                     | Defined logic in `setup_helper.py` to identify Guild owner.                                                                                    |
 
-### 10.2 Logic Bugs — 🔄 Pending / Under Review
+### 10.2 Logic Bugs -- Pending / Under Review
 
-| #   | File                    | Bug                                                                                                                                      |
-| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `src/backup_manager.py` | Backup dir mismatch: Docker volume mounts `./backups:/app/backups`. Ensure `config.SERVER_DIR` stays relative to absolute Docker setups. |
-| 2   | `cogs/automation.py`    | `cog_unload()` references `self.log_task` but also `self.log_scan_task` — inconsistent naming. One may not cancel cleanly.               |
-| 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command — TPS section in `/info` silently skips correctly, but should theoretically read the difference.   |
-| 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       |
-| 5   | `cogs/stats.py`         | `get_uuid_online` uses `aiohttp` but no explicit timeout — hangs if Mojang API goes down completely.                                     |
+| #   | File                    | Bug                                                                                                                                      | Status       |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| 1   | `src/backup_manager.py` | Backup dir mismatch: Docker volume mounts `./backups:/app/backups`. Ensure `config.SERVER_DIR` stays relative to absolute Docker setups. | Open         |
+| 2   | `cogs/automation.py`    | `cog_unload()` references `self.log_task` but also `self.log_scan_task` -- inconsistent naming. One is never cancelled.                  | FIXED v2.6.0 |
+| 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command -- TPS section in `/info` silently skips correctly, but should theoretically read the difference.  | Open         |
+| 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       | FIXED v2.6.0 |
+| 5   | `cogs/stats.py`         | `get_uuid_online` uses `aiohttp` but no explicit timeout -- hangs if Mojang API goes down completely.                                    | FIXED v2.6.0 |
 
-### 10.3 Code Quality — 📝 Low Priority
+### 10.3 Code Quality -- Low Priority
 
-- `cogs/console.py` has duplicate `from datetime import datetime` imports.
-- `src/server_info_manager.py` has leading whitespace on line 1.
-- `cogs/help.py` categories list hardcodes command names — won't auto-update when commands are added.
+- ~~`cogs/console.py` has duplicate `from datetime import datetime` imports.~~ FIXED v2.6.0
+- ~~`src/server_info_manager.py` has leading whitespace on line 1.~~ FIXED v2.6.0
+- `cogs/help.py` categories list hardcodes command names -- won't auto-update when commands are added.
 
 ---
 
 ## 11. Version History & Recent Changes
 
-### v2.5.5 — Core Capabilities & Control Panel Update _(Current)_
+### v2.6.0 -- Bug Fix & Hardening Release _(Current)_
+
+28-issue comprehensive bug fix and code hardening pass based on senior code review (`overview.md`).
+
+**Critical Fixes:**
+
+- Fixed tuple unpack crash in `cogs/tasks.py` `daily_backup` (was unpacking 2 values, `create_backup()` returns 3).
+- Added `import asyncio` at module scope in `src/setup_views.py` (was imported locally, causing `NameError` in `_save_config_to_file`).
+- Fixed `cogs/automation.py` attribute mismatch (`log_scan_task` vs `log_task`), added `log_dispatcher.unsubscribe()` to prevent memory leak.
+- Added `./data:/app/data` volume mount in `docker-compose.yml` -- config was being lost on every rebuild.
+
+**Significant Fixes:**
+
+- Added `aiohttp.ClientTimeout` to all API calls in `stats.py` (10s) and `mc_installer.py` (30s class constant).
+- Replaced deprecated `bot.loop.create_task()` with `asyncio.create_task()` in `economy.py`.
+- Removed empty `word_hunt_task` loop in `economy.py` (loop body was `pass`).
+- Fixed `GUILD_ID` type inconsistency in `setup_helper.py` (was stored as string, now int).
+- Added `installed_platform` saving to config during setup in `setup_views.py`.
+- Replaced unsafe `os.execv` bot restart with `sys.exit(0)` + Docker restart policy in `management.py`.
+- Added exponential backoff (10s-120s) to `console.py` channel wait loop.
+- Replaced deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in `console.py`.
+
+**Code Quality:**
+
+- Removed duplicate `datetime` import in `console.py`.
+- Fixed AI error typo in `ai.py` ("efficient" -> "No valid API key or SDK found.").
+- Removed leading whitespace in `server_info_manager.py`.
+- Removed dead `mcrcon` package from `requirements.txt` (only `aio-mc-rcon` is used).
+- Added `mem_limit: 256m` to playit service in Docker Compose.
+- Commented out Forge references with documentation for Modrinth and Forge Maven APIs.
+
+**Dead Code Removal (~500 lines):**
+
+- Deleted `src/installer_views.py` (~400 lines, fully replaced by `setup_views.py`).
+- Removed `monitor_server_log` + `_process_log_line` + `send_log` from `tasks.py` (~90 lines, duplicated by `console.py`).
+- Removed orphaned imports (`time`, `pytz`, `dt_time`, `aiofiles`, `random`) from `tasks.py` and `automation.py`.
+
+**Crash-Proofing:**
+
+- Enhanced `bot.py` `__main__` block with formatted crash message and `Press Enter to close` on both crash and normal shutdown.
+- All cog `cog_unload` methods now guard with `hasattr` against missing attributes.
+
+**Infrastructure:**
+
+- `install.bat` replaced with friendly "Windows not supported yet" fallback + pseudocode for future WSL flow.
+
+### v2.5.5 -- Core Capabilities & Control Panel Update
 
 _(Cumulative architectural adjustments addressing Phases 1-7 refactoring sessions)_
 
@@ -817,6 +865,7 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - **Dynamic Versions**: Swapped hardcoded fallback version dropdowns for live Modrinth API fetching targeting both Vanilla and Paper platforms (`src/setup_views.py`).
 - **Setup Reliability**: Supported offline-mode whitelist implementation by generating consistent local MD5 UUID hashes in `mc_installer.py`. Temporarily muted buggy Forge downloads until their API standardizes.
 - **Code Sweeping**: All files swept for redundant conversational comments. Forced data files strictly inside the `data/` path to avoid root pollution. Replaced `--dry-run` flag with proper `--simulate` parameter. Completed unification of logs through the centralized `LogDispatcher`.
+- **Install Improvements**: Upgraded `install.sh` to apply docker group permissions seamlessly without requiring user logouts, and ensured Docker service starts immediately upon download.
 
 ### v2.5.4 — Stability & Windows Support
 
@@ -854,7 +903,7 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - ✅ Process Management (Start/Stop/Restart) via tmux
 - ✅ RCON Communication (`src/utils.rcon_cmd`)
 - ✅ Thread-safe Config System (`filelock`)
-- ✅ Unified Installer: `install.sh` (Linux) + `install.bat` (Windows, resumable)
+- Unified Installer: `install.sh` (Linux) + `install.bat` (Windows, currently fallback only)
 - ✅ Windows: Docker Desktop detection (uses it if found) + auto-resuming registries
 - ✅ Modrinth API Integration + Progress tracking in all installers
 - ✅ Live Log Tailing via `LogDispatcher` → Discord channel (batched)
@@ -875,10 +924,10 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 
 ### 🔴 Critical
 
-- [ ] **Fix `cogs/automation.py` `cog_unload()` naming inconsistency** — references both `self.log_task` and `self.log_scan_task`. One is never cancelled.
-- [ ] **Add timeout to Mojang API calls** in `stats.py` and `mc_installer.py`.
-- [ ] **Fix `#server-information` update when guild is None** — `update_info()` silently returns if guild not found; should log warning.
-- [ ] **Expand Forge API fetching** — currently throws an error in `mc_installer.py`. Use Forge's Maven/files API to list versions correctly.
+- [x] **Fix `cogs/automation.py` `cog_unload()` naming inconsistency** -- FIXED v2.6.0: Renamed to `self.log_task` consistently + added `log_dispatcher.unsubscribe()`.
+- [x] **Add timeout to Mojang API calls** -- FIXED v2.6.0: Added `aiohttp.ClientTimeout` to `stats.py` (10s) and `mc_installer.py` (30s).
+- [x] **Fix `#server-information` update when guild is None** -- Was already fixed (logs warning). Removed leading whitespace.
+- [x] **Forge API fetching** -- Commented out, documented Modrinth API and Forge Maven API as alternatives.
 
 ### 🟠 High Priority
 
@@ -954,10 +1003,11 @@ volumes:
   - ./mc-server:/app/mc-server # Minecraft server + world data
   - ./backups:/app/backups # World backups
   - ./logs:/app/logs # Bot logs
+  - ./data:/app/data # Bot config (persisted across rebuilds since v2.6.0)
   - ./.env:/app/.env # Secrets
 ```
 
-**Important:** The `data/` directory containing config is baked into the original image. To persist structural layout config natively across complete wipes without losing state, consider mapping `./data` to volumes in the compose file as well if explicitly modifying json internals heavily on the fly.
+**Important:** As of v2.6.0, the `data/` directory is mounted as a volume. Config files (`bot_config.json`, `user_config.json`) are persisted across rebuilds. This was previously the most dangerous bug -- configs were lost on every `docker compose build`.
 
 ### Network Architecture
 

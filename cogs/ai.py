@@ -44,7 +44,7 @@ class AICog(commands.Cog):
     async def ai_chat(self, interaction: discord.Interaction, prompt: str):
         """Sends a prompt to Grok and returns the response."""
         if not self.client:
-            await interaction.response.send_message("❌ AI features are not enabled. efficient API key or SDK missing.", ephemeral=True)
+            await interaction.response.send_message("AI features are not enabled. No valid API key or SDK found.", ephemeral=True)
             return
 
         await interaction.response.defer()

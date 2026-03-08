@@ -14,6 +14,9 @@ class MinecraftInstaller:
     VANILLA_API = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
     FABRIC_API = "https://meta.fabricmc.net/v2/versions/loader"
     
+    # Timeout for all API requests (prevents hanging if API is down)
+    API_TIMEOUT = aiohttp.ClientTimeout(total=30)
+    
     def __init__(self):
         self.server_dir = config.SERVER_DIR
         os.makedirs(self.server_dir, exist_ok=True)
@@ -35,7 +38,7 @@ class MinecraftInstaller:
             str: The version string (e.g. "1.21.1"). Defaults to "1.20.1" on error.
         """
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
                 if platform == "paper":
                     async with session.get(self.PAPER_API) as resp:
                         data = await resp.json()
@@ -54,11 +57,17 @@ class MinecraftInstaller:
                             vanilla_data = await resp2.json()
                             return vanilla_data['latest']['release']
                             
+                # Forge is not supported via automatic download yet.
+                # For Forge mods/installer, use:
+                #   - Modrinth API: https://api.modrinth.com/v2/
+                #   - Forge Maven: https://maven.minecraftforge.net/
+                # These APIs can fetch Forge installer JARs and mod dependencies.
                 elif platform == "forge":
-                    # Forge API is more complex, default to 1.20.1 for now
-                    # TODO: Implement dynamic Forge version fetching
-                    return "1.20.1"
+                    return "1.20.1"  # Placeholder - Forge requires manual setup
                     
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            logger.error(f"API timeout/error getting latest version for {platform}: {e}")
+            return "1.20.1"  # Fallback
         except Exception as e:
             logger.error(f"Failed to get latest version for {platform}: {e}")
             return "1.20.1"  # Fallback
@@ -96,7 +105,7 @@ class MinecraftInstaller:
     async def _download_paper(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """Download Paper server"""
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
                 # Get build number
                 async with session.get(f"{self.PAPER_API}/versions/{version}") as resp:
                     data = await resp.json()
@@ -136,7 +145,7 @@ class MinecraftInstaller:
     async def _download_vanilla(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """Download Vanilla server"""
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
                 # Get version manifest
                 async with session.get(self.VANILLA_API) as resp:
                     manifest = await resp.json()
@@ -179,7 +188,7 @@ class MinecraftInstaller:
     async def _download_fabric(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """Download Fabric server"""
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
                 # Get latest loader
                 async with session.get(f"{self.FABRIC_API}/{version}") as resp:
                     loaders = await resp.json()
@@ -209,9 +218,21 @@ class MinecraftInstaller:
             return False, str(e)
     
     async def _download_forge(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
-        """Download Forge server (simplified - user should download manually for now)"""
-        # TODO: Implement Forge installer download and execution (requires Java headless run)
-        return False, "Forge installation requires manual download from files.minecraftforge.net"
+        """
+        Forge automatic installation is not yet supported.
+        
+        For manual Forge setup, download the installer from:
+          - Forge official: https://files.minecraftforge.net/
+          - Modrinth API: https://api.modrinth.com/v2/ (for mods and modpacks)
+          - Forge Maven: https://maven.minecraftforge.net/ (for installer JARs)
+        
+        Place the server JAR in the mc-server/ directory as server.jar.
+        """
+        return False, (
+            "Forge automatic installation is not supported yet. "
+            "Please download the Forge installer manually from files.minecraftforge.net "
+            "or use the Modrinth API (https://api.modrinth.com/v2/) for modpack installation."
+        )
     
     async def accept_eula(self) -> bool:
         """Create eula.txt with eula=true"""
@@ -323,7 +344,7 @@ class MinecraftInstaller:
                 return True
             
             # Get UUID from Mojang API
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
                 async with session.get(f"https://api.mojang.com/users/profiles/minecraft/{username}") as resp:
                     if resp.status == 200:
                         data = await resp.json()

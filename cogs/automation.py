@@ -3,8 +3,6 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import asyncio
 import os
-import random
-import aiofiles
 from datetime import datetime
 from src.utils import rcon_cmd, has_role
 from src.config import config
@@ -18,15 +16,19 @@ class AutomationCog(commands.Cog):
     """
     def __init__(self, bot):
         self.bot = bot
-        self.motd_loop.start()
-        self.log_scan_task = None
+        self.log_task = None
         self.stop_scan = asyncio.Event()
+        self.motd_loop.start()
 
     def cog_unload(self):
         self.motd_loop.cancel()
-        if self.log_task: # Changed from log_scan_task
+        if self.log_task:
             self.stop_scan.set()
-            self.log_task.cancel() # Changed from log_scan_task.cancel()
+            self.log_task.cancel()
+        # Unsubscribe from log dispatcher to prevent memory leak
+        if hasattr(self, 'log_queue'):
+            from src.log_dispatcher import log_dispatcher
+            log_dispatcher.unsubscribe(self.log_queue)
 
     async def cog_load(self):
         from src.log_dispatcher import log_dispatcher
@@ -77,15 +79,15 @@ class AutomationCog(commands.Cog):
     async def set_motd(self, interaction: discord.Interaction, text: str):
         await interaction.response.defer()
         resp = await rcon_cmd(f'setmotd {text}')
-        await interaction.followup.send(f"🖥️ RCON Response: `{resp}`")
+        await interaction.followup.send(f"RCON Response: `{resp}`")
 
     async def scan_logs_for_triggers(self):
         """
         Continuously scans the Docker container logs for Trigger phrases defined in `user_config.json`.
         
         Mechanism:
-        - Spawns a `docker logs -f` subprocess.
-        - Reads stdout line-by-line asynchronously.
+        - Subscribes to LogDispatcher queue.
+        - Reads lines asynchronously.
         - Checks each line against configured triggers.
         - Executes RCON commands if a match is found.
         """
@@ -102,12 +104,6 @@ class AutomationCog(commands.Cog):
                         
                         # Parse MC log format if needed, or just scan raw line
                         # Format: [HH:MM:SS] [Thread/LEVEL]: Message
-                        # We only care about the Message part usually, or the whole line for key phrases
-                        
-                        # Extract message content if possible to avoid triggering on timestamps
-                        # But user might want to trigger on "Server thread/INFO", so raw line is safer for general triggers
-                        # cleanup: remove ANSI codes if any (docker logs sometimes has them)
-                        # Minimal cleanup:
                         clean_line = line
                         
                         if "[Bot]" in clean_line: continue # Skip bot's own messages (via RCON echo)
@@ -137,7 +133,6 @@ class AutomationCog(commands.Cog):
                 await asyncio.sleep(5)
                         
 
-
     @app_commands.command(name="trigger_add", description="Add a custom chat trigger")
     @has_role("trigger_admin")
     async def trigger_add(self, interaction: discord.Interaction, phrase: str, command: str):
@@ -148,7 +143,7 @@ class AutomationCog(commands.Cog):
         
         config.save_user_config(user_config)
         
-        await interaction.response.send_message(f"✅ Added trigger: `{phrase}` -> `{command}`")
+        await interaction.response.send_message(f"Added trigger: `{phrase}` -> `{command}`")
 
     @app_commands.command(name="trigger_list", description="List custom triggers")
     @has_role("trigger_list")
@@ -160,9 +155,9 @@ class AutomationCog(commands.Cog):
              await interaction.response.send_message("No triggers set.", ephemeral=True)
              return
              
-        msg = "🔀 **Custom Triggers**\n"
+        msg = "**Custom Triggers**\n"
         for k, v in triggers.items():
-            msg += f"- `{k}` → `{v}`\n"
+            msg += f"- `{k}` -> `{v}`\n"
             
         await interaction.response.send_message(msg, ephemeral=True)
 
@@ -175,9 +170,9 @@ class AutomationCog(commands.Cog):
         if phrase in triggers:
             del triggers[phrase]
             config.save_user_config(user_config)
-            await interaction.response.send_message(f"🗑️ Removed trigger: `{phrase}`")
+            await interaction.response.send_message(f"Removed trigger: `{phrase}`")
         else:
-            await interaction.response.send_message("❌ Trigger not found.", ephemeral=True)
+            await interaction.response.send_message("Trigger not found.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(AutomationCog(bot))

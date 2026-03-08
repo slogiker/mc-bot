@@ -53,12 +53,14 @@ if ! command -v docker &> /dev/null; then
         sudo sh get-docker.sh
         rm get-docker.sh
         
+        echo -e "${BLUE}Enabling and starting Docker service...${NC}"
+        sudo systemctl enable --now docker
+        
         echo -e "${BLUE}Adding user $USER to docker group...${NC}"
         sudo usermod -aG docker $USER
         echo -e "${GREEN}[OK] Docker installed.${NC}"
-        echo -e "${YELLOW}[IMPORTANT] You must log out and log back in for group changes to take effect.${NC}"
-        echo -e "${YELLOW}            Please run this script again after re-login.${NC}"
-        exit 0
+        echo -e "${YELLOW}Applying docker group permissions and continuing setup...${NC}"
+        exec sg docker -c "$SCRIPT_DIR/$(basename "\$0")"
     else
         echo -e "${RED}[ERROR] Docker is required.${NC}"
         exit 1

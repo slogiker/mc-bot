@@ -14,7 +14,11 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import psutil; psutil.pid_exists(1)' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c 'import psutil; psutil.pid_exists(1)' || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -31,6 +35,7 @@ services:
       - ./mc-server:/app/mc-server
       - ./backups:/app/backups
       - ./logs:/app/logs
+      - ./data:/app/data
       - ./.env:/app/.env
       # Don't persist cache
       - /app/src/__pycache__
@@ -47,12 +52,19 @@ services:
     tty: true
     stdin_open: true
 
-  playit:
-    image: playitcloud/playit:0.15.19
-    container_name: mc-bot-playit
-    restart: unless-stopped
-    environment:
-      - SECRET_KEY=${PLAYIT_SECRET_KEY}
-    network_mode: "service:mc-bot" # Share network namespace for localhost access if needed, OR explicit link
-    depends_on:
-      - mc-bot
+  # -------------------------------------------------------------------------------------------------
+  # OPTIONAL DEPENDENCY: Playit.gg
+  # The official playitcloud/playit:0.15.19 image is strictly linux/amd64.
+  # To avoid 'exec format error' on linux/arm64 (e.g. Raspberry Pi), 
+  # this service is disabled by default. Uncomment if you are on amd64 and need playit.
+  # -------------------------------------------------------------------------------------------------
+  # playit:
+  #   image: playitcloud/playit:0.15.19
+  #   container_name: mc-bot-playit
+  #   restart: unless-stopped
+  #   mem_limit: 256m
+  #   environment:
+  #     - SECRET_KEY=${PLAYIT_SECRET_KEY}
+  #   network_mode: "service:mc-bot" # Share network namespace for localhost access if needed, OR explicit link
+  #   depends_on:
+  #     - mc-bot

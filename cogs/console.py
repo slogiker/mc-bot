@@ -6,7 +6,6 @@ import re
 import os
 import aiofiles
 from datetime import datetime
-from datetime import datetime
 from src.config import config
 from src.utils import rcon_cmd
 from src.logger import logger
@@ -36,23 +35,34 @@ class ConsoleCog(commands.Cog):
         await self.bot.wait_until_ready()
         logger.info("Starting docker log tailing task...")
 
+        # Exponential backoff for waiting on channel availability
+        backoff = 10  # Start at 10 seconds
+        max_backoff = 120  # Cap at 2 minutes
+
         while not self.stop_event.is_set():
             try:
                 channel_id = config.LOG_CHANNEL_ID
                 if not channel_id:
-                    await asyncio.sleep(10)
+                    logger.debug(f"LOG_CHANNEL_ID not set, retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, max_backoff)
                     continue
 
                 channel = self.bot.get_channel(channel_id)
                 if not channel:
-                    await asyncio.sleep(10)
+                    logger.debug(f"Log channel not found, retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, max_backoff)
                     continue
+
+                # Channel found, reset backoff
+                backoff = 10
 
                 logger.info("Connected to docker logs stream via log dispatcher")
                 
                 # Batch buffer for messages
                 batch = []
-                last_send = asyncio.get_event_loop().time()
+                last_send = asyncio.get_running_loop().time()
                 batch_interval = 2.0  # Send every 2 seconds or when batch is full
                 max_batch_size = 10  # Max messages per batch
 
@@ -111,7 +121,7 @@ class ConsoleCog(commands.Cog):
                                     await self.send_event_notification("death", player_name, msg)
 
                         # Send batch if full or time elapsed
-                        current_time = asyncio.get_event_loop().time()
+                        current_time = asyncio.get_running_loop().time()
                         if len(batch) >= max_batch_size or (batch and current_time - last_send >= batch_interval):
                             # Send as code block
                             message = "```ansi\n" + "\n".join(batch) + "\n```"
@@ -126,7 +136,7 @@ class ConsoleCog(commands.Cog):
                     except asyncio.TimeoutError:
                         # No data for 1 second, check if we have pending batch
                         if batch:
-                            current_time = asyncio.get_event_loop().time()
+                            current_time = asyncio.get_running_loop().time()
                             if current_time - last_send >= batch_interval:
                                 message = "```ansi\n" + "\n".join(batch) + "\n```"
                                 try:
