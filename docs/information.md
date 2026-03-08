@@ -1027,6 +1027,15 @@ Docker restarts the container automatically after 3 failed `psutil` checks probi
 
 ---
 
+## 8. Future Roadmap / Deferred Features
+
+The following items are planned architecture upgrades that have been deferred for later phases:
+
+- **Windows Native Installer (install.ps1):** Full PowerShell script utilizing `dism.exe` for WSL/VirtualMachinePlatform enabling, Ubuntu installation natively, and colorized UI blocks.
+- **Cloud Storage Synchronization:** Background async uploading of generated backups to Google Drive using standard Python API integration.
+
+---
+
 ## AI Agent Prompt Instructions
 
 > **System Instruction for all AIs:** At each change, add recent architectural or functional changes to this file (`docs/information.md`),and keep track of versions, update to and if broadly applicable, append new features to `README.md`. This `information.md` file can always be longer, never shorter. It must remain the comprehensive canonical source of truth for the codebase history and technical roadmap. Maintain this documented style, structure, and depth explicitly going forward.

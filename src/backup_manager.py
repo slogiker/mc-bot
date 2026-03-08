@@ -5,7 +5,7 @@ import zipfile
 from datetime import datetime
 from src.config import config
 from src.logger import logger
-from pyonesend import OneSend
+import aiohttp
 
 class BackupManager:
     def __init__(self):
@@ -90,12 +90,23 @@ class BackupManager:
                 logger.error(f"Failed to delete old backup {fname}: {e}")
 
     async def upload_backup(self, filepath):
-        """Uploads a backup file using pyonesend and returns the link."""
+        """Uploads a backup file using transfer.sh and returns the link."""
         try:
-            onesend = OneSend()
-            # Run upload in thread as it might be blocking
-            link = await asyncio.to_thread(onesend.upload, filepath)
-            return link
+            filename = os.path.basename(filepath)
+            url = f"https://transfer.sh/{filename}"
+            
+            # Using a custom timeout as backups can be large
+            timeout = aiohttp.ClientTimeout(total=3600)  # 1 hour max upload time
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                with open(filepath, 'rb') as f:
+                    async with session.post(url, data=f) as resp:
+                        if resp.status == 200:
+                            link = await resp.text()
+                            return link.strip()
+                        else:
+                            logger.error(f"Upload failed with status {resp.status}: {await resp.text()}")
+                            return None
         except Exception as e:
             logger.error(f"Failed to upload backup: {e}")
             return None

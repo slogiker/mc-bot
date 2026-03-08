@@ -1,0 +1,228 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+import logging
+import aiohttp
+import os
+import aiofiles
+from src.config import config
+from src.utils import has_role, send_debug
+
+logger = logging.getLogger('mc_bot')
+
+class ModrinthSelect(discord.ui.Select):
+    def __init__(self, search_results):
+        options = []
+        for mod in search_results:
+            # Title might be long
+            label = mod.get('title', 'Unknown')[:100]
+            desc = mod.get('description', '')[:100]
+            val = mod.get('slug', '')
+            options.append(discord.SelectOption(label=label, description=desc, value=val))
+            
+        super().__init__(placeholder="Select a mod/plugin to install...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        slug = self.values[0]
+        # In a full implementation, we would now query the API for the specific slug + version + loader
+        # and download it async. For now, we defer to the view's handle_selection
+        await self.view.handle_selection(interaction, slug)
+
+class ModrinthSearchView(discord.ui.View):
+    def __init__(self, search_results, bot):
+        super().__init__(timeout=600)
+        self.bot = bot
+        self.add_item(ModrinthSelect(search_results))
+
+    async def handle_selection(self, interaction: discord.Interaction, slug: str):
+        await interaction.response.defer()
+        msg = await interaction.followup.send(f"⏳ Locating latest compatible version for `{slug}`...", wait=True)
+        
+        # 1. Get current server version - check config first, then parse from log
+        mc_version = getattr(config, 'INSTALLED_VERSION', None)
+        if not mc_version or mc_version == "Unknown":
+            from src.utils import parse_server_version
+            mc_version = await parse_server_version()
+        if not mc_version or mc_version == "Unknown":
+            mc_version = "1.20.1" # Last resort fallback
+        
+        # 2. Auto-detect loader from server directory structure
+        loader = "fabric"
+        if os.path.exists(os.path.join(config.SERVER_DIR, "plugins")):
+             loader = "paper"
+             
+        api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
+        params = {
+            "loaders": f'["{loader}"]',
+            "game_versions": f'["{mc_version}"]'
+        }
+        
+        try:
+             async with aiohttp.ClientSession() as session:
+                 async with session.get(api_url, params=params) as resp:
+                     if resp.status != 200:
+                         await msg.edit(content=f"❌ Failed to find a `{loader}` version of `{slug}` compatible with Minecraft `{mc_version}`.")
+                         return
+                         
+                     versions = await resp.json()
+                     if not versions:
+                         await msg.edit(content=f"❌ No compatible versions found for `{slug}` on {mc_version}.")
+                         return
+                         
+                     # Get latest file
+                     latest_file = versions[0]['files'][0]
+                     download_url = latest_file['url']
+                     filename = latest_file['filename']
+                     
+                     # 3. Download it
+                     dest_folder = "mods" if loader == "fabric" else "plugins"
+                     dest_path = os.path.join(config.SERVER_DIR, dest_folder, filename)
+                     
+                     await msg.edit(content=f"📥 Downloading `{filename}`...")
+                     
+                     async with session.get(download_url) as file_resp:
+                         if file_resp.status == 200:
+                             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                             async with aiofiles.open(dest_path, mode='wb') as f:
+                                 await f.write(await file_resp.read())
+                             await msg.edit(content=f"✅ Successfully installed `{filename}` into `{dest_folder}/`.\n*Please restart the server to apply changes.*")
+                             await send_debug(interaction.client, f"Installed {slug} ({filename}) via Modrinth UI")
+                         else:
+                             await msg.edit(content=f"❌ Failed to download `{filename}`.")
+        except Exception as e:
+            logger.error(f"Modrinth download failed: {e}")
+            await msg.edit(content=f"❌ An error occurred during download: {str(e)}")
+
+
+class InstalledModsView(discord.ui.View):
+    def __init__(self, mod_files, folder_path):
+        super().__init__(timeout=600)
+        self.folder_path = folder_path
+        self.mod_files = mod_files[:25] # Discord max=25
+        
+        options = []
+        for i, mf in enumerate(self.mod_files):
+            label = mf[:100] # Discord label max = 100 chars
+            options.append(discord.SelectOption(label=label, value=str(i)))
+            
+        self.select = discord.ui.Select(placeholder="Select an installed mod to delete...", min_values=1, max_values=1, options=options)
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        idx = int(self.select.values[0])
+        filename = self.mod_files[idx]
+        filepath = os.path.join(self.folder_path, filename)
+        
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                await interaction.response.send_message(f"🗑️ Successfully deleted `{filename}`.\n*Please restart the server to apply changes.*", ephemeral=True)
+                await send_debug(interaction.client, f"Deleted mod {filename} via Mod Manager")
+                
+                # Try to clean up the UI
+                self.remove_item(self.select)
+                await interaction.message.edit(view=self)
+            else:
+                await interaction.response.send_message(f"❌ File `{filename}` is no longer present on the server.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to delete mod {filename}: {e}")
+            await interaction.response.send_message(f"❌ Could not delete `{filename}`: {e}", ephemeral=True)
+
+
+class ModsCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(name="mod_search", description="Search and install mods/plugins from Modrinth")
+    @app_commands.describe(query="Name of the mod/plugin to search for")
+    @has_role("mods")
+    async def mod_search(self, interaction: discord.Interaction, query: str):
+        await interaction.response.defer()
+        
+        api_url = "https://api.modrinth.com/v2/search"
+        params = {
+            "query": query,
+            "limit": 10,
+            "index": "relevance"
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url, params=params) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        hits = data.get('hits', [])
+                        
+                        if not hits:
+                            await interaction.followup.send(f"❌ No results found for `{query}`.")
+                            return
+                            
+                        view = ModrinthSearchView(hits, self.bot)
+                        embed = discord.Embed(
+                            title=f"🔍 Modrinth Search: {query}",
+                            description="Select a mod from the dropdown below to install it directly to the server.",
+                            color=discord.Color.green()
+                        )
+                        await interaction.followup.send(embed=embed, view=view)
+                    else:
+                        await interaction.followup.send(f"❌ Failed to contact Modrinth API: HTTP {resp.status}")
+        except Exception as e:
+            logger.error(f"Modrinth search failed: {e}")
+            await interaction.followup.send("❌ Error searching Modrinth.")
+
+    @app_commands.command(name="mods_manage", description="View and delete installed mods or plugins")
+    @has_role("mods")
+    async def mods_manage(self, interaction: discord.Interaction):
+        # Determine if we use mods/ or plugins/
+        folder_name = "plugins"
+        folder_path = os.path.join(config.SERVER_DIR, "plugins")
+        
+        if not os.path.exists(folder_path):
+            folder_name = "mods"
+            folder_path = os.path.join(config.SERVER_DIR, "mods")
+            
+        if not os.path.exists(folder_path):
+             await interaction.response.send_message("❌ Neither a `mods/` nor `plugins/` folder exists yet.", ephemeral=True)
+             return
+             
+        try:
+            files = [f for f in os.listdir(folder_path) if f.endswith('.jar')]
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Cannot read library folder: {e}", ephemeral=True)
+            return
+
+        if not files:
+            await interaction.response.send_message(f"ℹ️ No `.jar` files found in the `{folder_name}/` directory.", ephemeral=True)
+            return
+
+        view = InstalledModsView(files, folder_path)
+        embed = discord.Embed(
+            title=f"📂 Installed {folder_name.capitalize()}",
+            description=f"Found **{len(files)}** items.\nSelect a file below to permanently delete it from the server.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @app_commands.command(name="mods_update", description="Update all installed mods to match a Minecraft version")
+    @app_commands.describe(version="The target Minecraft version (e.g., 1.21.1)")
+    @has_role("mods")
+    async def mods_update(self, interaction: discord.Interaction, version: str):
+        await interaction.response.defer(ephemeral=False)
+        msg_obj = await interaction.followup.send(f"🔄 Starting Universal Mod Updater for target version: `{version}`...")
+        
+        async def updater_callback(status_text):
+            try:
+                # Append to message or edit (simplest is edit if small, or keep a rolling log)
+                await msg_obj.edit(content=f"🔄 **Mod Updater ({version})**\n{status_text}")
+            except Exception:
+                pass
+                
+        from src.mod_updater import ModUpdater
+        updater = ModUpdater(callback=updater_callback)
+        
+        await updater.update_all(game_version=version)
+
+
+async def setup(bot):
+    await bot.add_cog(ModsCog(bot))

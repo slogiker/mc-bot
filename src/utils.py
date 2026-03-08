@@ -39,6 +39,10 @@ def has_role(cmd_name: str):
         # Use config.ROLES which maps Role ID -> [commands]
         # This is populated by config.resolve_role_permissions(guild)
         
+        # 0. Guild Owner ALWAYS has full access to all commands
+        if interaction.user.id == interaction.guild.owner_id:
+            return True
+        
         # 1. Check Permissions by Role ID (Preferred)
         for role in interaction.user.roles:
             if cmd_name in config.ROLES.get(str(role.id), []):

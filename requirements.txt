@@ -10,4 +10,3 @@ aiohttp
 filelock
 nbtlib
 
-pyonesend

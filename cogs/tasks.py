@@ -10,6 +10,7 @@ from src.utils import send_debug, rcon_cmd
 class Tasks(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.restart_attempts = 0
         # DON'T start tasks here - wait for bot to be ready
 
     async def cog_load(self):
@@ -50,13 +51,49 @@ class Tasks(commands.Cog):
                         status=discord.Status.dnd
                     )
                 
+                if self.restart_attempts >= 2:
+                    logger.error("Server failed to restart twice. Stopping crash loop.")
+                    if cmd_channel and owner_id:
+                        # Fetch recent logs to determine crash reason
+                        from src.log_dispatcher import log_dispatcher
+                        recent_logs = log_dispatcher.get_recent_logs()
+                        
+                        crash_reason = ""
+                        # Scan backwards for the first identifiable crash reason
+                        for line in reversed(recent_logs):
+                            if "OutOfMemoryError" in line:
+                                crash_reason = "🚨 **Reason:** The server ran out of RAM (`OutOfMemoryError`). Please increase your maximum RAM via `/settings`."
+                                break
+                            elif "Killed" in line or "killed by signal" in line:
+                                crash_reason = "🚨 **Reason:** The server process was forcefully killed by the host OS (likely OOM killer)."
+                                break
+                                
+                        if not crash_reason and recent_logs:
+                            # If no specific error, provide the last 5 lines for context
+                            last_few = "\n".join(recent_logs[-5:])
+                            crash_reason = f"**Last 5 Log Lines:**\n```\n{last_few}\n```"
+                            
+                        msg = f"<@{owner_id}> 🚨 The server has crashed and failed to auto-restart completely. The crash loop has been aborted. Check `/logs`.\n\n{crash_reason}"
+                        await cmd_channel.send(msg)
+                        
+                    # Stop checking
+                    self.bot.server._intentional_stop = True
+                    if hasattr(self.bot.server, '_save_state'):
+                        await self.bot.server._save_state()
+                        
+                    self.restart_attempts = 0
+                    return
+                
                 logger.warning("Server process not found and not intentionally stopped. Attempting restart...")
                 await send_debug(self.bot, "Server process not found -- attempting restart...")
+                self.restart_attempts += 1
+                
                 success = await self.bot.server.start()
                 if success:
                     await send_debug(self.bot, "Auto-restarted after failure.")
+                    self.restart_attempts = 0
                 else:
-                    await send_debug(self.bot, "Restart attempt failed.")
+                    await send_debug(self.bot, f"Restart attempt {self.restart_attempts} failed.")
             
             # If intentionally stopped, ensure status is DND/Idle
             elif self.bot.server.is_intentionally_stopped():

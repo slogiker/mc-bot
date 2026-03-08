@@ -156,6 +156,10 @@ class MinecraftBot(commands.Bot):
             logger.info(f"Dynamic Config Updated: {updates}")
         except Exception as e:
             logger.error(f"Dynamic Setup Failed: {e}", exc_info=True)
+            
+        # VERY IMPORTANT: Resolve roles so the @has_role decorators check IDs correctly
+        logger.info("Resolving role permissions...")
+        config.resolve_role_permissions(guild)
         
         # Sync commands to this guild
         logger.info("Syncing slash commands to guild...")

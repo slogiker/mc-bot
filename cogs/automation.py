@@ -21,7 +21,6 @@ class AutomationCog(commands.Cog):
         self.motd_loop.start()
 
     def cog_unload(self):
-        self.motd_loop.cancel()
         if self.log_task:
             self.stop_scan.set()
             self.log_task.cancel()
@@ -35,51 +34,6 @@ class AutomationCog(commands.Cog):
         self.log_queue = log_dispatcher.subscribe()
         await log_dispatcher.start()
         self.log_task = asyncio.create_task(self.scan_logs_for_triggers())
-
-    @tasks.loop(hours=168) # Weekly
-    async def motd_loop(self):
-        """
-        Updates the server MOTD once a week using AI generation if enabled.
-        Requires an AI provider (xAI) and a server plugin supporting /setmotd (e.g., Essentials).
-        """
-        await self.bot.wait_until_ready()
-        
-        try:
-             # Check if AI is available
-             from cogs.ai import HAS_XAI, AICog
-             ai_cog = self.bot.get_cog('AICog')
-             
-             if ai_cog and ai_cog.client:
-                 logger.info("Generating AI MOTD...")
-                 try:
-                     completion = ai_cog.client.chat.completions.create(
-                        model="grok-beta",
-                        messages=[
-                            {"role": "system", "content": "Generate a short, funny, Minecraft JSON MOTD description. Return ONLY the raw text/json valid for server.properties 'motd=' line."},
-                            {"role": "user", "content": "Generate a new MOTD"}
-                        ]
-                     )
-                     new_motd = completion.choices[0].message.content.replace("\n", " ")
-                     
-                     # Try to set via RCON (requires plugin like Essentials/CMI)
-                     resp = await rcon_cmd(f'setmotd {new_motd}')
-                     
-                     if "Unknown command" in resp:
-                         logger.warning("Could not set MOTD via RCON (command 'setmotd' not found). Server plugin required.")
-                     else:
-                         logger.info(f"MOTD updated: {new_motd}")
-                         
-                 except Exception as e:
-                     logger.error(f"Failed to generate/set AI MOTD: {e}")
-             
-        except Exception as e:
-            logger.error(f"Error in MOTD loop: {e}")
-
-    @app_commands.command(name="motd", description="Set the server MOTD (requires plugin or restart)")
-    async def set_motd(self, interaction: discord.Interaction, text: str):
-        await interaction.response.defer()
-        resp = await rcon_cmd(f'setmotd {text}')
-        await interaction.followup.send(f"RCON Response: `{resp}`")
 
     async def scan_logs_for_triggers(self):
         """

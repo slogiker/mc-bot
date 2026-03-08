@@ -1,11 +1,13 @@
 import asyncio
 from src.logger import logger
+from collections import deque
 
 class LogDispatcher:
     def __init__(self):
         self._subscribers = []
         self._running = False
         self._task = None
+        self._buffer = deque(maxlen=50)
 
     def subscribe(self) -> asyncio.Queue:
         q = asyncio.Queue()
@@ -15,6 +17,10 @@ class LogDispatcher:
     def unsubscribe(self, q: asyncio.Queue):
         if q in self._subscribers:
             self._subscribers.remove(q)
+
+    def get_recent_logs(self) -> list:
+        """Return the last 50 lines of logs."""
+        return list(self._buffer)
 
     async def start(self):
         if self._running:
@@ -32,24 +38,42 @@ class LogDispatcher:
                 pass
 
     async def _tail_logs(self):
-        logger.info("LogDispatcher: Starting docker log tailing...")
+        from src.config import config
+        import os
+        import aiofiles
+        
+        log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
+        logger.info(f"LogDispatcher: Starting tail of {log_path}")
+        
         while self._running:
             try:
-                process = await asyncio.create_subprocess_exec(
-                    'docker', 'logs', '-f', '--tail', '0', 'mc-bot',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT
-                )
-                logger.info("LogDispatcher: Connected to docker logs stream")
-
-                while self._running:
-                    try:
-                        line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=1.0)
-                        if not line_bytes:
-                            break # EOF
-                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                if not os.path.exists(log_path):
+                    await asyncio.sleep(2)
+                    continue
+                    
+                logger.info("LogDispatcher: Connected to latest.log stream")
+                async with aiofiles.open(log_path, mode='r', encoding='utf-8', errors='ignore') as f:
+                    # Seek to the end of the file
+                    await f.seek(0, 2)
+                    
+                    while self._running:
+                        line = await f.readline()
+                        if not line:
+                            await asyncio.sleep(0.5)
+                            
+                            # Check if the file was rotated/truncated (size became smaller than current position)
+                            current_pos = await f.tell()
+                            if os.path.exists(log_path) and os.path.getsize(log_path) < current_pos:
+                                logger.info("LogDispatcher: latest.log seems rotated, reconnecting...")
+                                break
+                            continue
+                            
+                        line = line.strip()
                         if not line:
                             continue
+                            
+                        # Store in rolling buffer
+                        self._buffer.append(line)
                             
                         # Broadcast to all subscribers
                         for q in self._subscribers.copy():
@@ -58,14 +82,6 @@ class LogDispatcher:
                             except asyncio.QueueFull:
                                 pass
                                 
-                    except asyncio.TimeoutError:
-                        continue
-                        
-                await process.wait()
-                if self._running:
-                    logger.warning("LogDispatcher: Docker logs process ended, restarting in 5s...")
-                    await asyncio.sleep(5)
-                
             except Exception as e:
                 logger.error(f"LogDispatcher error: {e}")
                 await asyncio.sleep(5)

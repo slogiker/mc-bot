@@ -660,6 +660,23 @@ class SetupView(ui.View):
             config.update_dynamic_config(version_update)
             await self._save_config_to_file(version_update)
             
+            # STEP 4.5: Update Mods/Plugins to match new Version
+            embed.description = "**Step 4.5/5:** Updating installed mods/plugins..."
+            await message.edit(embed=embed)
+            
+            from src.mod_updater import ModUpdater
+            
+            async def updater_callback(status_text):
+                try:
+                    embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
+                    await message.edit(embed=embed)
+                except Exception:
+                    pass
+                    
+            updater = ModUpdater(callback=updater_callback)
+            loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
+            await updater.update_all(game_version=setup_config['version'], loader=loader_override)
+            
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
             await message.edit(embed=embed)

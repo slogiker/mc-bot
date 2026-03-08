@@ -17,7 +17,7 @@ class SetupHelper:
         updates = {}
         
         # Define roles to create
-        role_definitions = ["MC Admin", "MC Player"]
+        role_definitions = ["Owner", "Admin", "Player"]
         
         existing_roles = {r.name: r for r in guild.roles}
         dynamic_roles_config = {}
@@ -34,11 +34,13 @@ class SetupHelper:
             else:
                 logger.info(f"Found Role: {role_name}")
             
-            # Special Case: Assign 'MC Admin' to Owner
-            if role_name == "MC Admin":
+            # Special Case: Assign 'Owner' to Guild Owner
+            if role_name == "Owner":
+                updates['owner_role_id'] = role.id
+                await self._assign_owner_role(guild, role)
+            elif role_name == "Admin":
                 updates['admin_role_id'] = role.id
-                await self._assign_admin_role(guild, role)
-            elif role_name == "MC Player":
+            elif role_name == "Player":
                 updates['player_role_id'] = role.id
 
         # updates['roles'] is no longer needed as permissions are in user_config by name
@@ -97,23 +99,22 @@ class SetupHelper:
         logger.info("--- Dynamic Setup Completed ---")
         return updates
 
-    async def _assign_admin_role(self, guild, admin_role):
+    async def _assign_owner_role(self, guild, owner_role):
         # 1. Assign to Guild Owner
         if guild.owner:
-            if admin_role not in guild.owner.roles:
+            if owner_role not in guild.owner.roles:
                 try:
-                    await guild.owner.add_roles(admin_role, reason="MC Bot Owner")
-                    logger.info(f"Assigned {admin_role.name} to Guild Owner: {guild.owner.name}")
+                    await guild.owner.add_roles(owner_role, reason="MC Bot Owner")
+                    logger.info(f"Assigned {owner_role.name} to Guild Owner: {guild.owner.name}")
                 except Exception as e:
                     logger.error(f"Failed to assign role to owner: {e}")
         
-        # 2. Assign to anyone with 'Owner' role (heuristic)
-        # This covers cases where the bot inviter isn't the server owner but has an "Owner" role
+        # 2. Assign to anyone with an existing 'Owner' role (heuristic)
         for member in guild.members:
-            if any(r.name.lower() == "owner" for r in member.roles):
-                if admin_role not in member.roles:
+            if any(r.name.lower() == "owner" and r.id != owner_role.id for r in member.roles):
+                if owner_role not in member.roles:
                      try:
-                        await member.add_roles(admin_role, reason="MC Bot Owner Heuristic")
-                        logger.info(f"Assigned {admin_role.name} to 'Owner' role holder: {member.name}")
+                        await member.add_roles(owner_role, reason="MC Bot Owner Heuristic")
+                        logger.info(f"Assigned {owner_role.name} to existing 'Owner' role holder: {member.name}")
                      except Exception as e:
                         logger.error(f"Failed to assign role to member {member.name}: {e}")

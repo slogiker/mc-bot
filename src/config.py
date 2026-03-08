@@ -223,11 +223,20 @@ class Config:
     
     def _convert_old_roles(self, old_roles: dict) -> dict:
         """Convert old role ID-based permissions to default role names"""
-        # Just return default permissions, user can customize
+        # Owner gets every single command key known to the system
         return {
+            "Owner": [
+                "cmd", "sync", "bot_restart", "start", "stop", "restart",
+                "control", "backup", "backup_now", "backup_list", "backup_download",
+                "logs", "whitelist_add", "set_spawn", "status", "players",
+                "seed", "version", "info", "mods", "stats", "help",
+                "event_create", "event_list", "event_delete", "motd",
+                "trigger_add", "trigger_list", "trigger_remove",
+                "reload_config", "shutdown", "bot_stop", "server_info"
+            ],
             "MC Admin": [
                 "start", "stop", "restart", "cmd", "backup_now",
-                "reload_config", "shutdown", "bot_stop", "bot_restart",
+                "reload_config", "bot_restart",
                 "logs", "whitelist_add", "seed", "players", "stats",
                 "version", "server_info", "mods", "help", "sync"
             ],
