@@ -14,11 +14,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c 'import psutil; psutil.pid_exists(1)' || exit 1",
-        ]
+      test: [ "CMD-SHELL", "python -c 'import psutil; psutil.pid_exists(1)' || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -37,9 +33,6 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./.env:/app/.env
-      # Don't persist cache
-      - /app/src/__pycache__
-      - /app/cogs/__pycache__
 
     # Environment variables from .env file
     env_file:
@@ -61,4 +54,4 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-    - SECRET_KEY=${PLAYIT_SECRET_KEY}
+      - SECRET_KEY=${PLAYIT_SECRET_KEY}

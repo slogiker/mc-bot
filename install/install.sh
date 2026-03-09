@@ -9,6 +9,18 @@
 
 set -e
 
+# Parse arguments
+ORIG_ARGS="$@"
+SKIP_START=0
+for arg in "$@"; do
+    case $arg in
+        --skip-start)
+        SKIP_START=1
+        shift
+        ;;
+    esac
+done
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -54,16 +66,38 @@ if ! command -v docker &> /dev/null; then
         rm get-docker.sh
         
         echo -e "${BLUE}Enabling and starting Docker service...${NC}"
-        sudo systemctl enable --now docker
-        
-        echo -e "${BLUE}Adding user $USER to docker group...${NC}"
-        sudo usermod -aG docker $USER
+        if command -v systemctl &> /dev/null && pidof systemd &> /dev/null; then
+            sudo systemctl enable --now docker
+        elif command -v service &> /dev/null; then
+            sudo service docker start || true
+            sleep 3
+        else
+            echo -e "${YELLOW}[WARN] Could not automatically start Docker. Please ensure the daemon is running.${NC}"
+        fi
         echo -e "${GREEN}[OK] Docker installed.${NC}"
-        echo -e "${YELLOW}Applying docker group permissions and continuing setup...${NC}"
-        exec sg docker -c "$SCRIPT_DIR/$(basename "\$0")"
     else
         echo -e "${RED}[ERROR] Docker is required.${NC}"
         exit 1
+    fi
+fi
+
+# Ensure user is in the docker group to avoid permission issues
+TARGET_USER=${SUDO_USER:-$USER}
+if ! groups $TARGET_USER | grep -q '\bdocker\b'; then
+    echo -e "${YELLOW}[WARN] User $TARGET_USER is not in the 'docker' group.${NC}"
+    echo -e "${BLUE}Adding user $TARGET_USER to docker group...${NC}"
+    sudo usermod -aG docker "$TARGET_USER" || true
+    
+    if [ "$USER" != "$TARGET_USER" ]; then
+        sudo usermod -aG docker "$USER" || true
+    fi
+
+    echo -e "${GREEN}[OK] Added. Applying docker group permissions and continuing setup...${NC}"
+    # Restart the script with the new group applied
+    if [ "$USER" = "root" ]; then
+        exec su -c "$SCRIPT_DIR/$(basename "$0") $ORIG_ARGS" "$TARGET_USER"
+    else
+        exec sg docker -c "$SCRIPT_DIR/$(basename "$0") $ORIG_ARGS"
     fi
 fi
 
@@ -142,8 +176,12 @@ else
     exit 1
 fi
 
-echo -e "Building and starting containers..."
-$COMPOSE_CMD up -d --build
+if [ "$SKIP_START" -eq 1 ]; then
+    echo -e "${YELLOW}[SKIP] Skipping container startup due to --skip-start flag.${NC}"
+else
+    echo -e "Building and starting containers..."
+    $COMPOSE_CMD up -d --build
+fi
 
 echo ""
 echo -e "${GREEN}---------------------------------------------${NC}"
