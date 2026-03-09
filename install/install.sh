@@ -133,8 +133,15 @@ if [ -z "$SKIP_CONFIG" ]; then
     
     PLAYIT_KEY=""
     if [[ $setup_playit =~ ^[Yy]$ ]]; then
-        echo -e "Enter your ${CYAN}Playit Secret Key${NC}:"
+        echo -e "Enter your ${CYAN}Playit Secret Key${NC} if you already have one:"
+        echo -e "(Optional. If left blank, we will generate a claim link for you.)"
         read -p "> " PLAYIT_KEY
+        
+        # If user provided a key manually before startup, we can pre-populate the data file
+        if [ -n "$PLAYIT_KEY" ]; then
+            mkdir -p data
+            echo "$PLAYIT_KEY" > data/playit_secret.key
+        fi
     fi
 
     # Generate RCON
@@ -181,6 +188,82 @@ if [ "$SKIP_START" -eq 1 ]; then
 else
     echo -e "Building and starting containers..."
     $COMPOSE_CMD up -d --build
+
+    # Setup Playit Claim Flow
+    if [[ $setup_playit =~ ^[Yy]$ ]] && [ -z "$PLAYIT_KEY" ]; then
+        echo ""
+        echo -e "${BLUE}[5/5] Setting up Playit Tunnel...${NC}"
+        
+        # Check if secret already exists on disk
+        if [ -s "data/playit_secret.key" ]; then
+            echo -e "${GREEN}[OK] Playit secret key already exists in data/playit_secret.key. Skipping claim flow.${NC}"
+            # Start playit with the existing key
+            docker exec -d mc-bot tmux new-session -d -s playit "playit --secret \$(cat /app/data/playit_secret.key)"
+        else
+            echo -e "Starting Playit agent to generate claim link..."
+            docker exec -d mc-bot tmux new-session -d -s playit "playit"
+            
+            echo -e "Waiting for claim URL (timeout 5m)..."
+            CLAIM_URL=""
+            TIMEOUT=300
+            START_TIME=$(date +%s)
+            
+            while [ -z "$CLAIM_URL" ]; do
+                CURRENT_TIME=$(date +%s)
+                if [ $((CURRENT_TIME - START_TIME)) -gt $TIMEOUT ]; then
+                    echo -e "${RED}[ERROR] Timeout waiting for Playit claim URL.${NC}"
+                    break
+                fi
+                
+                # Fetch playit logs from tmux
+                # The agent prints the link directly to console
+                LOGS=$(docker exec mc-bot tmux capture-pane -t playit -p || true)
+                CLAIM_URL=$(echo "$LOGS" | grep -o 'https://playit.gg/claim/[a-zA-Z0-9-]*' | tail -n 1)
+                
+                if [ -z "$CLAIM_URL" ]; then
+                    sleep 2
+                fi
+            done
+            
+            if [ -n "$CLAIM_URL" ]; then
+                echo -e ""
+                echo -e "${YELLOW}======================================================================${NC}"
+                echo -e "${GREEN}👉 Open this link in your browser:${NC}"
+                echo -e "${CYAN}${CLAIM_URL}${NC}"
+                echo -e "${GREEN}👉 Create a free account or log in, then click CLAIM.${NC}"
+                echo -e "${YELLOW}======================================================================${NC}"
+                
+                read -p "Press Enter when you have claimed the agent in your browser..."
+                
+                echo -e "Configuring Minecraft Java tunnel (port 25565)..."
+                # Stop the running agent so we can use the CLI tool to construct the tunnel
+                docker exec mc-bot tmux send-keys -t playit C-c
+                sleep 2
+                
+                # Save the new secret that playit generated (it puts it in its default config dir inside the container usually, but let's extract it or configure playit directly)
+                # Playit stores its secret in /etc/playit/playit.toml by default if run as root.
+                # Let's extract the secret key, save it to our persistent volume, and setup the tunnel.
+                SECRET_KEY=$(docker exec mc-bot sh -c "cat /etc/playit/playit.toml | grep 'secret_key' | cut -d'\"' -f2 || true")
+                
+                if [ -n "$SECRET_KEY" ]; then
+                    echo "$SECRET_KEY" > data/playit_secret.key
+                    
+                    # Add standard tunnel
+                    docker exec mc-bot playit --secret "$SECRET_KEY" tunnel add --type minecraft-java --local-port 25565 || true
+                    
+                    # Restart playit with the saved secret
+                    docker exec mc-bot tmux send-keys -t playit "playit --secret \$(cat /app/data/playit_secret.key)" ENTER
+                    echo -e "${GREEN}[OK] Playit tunnel created and agent running.${NC}"
+                else
+                    echo -e "${RED}[ERROR] Could not extract Playit secret key. You may need to configure the tunnel manually.${NC}"
+                fi
+            fi
+        fi
+    elif [ -s "data/playit_secret.key" ]; then
+        # If playit is enabled and we already have a key (from .env or previous run)
+        echo -e "Starting Playit agent with existing secret key..."
+        docker exec -d mc-bot tmux new-session -d -s playit "playit --secret \$(cat /app/data/playit_secret.key)"
+    fi
 fi
 
 echo ""

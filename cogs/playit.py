@@ -2,19 +2,33 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import asyncio
-import re
+import aiohttp
+import os
 from src.logger import logger
 from src.utils import has_role
 
 class PlayitCog(commands.Cog):
     """
     Manages Playit.gg integration details.
-    Allows retrieving the public connection address.
+    Allows retrieving the public connection address via Playit API.
     """
     def __init__(self, bot):
         self.bot = bot
         self.cached_address = None
         self.tunnels = []
+
+    def get_secret_key(self):
+        """Get Playit secret key from data file or env."""
+        key_path = "/app/data/playit_secret.key"
+        try:
+            if os.path.exists(key_path):
+                with open(key_path, "r") as f:
+                    return f.read().strip()
+        except Exception as e:
+            logger.error(f"Failed to read playit secret key from {key_path}: {e}")
+        
+        # Fallback to env
+        return os.environ.get("PLAYIT_SECRET_KEY", "").strip()
 
     @app_commands.command(name="ip", description="Get the public Playit.gg address")
     async def get_ip(self, interaction: discord.Interaction):
@@ -25,7 +39,7 @@ class PlayitCog(commands.Cog):
             await interaction.followup.send(f"🌍 **Public Address**: `{self.cached_address}`")
             return
 
-        # 2. Fetch from Docker logs
+        # 2. Fetch from Playit API
         address = await self.fetch_playit_address()
         
         if address:
@@ -33,63 +47,48 @@ class PlayitCog(commands.Cog):
             self.tunnels = [address]
             await interaction.followup.send(f"🌍 **Public Address**: `{address}`")
         else:
-            await interaction.followup.send("❌ Could not determine Playit address. Is the tunnel running?")
+            await interaction.followup.send("❌ Could not determine Playit address. Is the tunnel running or is the Secret Key missing?")
 
     async def fetch_playit_address(self):
         """
-        Scans `docker logs mc-bot-playit` for the assigned address.
+        Fetches the tunnel address via Playit REST API.
         """
-        container_name = "mc-bot-playit"
-        try:
-            # Get last 100 lines of logs
-            process = await asyncio.create_subprocess_exec(
-                'docker', 'logs', '--tail', '100', container_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode != 0:
-                logger.error(f"Failed to read playit logs: {stderr.decode()}")
-                return None
-                
-            logs = stdout.decode('utf-8', errors='ignore')
-            
-            # Parsing logic
-            # Playit logs usually look like:
-            # "tunnel running check connection: tcp://<domain>:<port>" or similar
-            # Or just search for the specific playit domain pattern
-            
-            # Generic match for commonly used domains in free tier, but user might have custom.
-            # Best bet: look for "https://playit.gg/t/<id>" and then maybe lines after?
-            # Or look for "address": "..." in JSON if it logs JSON.
-            # Typical log: "INFO tunnel defined: ... => ... (minecraft-java) @ <address>"
-            
-            # Simple heuristic: Look for lines containing "tunnel defined" or "tunnel running"
-            # and extract the domain part.
-            
-            # Parse allocated playit domain pattern
-            domains = re.findall(r'([a-zA-Z0-9-]+\.playit\.gg|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\b)', logs)
-            
-            # Filter non-app domains
-            valid_domains = [d for d in domains if 'playit.gg' not in d or len(d.split('.')[0]) > 4]
-            
-            lines = logs.split('\n')
-            for line in reversed(lines):
-                # Search for typical allocation line
-                # "starting tunnel ... => ... @ <ADDRESS>"
-                if "@" in line and "=>" in line:
-                    parts = line.split("@")
-                    if len(parts) > 1:
-                        addr = parts[-1].strip()
-                        # Verify it looks like an address
-                        if "." in addr:
-                            return addr
-                            
+        secret_key = self.get_secret_key()
+        if not secret_key:
+            logger.warning("No Playit secret key found. Cannot fetch IP.")
             return None
 
+        url = "https://api.playit.gg/account/tunnels"
+        headers = {
+            "Authorization": f"agent-key {secret_key}"
+        }
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Playit API returned status {resp.status}: {await resp.text()}")
+                        return None
+                    
+                    data = await resp.json()
+                    
+                    # Search for a minecraft-java tunnel
+                    for tunnel in data:
+                        if tunnel.get("tunnel_type") == "minecraft-java" and tunnel.get("custom_domain"):
+                            return tunnel.get("custom_domain")
+
+                    # Fallback to the first tunnel's formatted address if no explicit java one found
+                    for tunnel in data:
+                        if tunnel.get("custom_domain"):
+                            return tunnel.get("custom_domain")
+                        if tunnel.get("alloc"):
+                            alloc = tunnel.get("alloc")
+                            return f"{alloc.get('connect_address_v4', '')}:{alloc.get('connect_port_v4', '')}".strip(":")
+
+            return None
         except Exception as e:
-            logger.error(f"Error fetching Playit address: {e}")
+            logger.error(f"Error fetching Playit address from API: {e}")
             return None
 
 async def setup(bot):

@@ -6,11 +6,17 @@ FROM python:3.11-slim
 # Build arguments for cache busting
 ARG CACHEBUST=1
 
-# Install Java 21, tmux, and other dependencies
+# Install Java 21, tmux, and other dependencies + playit
 RUN apt-get update && apt-get install -y \
     openjdk-21-jre-headless \
     tmux \
     git \
+    curl \
+    gnupg \
+    && curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor > /etc/apt/trusted.gpg.d/playit.gpg \
+    && echo "deb [signed-by=/etc/apt/trusted.gpg.d/playit.gpg] https://playit-cloud.github.io/ppa/data ./" > /etc/apt/sources.list.d/playit-cloud.list \
+    && apt-get update \
+    && apt-get install -y playit \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

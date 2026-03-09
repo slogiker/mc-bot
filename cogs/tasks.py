@@ -103,6 +103,16 @@ class Tasks(commands.Cog):
                         status=discord.Status.dnd
                      ) 
 
+            # Check Playit tunnel
+            if os.path.exists("/app/data/playit_secret.key"):
+                # Check if playit tmux is running
+                playit_running = os.system("tmux has-session -t playit 2>/dev/null") == 0
+                if not playit_running:
+                    logger.warning("Playit tunnel is not running. Attempting restart...")
+                    # Get secret and start playit inside the tmux session
+                    os.system('tmux new-session -d -s playit "playit --secret $(cat /app/data/playit_secret.key)"')
+                    await send_debug(self.bot, "Playit tunnel restarted after being found stopped.") 
+
         except Exception as e:
             logger.error(f"Error in crash_check: {e}")
 

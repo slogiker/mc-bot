@@ -44,14 +44,3 @@ services:
     # Keep container running
     tty: true
     stdin_open: true
-
-  # -------------------------------------------------------------------------------------------------
-  # OPTIONAL DEPENDENCY: Playit.gg
-  # -------------------------------------------------------------------------------------------------
-  playit:
-    image: ghcr.io/playit-cloud/playit-agent:0.17
-    container_name: mc-bot-playit
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - SECRET_KEY=${PLAYIT_SECRET_KEY}
