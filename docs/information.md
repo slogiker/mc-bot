@@ -2,7 +2,7 @@
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v2.7.1`  
+**Version:** `v2.7.2`  
 **Last Updated:** March 2026  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
@@ -820,6 +820,20 @@ Key functions:
 
 ## 11. Version History & Recent Changes
 
+### v2.7.2 -- Setup Flow & Polishing Update _(Current)_
+
+**Setup UX Improvements:**
+- Removed all emojis from the `/setup` flow (dropdowns, buttons, titles) for a cleaner, professional look.
+- Version dropdown now correctly displays the resolved version alongside `(latest)` (e.g., `1.21.4 (latest)`).
+- Complete UI reactivity: All Selects and Modals in `setup_views.py` now instantly edit the embed to show the "Current Selection", eliminating visual input lag.
+- After server startup during installation, the bot now polls RCON readiness for up to 60 seconds. This ensures the embedded Control Panel perfectly synchronizes and shows "Online" immediately upon completion.
+
+**Log Latency & Bug Fixes:**
+- Re-architected `src/log_dispatcher.py` to use a `tail -F` subprocess instead of Python sleep polling, reducing Discord log channel latency from 1s to ~instant.
+- Reduced `console.py` log batch dispatch interval from 1.0s to 0.5s for faster log visualization.
+- Fixed a logic bug in `cogs/tasks.py` crash checker where variables were accessed before assignment.
+- Upgraded `install.sh` to intelligently detect existing installations, prompting the user to either fully Reconfigure, Update Code (git pull + rebuild), or Cancel.
+
 ### v2.7.1 -- Playit Reliability & Testing Release
 
 **Playit.gg Improvements:**
@@ -931,16 +945,14 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - ✅ Process Management (Start/Stop/Restart) via tmux
 - ✅ RCON Communication (`src/utils.rcon_cmd`)
 - ✅ Thread-safe Config System (`filelock`)
-- Unified Installer: `install.sh` (Linux) + `install.bat` (Windows, currently fallback only)
-- ✅ Windows: Docker Desktop detection (uses it if found) + auto-resuming registries
-- ✅ Modrinth API Integration + Progress tracking in all installers
-- ✅ Live Log Tailing via `LogDispatcher` → Discord channel (batched)
-- ✅ Owner-only `/cmd` with audit logging
+- ✅ Unified Installer: Linux `install.sh` (with Reconfigure/Update detection) + Windows `install.bat`
+- ✅ Modrinth API Integration + Progress tracking in setup wizard
+- ✅ **Setup Flow UI**: Emoji-less, instantaneous UI reactivity with RCON readiness synchronization
+- ✅ **Live Log Tailing**: Zero-latency `tail -F` subprocess → Discord channel (batched 0.5s)
 - ✅ Hardware Info (CPU/RAM/Disk via `psutil`)
 - ✅ NBT Data Parsing (Offline/Cracked accounts via `nbtlib`)
 - ✅ World Backup (zip, scheduled, manual, retention cleanup)
-- ✅ Economy System (balance, pay, admin set)
-- ✅ Word Hunt Minigame / AI Grok Integration (`/ai`)
+- ✅ Owner-only `/cmd` with audit logging
 - ✅ Event Scheduling with 24h + 1h reminders + Automations + Trigger Tracking
 - ✅ Offline mode whitelist (MD5 UUID generation, no Mojang dependency)
 - ✅ Simulation / Ghost Mode for local CI/CD tests without MC Servers
@@ -949,13 +961,6 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 ---
 
 ## 13. TODO — Active Roadmap
-
-### 🔴 Critical
-
-- [x] **Fix `cogs/automation.py` `cog_unload()` naming inconsistency** -- FIXED v2.6.0: Renamed to `self.log_task` consistently + added `log_dispatcher.unsubscribe()`.
-- [x] **Add timeout to Mojang API calls** -- FIXED v2.6.0: Added `aiohttp.ClientTimeout` to `stats.py` (10s) and `mc_installer.py` (30s).
-- [x] **Fix `#server-information` update when guild is None** -- Was already fixed (logs warning). Removed leading whitespace.
-- [x] **Forge API fetching** -- Commented out, documented Modrinth API and Forge Maven API as alternatives.
 
 ### 🟠 High Priority
 
@@ -967,6 +972,8 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 
 ### 🟡 Medium Priority
 
+- [ ] **Windows Native Installer (install.ps1)** — Full PowerShell script utilizing `dism.exe` for WSL/VirtualMachinePlatform enabling, Ubuntu installation natively, and colorized UI blocks.
+- [ ] **Cloud Storage Synchronization** — Background async uploading of generated backups to Google Drive using standard Python API integration.
 - [ ] **Server uptime statistics** — track uptime start time, display in `/info`.
 - [ ] **Performance metrics dashboard** — periodic embed showing TPS trend, player count over time, RAM usage history.
 - [ ] **Allowlist request system** — Discord UI modal allowing external users to request entry without Admin manipulation.
@@ -1054,14 +1061,7 @@ Host machine
 
 Docker restarts the container automatically after 3 failed `psutil` checks probing PID 1.
 
----
 
-## 8. Future Roadmap / Deferred Features
-
-The following items are planned architecture upgrades that have been deferred for later phases:
-
-- **Windows Native Installer (install.ps1):** Full PowerShell script utilizing `dism.exe` for WSL/VirtualMachinePlatform enabling, Ubuntu installation natively, and colorized UI blocks.
-- **Cloud Storage Synchronization:** Background async uploading of generated backups to Google Drive using standard Python API integration.
 
 ---
 

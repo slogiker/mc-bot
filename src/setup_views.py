@@ -70,20 +70,17 @@ class PlatformSelect(ui.Select):
                 label="Paper",
                 value="paper",
                 description="Recommended - Best performance & plugin support",
-                emoji="📄",
                 default=True
             ),
             discord.SelectOption(
                 label="Vanilla",
                 value="vanilla",
-                description="Official Minecraft server",
-                emoji="🍦"
+                description="Official Minecraft server"
             ),
             discord.SelectOption(
                 label="Fabric",
                 value="fabric",
-                description="Lightweight modding platform",
-                emoji="🧵"
+                description="Lightweight modding platform"
             )
         ]
         super().__init__(
@@ -97,21 +94,22 @@ class PlatformSelect(ui.Select):
         view: SetupView = self.view
         view.state.platform = self.values[0]
         await interaction.response.defer()
+        await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
 
 
 class VersionSelect(ui.Select):
     """Dropdown for selecting Minecraft version"""
     def __init__(self, platform: str = "paper", current_value: str = "latest"):
-        common_versions = ["latest"] + (GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["1.21.4", "1.20.4"])
+        versions = GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["1.21.4", "1.20.4"]
         
         options = []
-        for version in common_versions[:24]:  # Discord limit is 25
+        for i, version in enumerate(versions[:24]):  # Discord limit is 25
+            label = f"{version} (latest)" if i == 0 else version
             options.append(
                 discord.SelectOption(
-                    label=version,
+                    label=label,
                     value=version,
-                    emoji="📦" if version == "latest" else "🔢",
-                    default=(current_value == version)
+                    default=(current_value == version or (i == 0 and current_value == "latest"))
                 )
             )
         
@@ -120,7 +118,6 @@ class VersionSelect(ui.Select):
             discord.SelectOption(
                 label="Custom Version",
                 value="custom",
-                emoji="✏️",
                 description="Enter specific version"
             )
         )
@@ -141,9 +138,11 @@ class VersionSelect(ui.Select):
             await modal.wait()
             if modal.value:
                 view.state.version = modal.value
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
         else:
             view.state.version = self.values[0]
             await interaction.response.defer()
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
 
 
 class CustomVersionModal(ui.Modal, title="Custom Version"):
@@ -174,28 +173,24 @@ class DifficultySelect(ui.Select):
                 label="Peaceful",
                 value="peaceful",
                 description="No hostile mobs",
-                emoji="🕊️",
                 default=(current_value == "peaceful")
             ),
             discord.SelectOption(
                 label="Easy",
                 value="easy",
                 description="Reduced mob damage",
-                emoji="😊",
                 default=(current_value == "easy")
             ),
             discord.SelectOption(
                 label="Normal",
                 value="normal",
                 description="Standard gameplay",
-                emoji="⚔️",
                 default=(current_value == "normal")
             ),
             discord.SelectOption(
                 label="Hard",
                 value="hard",
                 description="Increased challenge",
-                emoji="💀",
                 default=(current_value == "hard")
             )
         ]
@@ -210,6 +205,7 @@ class DifficultySelect(ui.Select):
         view: SetupView = self.view
         view.state.difficulty = self.values[0]
         await interaction.response.defer()
+        await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
 
 
 class SeedModal(ui.Modal, title="World Seed"):
@@ -235,7 +231,7 @@ class SeedModal(ui.Modal, title="World Seed"):
 class SeedButton(ui.Button):
     """Button to set world seed"""
     def __init__(self):
-        super().__init__(label="Set Seed", style=discord.ButtonStyle.primary, emoji="🌱")
+        super().__init__(label="Set Seed", style=discord.ButtonStyle.primary)
     
     async def callback(self, interaction: discord.Interaction):
         view: SetupView = self.view
@@ -244,18 +240,19 @@ class SeedButton(ui.Button):
         await modal.wait()
         if modal.value is not None:
             view.state.seed = modal.value
+        await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
 
 
 class MaxPlayersSelect(ui.Select):
     """Dropdown for selecting max players"""
     def __init__(self, current_value: int = 20):
         options = [
-            discord.SelectOption(label="5 Players", value="5", emoji="👥", default=(current_value == 5)),
-            discord.SelectOption(label="10 Players", value="10", emoji="👥", default=(current_value == 10)),
-            discord.SelectOption(label="20 Players", value="20", emoji="👥", default=(current_value == 20)),
-            discord.SelectOption(label="50 Players", value="50", emoji="👥", default=(current_value == 50)),
-            discord.SelectOption(label="100 Players", value="100", emoji="👥", default=(current_value == 100)),
-            discord.SelectOption(label="Custom Amount", value="custom", emoji="✏️", description="Enter custom value")
+            discord.SelectOption(label="5 Players", value="5", default=(current_value == 5)),
+            discord.SelectOption(label="10 Players", value="10", default=(current_value == 10)),
+            discord.SelectOption(label="20 Players", value="20", default=(current_value == 20)),
+            discord.SelectOption(label="50 Players", value="50", default=(current_value == 50)),
+            discord.SelectOption(label="100 Players", value="100", default=(current_value == 100)),
+            discord.SelectOption(label="Custom Amount", value="custom", description="Enter custom value")
         ]
         super().__init__(
             placeholder="Choose max players...",
@@ -267,7 +264,6 @@ class MaxPlayersSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction):
         view: SetupView = self.view
         if self.values[0] == "custom":
-            # Show modal for custom input
             modal = CustomNumberModal(
                 title="Custom Max Players",
                 label="Max Players (1-100)",
@@ -279,22 +275,24 @@ class MaxPlayersSelect(ui.Select):
             await modal.wait()
             if modal.value:
                 view.state.max_players = modal.value
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
         else:
             view.state.max_players = int(self.values[0])
             await interaction.response.defer()
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
 
 
 class RAMSelect(ui.Select):
     """Dropdown for selecting RAM"""
     def __init__(self, current_value: int = 4):
         options = [
-            discord.SelectOption(label="1 GB", value="1", emoji="💾", description="Minimal", default=(current_value == 1)),
-            discord.SelectOption(label="2 GB", value="2", emoji="💾", description="Small server", default=(current_value == 2)),
-            discord.SelectOption(label="4 GB", value="4", emoji="💾", description="Recommended", default=(current_value == 4)),
-            discord.SelectOption(label="8 GB", value="8", emoji="💾", description="Large server", default=(current_value == 8)),
-            discord.SelectOption(label="16 GB", value="16", emoji="💾", description="Very large", default=(current_value == 16)),
-            discord.SelectOption(label="32 GB", value="32", emoji="💾", description="Maximum", default=(current_value == 32)),
-            discord.SelectOption(label="Custom Amount", value="custom", emoji="✏️", description="Enter custom value")
+            discord.SelectOption(label="1 GB", value="1", description="Minimal", default=(current_value == 1)),
+            discord.SelectOption(label="2 GB", value="2", description="Small server", default=(current_value == 2)),
+            discord.SelectOption(label="4 GB", value="4", description="Recommended", default=(current_value == 4)),
+            discord.SelectOption(label="8 GB", value="8", description="Large server", default=(current_value == 8)),
+            discord.SelectOption(label="16 GB", value="16", description="Very large", default=(current_value == 16)),
+            discord.SelectOption(label="32 GB", value="32", description="Maximum", default=(current_value == 32)),
+            discord.SelectOption(label="Custom Amount", value="custom", description="Enter custom value")
         ]
         super().__init__(
             placeholder="Choose RAM allocation...",
@@ -306,7 +304,6 @@ class RAMSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction):
         view: SetupView = self.view
         if self.values[0] == "custom":
-            # Show modal for custom input
             modal = CustomNumberModal(
                 title="Custom RAM Amount",
                 label="RAM in GB (1-32)",
@@ -318,9 +315,11 @@ class RAMSelect(ui.Select):
             await modal.wait()
             if modal.value:
                 view.state.ram = modal.value
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
         else:
             view.state.ram = int(self.values[0])
             await interaction.response.defer()
+            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
 
 
 class CustomNumberModal(ui.Modal):
@@ -355,7 +354,7 @@ class CustomNumberModal(ui.Modal):
             await interaction.response.defer()
         except ValueError as e:
             await interaction.response.send_message(
-                f"❌ Invalid input: {e}\nPlease enter a number between {self.min_val} and {self.max_val}",
+                f"Invalid input: {e}\nPlease enter a number between {self.min_val} and {self.max_val}",
                 ephemeral=True
             )
 
@@ -382,7 +381,7 @@ class PluginsModal(ui.Modal, title="Plugins & Mods"):
 class PluginsButton(ui.Button):
     """Button to set plugins"""
     def __init__(self):
-        super().__init__(label="Enter Plugins/Mods", style=discord.ButtonStyle.primary, emoji="🧩")
+        super().__init__(label="Enter Plugins/Mods", style=discord.ButtonStyle.primary)
     
     async def callback(self, interaction: discord.Interaction):
         view: SetupView = self.view
@@ -434,7 +433,7 @@ class SetupView(ui.View):
         
         if step == 0:  # Platform
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Choose your server platform",
                 color=discord.Color.blue()
             )
@@ -447,7 +446,7 @@ class SetupView(ui.View):
             
         elif step == 1:  # Version
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Choose Minecraft version",
                 color=discord.Color.blue()
             )
@@ -456,13 +455,13 @@ class SetupView(ui.View):
                 value=f"**{self.state.version}**",
                 inline=False
             )
-            embed.set_footer(text="Tip: 'latest' will always use the newest version")
+            embed.set_footer(text="Tip: The first option will always use the newest version")
             return embed, [VersionSelect(self.state.platform, self.state.version), self._back_button(), self._next_button()]
 
             
         elif step == 2:  # Difficulty
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Choose difficulty level",
                 color=discord.Color.blue()
             )
@@ -475,7 +474,7 @@ class SetupView(ui.View):
             
         elif step == 3:  # Seed
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Set world seed (optional)",
                 color=discord.Color.blue()
             )
@@ -489,7 +488,7 @@ class SetupView(ui.View):
             
         elif step == 4:  # Max Players
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Set maximum players",
                 color=discord.Color.blue()
             )
@@ -502,7 +501,7 @@ class SetupView(ui.View):
             
         elif step == 5:  # Advanced Settings (now with RAM)
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Advanced Settings",
                 color=discord.Color.blue()
             )
@@ -520,7 +519,7 @@ class SetupView(ui.View):
             
         elif step == 6:  # Plugins/Mods
             embed = discord.Embed(
-                title="🔧 Minecraft Server Setup",
+                title="Minecraft Server Setup",
                 description=f"**{progress}** - Plugins & Mods\nYou can enter a comma-separated list of Modrinth project slugs (e.g. `essentials, vault, clear-lagg`) to auto-download them during setup.",
                 color=discord.Color.blue()
             )
@@ -540,7 +539,7 @@ class SetupView(ui.View):
             
         else:  # Confirmation (step 6)
             embed = discord.Embed(
-                title="✅ Ready to Install",
+                title="Ready to Install",
                 description="Review your configuration and click Install to begin",
                 color=discord.Color.green()
             )
@@ -554,7 +553,7 @@ class SetupView(ui.View):
                 pass
 
             embed.add_field(
-                name="📋 Configuration Summary",
+                name="Configuration Summary",
                 value=(
                     f"**Platform:** {self.state.platform.title()}\n"
                     f"**Version:** {self.state.version}{' (Latest available will be used)' if self.state.version == 'latest' else ''}\n"
@@ -572,7 +571,7 @@ class SetupView(ui.View):
     
     def _next_button(self) -> ui.Button:
         """Create Next button"""
-        button = ui.Button(label="Next", style=discord.ButtonStyle.primary, emoji="▶️")
+        button = ui.Button(label="Next", style=discord.ButtonStyle.primary)
         async def callback(interaction: discord.Interaction):
             await self._navigate(interaction, self.state.current_step + 1)
         button.callback = callback
@@ -580,7 +579,7 @@ class SetupView(ui.View):
     
     def _back_button(self) -> ui.Button:
         """Create Back button"""
-        button = ui.Button(label="Back", style=discord.ButtonStyle.secondary, emoji="◀️")
+        button = ui.Button(label="Back", style=discord.ButtonStyle.secondary)
         async def callback(interaction: discord.Interaction):
             await self._navigate(interaction, self.state.current_step - 1)
         button.callback = callback
@@ -596,7 +595,7 @@ class SetupView(ui.View):
     
     def _configure_advanced_button(self) -> ui.Button:
         """Create Configure Advanced button"""
-        button = ui.Button(label="Configure", style=discord.ButtonStyle.primary, emoji="⚙️")
+        button = ui.Button(label="Configure", style=discord.ButtonStyle.primary)
         async def callback(interaction: discord.Interaction):
             modal = AdvancedSettingsModal(self.state)
             await interaction.response.send_modal(modal)
@@ -608,7 +607,7 @@ class SetupView(ui.View):
     
     def _install_button(self) -> ui.Button:
         """Create Install button"""
-        button = ui.Button(label="Install Now", style=discord.ButtonStyle.success, emoji="🚀")
+        button = ui.Button(label="Install Now", style=discord.ButtonStyle.success)
         async def callback(interaction: discord.Interaction):
             await self._start_installation(interaction)
         button.callback = callback
@@ -635,12 +634,12 @@ class SetupView(ui.View):
         
         # Create initial progress embed
         embed = discord.Embed(
-            title="⏳ Installing Minecraft Server",
+            title="Installing Minecraft Server",
             description="**Step 1/5:** Preparing installation...",
             color=0xFEE75C  # Yellow
         )
         embed.add_field(
-            name="📋 Configuration",
+            name="Configuration",
             value=(
                 f"**Platform:** {self.state.platform.title()}\n"
                 f"**Version:** {self.state.version}\n"
@@ -790,19 +789,41 @@ class SetupView(ui.View):
             if not start_success:
                 logger.warning(f"Server failed to start after installation: {start_msg}")
             
+            # Wait for server to actually be ready (RCON available)
+            server_ready = False
+            if start_success:
+                embed.description = "**Step 5/5:** Server started, waiting for it to be fully ready..."
+                await message.edit(embed=embed)
+                
+                from src.utils import rcon_cmd
+                for attempt in range(30):  # Up to 60 seconds (30 * 2s)
+                    try:
+                        response = await rcon_cmd("list")
+                        if response and "players" in response.lower():
+                            server_ready = True
+                            break
+                    except Exception:
+                        pass
+                    await asyncio.sleep(2)
+                
+                if not server_ready:
+                    logger.warning("Server started but RCON not available after 60s timeout")
+            
             # Success embed
             command_channel = interaction.client.get_channel(config.COMMAND_CHANNEL_ID)
             
+            status_text = "Online" if server_ready else ("Starting..." if start_success else "Ready to start")
+            
             embed = discord.Embed(
-                title="✅ Installation Complete!",
-                description="Your Minecraft server is ready!" + (" Server is starting..." if start_success else ""),
+                title="Installation Complete!",
+                description=f"Your Minecraft server is ready! Server status: **{status_text}**",
                 color=0x57F287  # Green
             )
             
             embed.add_field(
-                name="🚀 Quick Start",
+                name="Quick Start",
                 value=(
-                    f"1. Server is {'starting up' if start_success else 'ready to start'}\n"
+                    f"1. Server is {status_text.lower()}\n"
                     f"2. Use `/status` to check server status\n"
                     f"3. Use `/control` for the control panel\n"
                     f"4. Check {command_channel.mention if command_channel else '#command'} for commands"
@@ -814,6 +835,14 @@ class SetupView(ui.View):
             
             await message.edit(embed=embed)
             
+            # Trigger control panel update immediately so it shows correct status
+            try:
+                control_cog = interaction.client.get_cog("ControlPanelCog")
+                if control_cog:
+                    await control_cog.update_panel()
+            except Exception as e:
+                logger.error(f"Failed to update control panel: {e}")
+            
             # Initialize server info channel
             try:
                 from src.server_info_manager import ServerInfoManager
@@ -824,7 +853,7 @@ class SetupView(ui.View):
         except Exception as e:
             logger.error(f"Installation failed: {e}", exc_info=True)
             embed.color = discord.Color.red()
-            embed.description = f"❌ Installation failed: {str(e)}"
+            embed.description = f"Installation failed: {str(e)}"
             await message.edit(embed=embed)
     
     async def _save_config_to_file(self, updates: dict):
@@ -898,4 +927,4 @@ class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
             
             await interaction.response.defer()
         except Exception as e:
-            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+            await interaction.response.send_message(f"Error: {e}", ephemeral=True)

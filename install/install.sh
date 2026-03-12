@@ -40,6 +40,42 @@ echo -e "${CYAN}   Minecraft Discord Bot - Linux Installer   ${NC}"
 echo -e "${CYAN}---------------------------------------------${NC}"
 echo ""
 
+# Detect existing installation
+if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^mc-bot$'; then
+    echo -e "${YELLOW}An existing installation was detected (running mc-bot container found).${NC}"
+    echo ""
+    echo -e "  ${CYAN}1)${NC} Reconfigure & Reinstall (fresh setup)"
+    echo -e "  ${CYAN}2)${NC} Update code only (git pull + rebuild)"
+    echo -e "  ${CYAN}3)${NC} Cancel"
+    echo ""
+    read -p "Choose an option [1/2/3]: " INSTALL_MODE
+    case $INSTALL_MODE in
+        2)
+            echo -e "${BLUE}Updating code and rebuilding...${NC}"
+            git pull || true
+            # Detect compose command
+            if docker compose version &> /dev/null; then
+                COMPOSE_CMD="docker compose"
+            elif command -v docker-compose &> /dev/null; then
+                COMPOSE_CMD="docker-compose"
+            else
+                echo -e "${RED}[ERROR] docker compose plugin not found.${NC}"
+                exit 1
+            fi
+            $COMPOSE_CMD up -d --build
+            echo -e "${GREEN}[OK] Update complete! Bot container has been rebuilt.${NC}"
+            exit 0
+            ;;
+        3)
+            echo -e "Cancelled."
+            exit 0
+            ;;
+        *)
+            echo -e "${BLUE}Proceeding with full reconfigure...${NC}"
+            ;;
+    esac
+fi
+
 # 1. Check & Install Dependencies
 echo -e "${BLUE}[1/4] Checking dependencies...${NC}"
 
@@ -246,24 +282,38 @@ else
                 read -p "Press Enter when you have claimed the agent in your browser..."
                 
                 echo -e "Configuring Minecraft Java tunnel (port 25565)..."
-                # Stop the running agent so we can use the CLI tool to construct the tunnel
-                docker exec mc-bot tmux send-keys -t playit C-c
-                sleep 2
                 
-                # Save the new secret that playit generated (it puts it in its default config dir inside the container usually, but let's extract it or configure playit directly)
-                # Playit stores its secret in /etc/playit/playit.toml by default if run as root.
-                # Let's extract the secret key, save it to our persistent volume, and setup the tunnel.
-                SECRET_KEY=$(docker exec mc-bot sh -c "cat /etc/playit/playit.toml | grep 'secret_key' | cut -d'\"' -f2 || true")
+                # Extract the secret key before killing the session
+                # Playit stores its secret in /etc/playit/playit.toml when run as root
+                SECRET_KEY=$(docker exec mc-bot sh -c "cat /etc/playit/playit.toml 2>/dev/null | grep 'secret_key' | cut -d'\"' -f2 || true")
+                
+                # Kill the claim session cleanly (don't use send-keys C-c which can fail)
+                docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
+                sleep 2
                 
                 if [ -n "$SECRET_KEY" ]; then
                     echo "$SECRET_KEY" > data/playit_secret.key
                     
-                    # Add standard tunnel
+                    # Add standard tunnel using the secret
                     docker exec mc-bot playit --secret "$SECRET_KEY" tunnel add --type minecraft-java --local-port 25565 || true
                     
-                    # Restart playit with the saved secret
-                    docker exec mc-bot tmux send-keys -t playit "playit --secret \$(cat /app/data/playit_secret.key)" ENTER
-                    echo -e "${GREEN}[OK] Playit tunnel created and agent running.${NC}"
+                    # Start a fresh tmux session with the saved secret
+                    docker exec mc-bot tmux new-session -d -s playit "playit --secret $(cat data/playit_secret.key)"
+                    
+                    # Verify the session is actually running
+                    sleep 3
+                    if docker exec mc-bot tmux has-session -t playit 2>/dev/null; then
+                        echo -e "${GREEN}[OK] Playit tunnel created and agent running.${NC}"
+                    else
+                        echo -e "${YELLOW}[WARN] Playit session didn't start. Retrying...${NC}"
+                        docker exec mc-bot tmux new-session -d -s playit "playit --secret $(cat data/playit_secret.key)"
+                        sleep 2
+                        if docker exec mc-bot tmux has-session -t playit 2>/dev/null; then
+                            echo -e "${GREEN}[OK] Playit agent started on retry.${NC}"
+                        else
+                            echo -e "${RED}[ERROR] Failed to start Playit agent. The bot will attempt to auto-start it.${NC}"
+                        fi
+                    fi
                 else
                     echo -e "${RED}[ERROR] Could not extract Playit secret key. You may need to configure the tunnel manually.${NC}"
                 fi

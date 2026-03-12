@@ -54,6 +54,8 @@ class Tasks(commands.Cog):
                 
                 if self.restart_attempts >= 2:
                     logger.error("Server failed to restart twice. Stopping crash loop.")
+                    cmd_channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID) if config.COMMAND_CHANNEL_ID else None
+                    owner_id = config.OWNER_ID
                     if cmd_channel and owner_id:
                         # Fetch recent logs to determine crash reason
                         from src.log_dispatcher import log_dispatcher

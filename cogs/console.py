@@ -63,8 +63,8 @@ class ConsoleCog(commands.Cog):
                 # Batch buffer for messages
                 batch = []
                 last_send = asyncio.get_running_loop().time()
-                batch_interval = 1.0  # Send every 1 second or when batch is full
-                max_batch_size = 5  # Max messages per batch
+                batch_interval = 0.5  # Send every 0.5 seconds or when batch is full
+                max_batch_size = 3  # Max messages per batch
 
                 while not self.stop_event.is_set():
                     try:
