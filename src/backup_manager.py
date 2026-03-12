@@ -53,6 +53,8 @@ class BackupManager:
         """Zips the world folder directly without creating a temp copy."""
         world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
         
+        if not os.path.isdir(world_path):
+            raise FileNotFoundError(f"World directory not found: {world_path}")
         # Direct zipping - no temp copy (saves disk space and faster)
         with zipfile.ZipFile(dest_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for root, dirs, files in os.walk(world_path):

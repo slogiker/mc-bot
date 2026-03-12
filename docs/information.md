@@ -2,7 +2,7 @@
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v2.7.0`  
+**Version:** `v2.7.1`  
 **Last Updated:** March 2026  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
@@ -532,7 +532,7 @@ chmod +x install/install.sh
 The script:
 
 1. Checks/installs Docker and Git
-2. Prompts for `BOT_TOKEN`, optional `PLAYIT_SECRET_KEY`
+2. Prompts for `BOT_TOKEN`, optional Playit setup (Yes/No flow)
 3. Auto-generates `RCON_PASSWORD`
 4. Writes `.env`
 5. Creates `mc-server/`, `backups/`, `logs/` directories
@@ -657,7 +657,15 @@ Wraps `bot.server.start()`, `stop()`, `restart()`. Each command updates the `#se
 
 ### `cogs/playit.py`
 
-Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`) via HTTP using the agent's authentication key stored in `/app/data/playit_secret.key` or `.env`. Caches consequence address for subsequent requests. Exposed via `self.tunnels` list for other cogs (used by `/info`).
+Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`) via HTTP using the agent's authentication key stored in `/app/data/playit_secret.key` or `.env`. Caches the address with a **2-hour TTL** (`CACHE_TTL = 7200`). After 2 hours, the next `/ip` call re-fetches from the API. Exposed via `self.tunnels` list for other cogs (used by `/info`).
+
+`fetch_playit_address()` returns a `(address, error_message)` tuple. On failure, specific error messages are returned:
+- No secret key → instructs user to run installer or add key file
+- 401 Unauthorized → key may be expired or invalid
+- Non-200 status → tunnel may not be claimed
+- Empty tunnel list → no tunnels configured
+- No address on tunnel → tunnel still initializing
+- Network error → internet connectivity issue
 
 ### `cogs/setup.py`
 
@@ -676,7 +684,7 @@ Stats flow:
 
 Background tasks started from `on_ready` (not `__init__`):
 
-- `crash_check` (every 30s): If server not running and not intentionally stopped → attempt restart → notify debug channel. Also checks if `tmux has-session -t playit` is active and restarts the tunnel if down.
+- `crash_check` (every 30s): If server not running and not intentionally stopped → attempt restart → notify debug channel. After 2 failed restarts, pings server owner and aborts. Also monitors the Playit tmux session with the same pattern: tracks `playit_restart_attempts`, verifies restart success after 3s delay, notifies owner after 2 failures.
 - `monitor_server_log` (every 1s): Reads `mc-server/logs/latest.log` incrementally (file position tracking). Detects join/leave/done/stopping events. Sends to log channel. Updates info channel.
 - `daily_backup` (commented out): `tasks.loop(time=...)` using pytz timezone. Disabled — `backup.py` handles scheduling more robustly.
 
@@ -688,7 +696,7 @@ Background tasks started from `on_ready` (not `__init__`):
 
 `BackupManager` singleton (`backup_manager`).
 
-- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`.
+- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`. Validates that the world directory exists before zipping (raises `FileNotFoundError` if missing — fixed in v2.7.1, previously created empty backups silently).
 - `upload_backup(filepath)` → URL string via `pyonesend.OneSend().upload()`.
 - `_cleanup_auto_backups()` → deletes files older than `BACKUP_RETENTION_DAYS`.
 - Backup dirs: `BACKUP_DIR/auto/` and `BACKUP_DIR/custom/` where `BACKUP_DIR = /app/backups`.
@@ -796,6 +804,7 @@ Key functions:
 | #   | File                    | Bug                                                                                                                                      | Status       |
 | --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | 1   | `src/backup_manager.py` | Backup dir mismatch: Docker volume mounts `./backups:/app/backups`. Ensure `config.SERVER_DIR` stays relative to absolute Docker setups. | Open         |
+| ~~2~~   | ~~`src/backup_manager.py`~~ | ~~`_zip_world()` silently created empty backups when world directory didn't exist.~~ | FIXED v2.7.1 |
 | 2   | `cogs/automation.py`    | `cog_unload()` references `self.log_task` but also `self.log_scan_task` -- inconsistent naming. One is never cancelled.                  | FIXED v2.6.0 |
 | 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command -- TPS section in `/info` silently skips correctly, but should theoretically read the difference.  | Open         |
 | 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       | FIXED v2.6.0 |
@@ -810,6 +819,24 @@ Key functions:
 ---
 
 ## 11. Version History & Recent Changes
+
+### v2.7.1 -- Playit Reliability & Testing Release
+
+**Playit.gg Improvements:**
+
+- Upgraded Playit crash recovery in `cogs/tasks.py` to match MC server pattern: attempt counter (`playit_restart_attempts`), owner notification after 2 failures, 3-second restart verification, counter reset when healthy.
+- Added 2-hour cache TTL to `/ip` command in `cogs/playit.py` (`CACHE_TTL = 7200`). Previously cached forever.
+- Added specific error messages to `/ip` for all failure modes (no key, 401, no tunnels, network error, initializing).
+- Simplified `install.sh` Playit prompt: now asks Yes/No "Do you have a key?" instead of confusing "paste your key or leave blank".
+
+**Bug Fixes:**
+
+- Fixed `backup_manager._zip_world()` silently creating empty backups when world directory didn't exist. Now raises `FileNotFoundError`.
+
+**Testing:**
+
+- Added Docker-based test suite: `Dockerfile.test`, `docker-compose.test.yml`, 48 tests across 4 modules (config validation, backup manager, version fetcher, utilities).
+- Added `Makefile` with `make test`, `make test-verbose`, `make test-single` targets.
 
 ### v2.6.0 -- Bug Fix & Hardening Release _(Current)_
 

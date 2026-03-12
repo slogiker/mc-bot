@@ -1,22 +1,9 @@
 services:
-  test-installer:
-    image: ubuntu:22.04
-    privileged: true
-    volumes:
-      - .:/repo
-      - /var/lib/docker
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    entrypoint: [ "/bin/bash", "-c" ]
-    command:
-      - |
-        apt-get update && apt-get install -y sudo git curl rsync &&
-        useradd -m -s /bin/bash testuser &&
-        echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers &&
-        su - testuser -c "
-          mkdir ~/mc-bot &&
-          rsync -a /repo/ ~/mc-bot/ --exclude 'tests-out' &&
-          cp /repo/.env ~/mc-bot/.env &&
-          cd ~/mc-bot &&
-          printf 'y\nN\n' | ./install/install.sh --skip-start
-        " &&
-        sleep infinity
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: mcbot-test-runner
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1

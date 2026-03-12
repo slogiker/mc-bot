@@ -128,19 +128,29 @@ if [ -z "$SKIP_CONFIG" ]; then
     # Playit.gg
     echo ""
     echo -e "Do you want to configure ${CYAN}Playit.gg${NC} for public access?"
-    echo -e "(Requires a specific Secret Key from playit.gg -> Add Agent -> Linux/Docker)"
+    echo -e "(Free tunneling — no port forwarding needed)"
     read -p "> [y/N] " setup_playit
     
     PLAYIT_KEY=""
     if [[ $setup_playit =~ ^[Yy]$ ]]; then
-        echo -e "Enter your ${CYAN}Playit Secret Key${NC} if you already have one:"
-        echo -e "(Optional. If left blank, we will generate a claim link for you.)"
-        read -p "> " PLAYIT_KEY
+        echo ""
+        echo -e "Do you already have a ${CYAN}Playit Secret Key${NC}? [y/N]"
+        echo -e "(If this is your first time, just press Enter)"
+        read -p "> " has_key
         
-        # If user provided a key manually before startup, we can pre-populate the data file
-        if [ -n "$PLAYIT_KEY" ]; then
-            mkdir -p data
-            echo "$PLAYIT_KEY" > data/playit_secret.key
+        if [[ $has_key =~ ^[Yy]$ ]]; then
+            echo -e "Enter your ${CYAN}Playit Secret Key${NC}:"
+            read -p "> " PLAYIT_KEY
+            
+            if [ -n "$PLAYIT_KEY" ]; then
+                mkdir -p data
+                echo "$PLAYIT_KEY" > data/playit_secret.key
+                echo -e "${GREEN}[OK] Secret key saved.${NC}"
+            fi
+        else
+            echo ""
+            echo -e "${GREEN}✅ After startup, we'll generate a claim link for you.${NC}"
+            echo -e "   Just open it in your browser and click ${CYAN}Claim${NC} — takes 30 seconds."
         fi
     fi
 

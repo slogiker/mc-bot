@@ -61,7 +61,7 @@ The installer will:
 1. Install Docker if missing
 2. Prompt for your **Discord Bot Token**
 3. Ask if you want **Playit.gg** public access (recommended)
-   - If yes and you don't have a key: the installer shows a claim link — you open it, create a free account, click Claim, done
+   - If yes and it's your first time: the installer tells you a claim link will appear after startup — you open it, create a free account, click Claim, done
    - If yes and you have an existing key: paste it and skip the claim flow
 4. Auto-generate a secure RCON password
 5. Build and start the Docker container
@@ -197,7 +197,7 @@ A: The bot runs automatic daily backups (configurable time in `data/user_config.
 A: The bot runs a background crash checker every 30 seconds. If the server goes down unexpectedly, it automatically restarts it and notifies you in the debug channel. After 2 failed restarts, it stops and pings the owner.
 
 **Q: What if the Playit tunnel goes down?**
-A: Same deal — the crash checker monitors the Playit tmux session and restarts it automatically if it dies.
+A: The bot monitors the Playit tmux session every 30 seconds. If it dies, the bot auto-restarts it (up to 2 attempts). If both attempts fail, the server owner gets pinged in Discord with instructions to fix it manually.
 
 **Q: Can I run this on a Raspberry Pi?**
 A: Technically yes if it's a Pi 4 (4GB+) running 64-bit OS with Docker installed, but performance will be limited. A small VPS or old laptop is a better option.
@@ -216,6 +216,23 @@ A: In the `mc-server/world/` directory on your host machine. It's a Docker volum
 
 **Q: How do I completely reset the server?**
 A: Delete the `mc-server/` folder and run `/setup` again in Discord. To also reset the bot configuration, delete `data/bot_config.json`.
+
+---
+
+## 🧪 Testing
+
+The project includes a Docker-based test suite (48 tests across config validation, backup manager, version fetcher, and utilities):
+
+```bash
+# Run all tests in Docker (auto-cleanup)
+make test
+
+# Verbose output with full tracebacks
+make test-verbose
+
+# Run a single test file
+make test-single FILE=tests/test_config.py
+```
 
 ---
 

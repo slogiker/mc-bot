@@ -11,6 +11,7 @@ class Tasks(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.restart_attempts = 0
+        self.playit_restart_attempts = 0
         # DON'T start tasks here - wait for bot to be ready
 
     async def cog_load(self):
@@ -103,15 +104,38 @@ class Tasks(commands.Cog):
                         status=discord.Status.dnd
                      ) 
 
-            # Check Playit tunnel
+            # Check Playit tunnel (same pattern as MC server crash recovery)
             if os.path.exists("/app/data/playit_secret.key"):
-                # Check if playit tmux is running
                 playit_running = os.system("tmux has-session -t playit 2>/dev/null") == 0
                 if not playit_running:
-                    logger.warning("Playit tunnel is not running. Attempting restart...")
-                    # Get secret and start playit inside the tmux session
+                    if self.playit_restart_attempts >= 2:
+                        logger.error("Playit tunnel failed to restart twice. Stopping Playit crash loop.")
+                        cmd_channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID)
+                        owner_id = config.OWNER_ID
+                        if cmd_channel and owner_id:
+                            await cmd_channel.send(
+                                f"<@{owner_id}> 🚨 The Playit tunnel has crashed and failed to auto-restart after 2 attempts. "
+                                f"Check your Playit configuration or restart manually with `tmux new-session -d -s playit 'playit --secret $(cat /app/data/playit_secret.key)'`."
+                            )
+                        self.playit_restart_attempts = 0
+                        return
+
+                    self.playit_restart_attempts += 1
+                    logger.warning(f"Playit tunnel not running. Restart attempt {self.playit_restart_attempts}/2...")
+                    await send_debug(self.bot, f"Playit tunnel not running — restart attempt {self.playit_restart_attempts}/2...")
                     os.system('tmux new-session -d -s playit "playit --secret $(cat /app/data/playit_secret.key)"')
-                    await send_debug(self.bot, "Playit tunnel restarted after being found stopped.") 
+
+                    # Verify it actually started
+                    await asyncio.sleep(3)
+                    if os.system("tmux has-session -t playit 2>/dev/null") == 0:
+                        await send_debug(self.bot, "Playit tunnel restarted successfully.")
+                        self.playit_restart_attempts = 0
+                    else:
+                        await send_debug(self.bot, f"Playit restart attempt {self.playit_restart_attempts} failed.")
+                else:
+                    # Tunnel is running, reset counter
+                    if self.playit_restart_attempts > 0:
+                        self.playit_restart_attempts = 0 
 
         except Exception as e:
             logger.error(f"Error in crash_check: {e}")

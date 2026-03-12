@@ -1,0 +1,28 @@
+# Lightweight test image — no Java/tmux needed
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install git (needed for git+ pip dependency)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Install test dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir pytest pytest-asyncio
+
+# Copy project files
+COPY bot.py .
+COPY cogs/ ./cogs/
+COPY src/ ./src/
+COPY data/ ./data/
+COPY tests/ ./tests/
+
+# Create directories the code expects
+RUN mkdir -p /app/mc-server /app/backups /app/logs
+
+# Create a minimal .env so dotenv doesn't fail
+RUN echo "BOT_TOKEN=test-token-not-real" > /app/.env && \
+    echo "RCON_PASSWORD=test-rcon-pass" >> /app/.env
+
+CMD ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
