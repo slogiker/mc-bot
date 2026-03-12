@@ -74,25 +74,29 @@ mc-bot/
 │   ├── backup.py               # /backup, /backup_list, /backup_download + scheduled
 │   ├── console.py              # Live log tailing → Discord, /cmd
 │   ├── control_panel.py        # Sticky interactive control panel embed
-│   ├── economy.py              # [DISABLED] /balance, /pay, /economy_set + Word Hunt
+│   ├── economy.py.disabled     # [DISABLED] /balance, /pay, /economy_set + Word Hunt
 │   ├── events.py               # /event_create, /event_list, /event_delete
 │   ├── help.py                 # /help
-│   ├── info.py                 # /status, /players, /version, /seed, /mods, /info
+│   ├── info.py                 # /status, /version, /seed, /info
 │   ├── management.py           # /start, /stop, /restart, /control, /bot_restart
+│   ├── mods.py                 # /mods
+│   ├── players.py              # /players
 │   ├── playit.py               # /ip — Playit.gg address fetcher via REST API
-│   ├── setup.py                # /setup — full interactive server install wizard
+│   ├── settings.py             # Server settings
+│   ├── setup.py                # /setup — triggers the install wizard
 │   ├── stats.py                # /stats — NBT + Mojang API player statistics
 │   └── tasks.py                # Background: crash check, log monitor, daily backup
 │
 ├── src/                        # Core logic (non-Discord)
 │   ├── __init__.py
+│   ├── auto_setup.py           # Standalone fallback: creates Discord roles/channels via API
 │   ├── backup_manager.py       # Zip world, upload via pyonesend, retention cleanup
 │   ├── config.py               # Singleton Config class, JSON r/w with FileLock
-│   ├── installer_views.py      # Discord UI views for the install wizard flow
-│   ├── log_dispatcher.py       # Singleton — single docker logs -f fan-out
+│   ├── log_dispatcher.py       # Singleton — tail -F fan-out
 │   ├── logger.py               # Daily rotation, monthly zip, custom format
 │   ├── mc_installer.py         # Download Paper/Vanilla/Fabric JARs, configure props
 │   ├── mc_manager.py           # Helper: get_server_properties() reader
+│   ├── mod_updater.py          # Modrinth plugin/mod fetcher
 │   ├── server_info_manager.py  # Manages #server-information channel embed
 │   ├── server_interface.py     # Abstract base class ServerInterface
 │   ├── server_mock.py          # MockServerManager for --simulate mode
@@ -101,7 +105,7 @@ mc-bot/
 │   ├── setup_views.py          # Multi-step setup form UI (discord.ui)
 │   ├── utils.py                # rcon_cmd(), has_role(), send_debug(), get_uuid()
 │   ├── version_fetcher.py      # Cached API calls for Paper/Vanilla/Fabric versions
-│   └── auto_setup.py           # Standalone fallback: creates Discord roles/channels via API
+│   └── views.py                # Shared generic UI views
 │
 ├── data/                       # Persistent config (mounted as volume)
 │   ├── bot_config.json         # Machine state (channel IDs, guild ID, economy, events)
@@ -366,7 +370,7 @@ config.get(key, default=None)                  → safe attribute getter
 | `/stop`          | `stop`        | Graceful stop. Sends `stop` command via RCON, waits 5s, kills tmux if needed. Cooldown: 30s. |
 | `/restart`       | `restart`     | Stop + start with `RESTART_DELAY` (5s) gap. Cooldown: 60s.                                   |
 | `/control`       | `control`     | Spawns inline ControlView with Start/Stop/Restart/Status buttons.                            |
-| `/bot_restart`   | `bot_restart` | `os.execv(sys.executable, ...)` — hot-restarts the bot process.                              |
+| `/bot_restart`   | `bot_restart` | `sys.exit(0)` — hot-restarts the bot process utilizing Docker's auto-restart policy.         |
 | `/cmd <command>` | owner only    | Execute raw RCON command. Audit-logged to debug channel.                                     |
 
 ### Server Information
@@ -388,6 +392,7 @@ config.get(key, default=None)                  → safe attribute getter
 | --------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `/setup`                    | server admin    | Full interactive multi-step install wizard. Creates channels, downloads server, fetches plugins, configures everything. |
 | `/sync`                     | `sync`          | Re-syncs slash commands to guild.                                                                                       |
+| `/settings`                 | `cmd`           | Interactive GUI to modify Bot and Server configurations (RAM, Schedules, Timezone, Permissions)                         |
 | `/backup_now [name]`        | `backup_now`    | Triggers immediate backup. Cooldown: 5min.                                                                              |
 | `/logs [lines]`             | `logs`          | Shows last N lines from `docker logs`. Sent to log channel.                                                             |
 | `/whitelist_add <username>` | `whitelist_add` | RCON `whitelist add` + `whitelist reload`.                                                                              |
@@ -531,12 +536,13 @@ chmod +x install/install.sh
 
 The script:
 
-1. Checks/installs Docker and Git
-2. Prompts for `BOT_TOKEN`, optional Playit setup (Yes/No flow)
-3. Auto-generates `RCON_PASSWORD`
-4. Writes `.env`
-5. Creates `mc-server/`, `backups/`, `logs/` directories
-6. Runs `docker compose up -d --build`
+1. Checks if an installation already exists (prompts Reconfigure, Update Code, or Cancel)
+2. Checks/installs Docker and Git
+3. Prompts for `BOT_TOKEN`, optional Playit setup (Yes/No flow)
+4. Auto-generates `RCON_PASSWORD`
+5. Writes `.env`
+6. Creates `mc-server/`, `backups/`, `logs/` directories
+7. Runs `docker compose up -d --build`
 
 After startup, run `/setup` in Discord to create channels and install the Minecraft server.
 
@@ -655,6 +661,14 @@ Builds dynamic help embed by cross-referencing user's roles against `config.ROLE
 
 Wraps `bot.server.start()`, `stop()`, `restart()`. Each command updates the `#server-information` channel via `ServerInfoManager` on success.
 
+### `cogs/mods.py`
+
+`/mods` traverses `mc-server/mods/` or `mc-server/plugins/` (based on platform) and lists `.jar` files in a Discord embed.
+
+### `cogs/players.py`
+
+`/players` sends the `list` command via RCON, parses the online players, and builds a formatted embed. Handles "0 players online" gracefully.
+
 ### `cogs/playit.py`
 
 Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`) via HTTP using the agent's authentication key stored in `/app/data/playit_secret.key` or `.env`. Caches the address with a **2-hour TTL** (`CACHE_TTL = 7200`). After 2 hours, the next `/ip` call re-fetches from the API. Exposed via `self.tunnels` list for other cogs (used by `/info`).
@@ -667,9 +681,13 @@ Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`)
 - No address on tunnel → tunnel still initializing
 - Network error → internet connectivity issue
 
+### `cogs/settings.py`
+
+Implements the interactive `/settings` command utilizing multiple Modals (`RamModal`, `ScheduleModal`, `TimezoneModal`, `PermissionsModal`). Directly modifies `user_config.json` via the `config` singleton and hot-reloads running state variables (Java heap, logic intervals, timezone lookups) without requiring a restart.
+
 ### `cogs/setup.py`
 
-Entry point for `/setup`. Checks for `server.jar` existence — if found, shows reinstall warning with Confirm/Cancel. Calls `fetch_versions()` from `setup_views.py` to pre-fetch version list, then launches `SetupView`. Temporarily ignores Forge API.
+Entry point for `/setup`. Checks for `server.jar` existence — if found, shows reinstall warning with Confirm/Cancel. Calls `fetch_versions()` from `setup_views.py` to pre-fetch version list, then launches the zero-emoji, real-time reactive `SetupView`. Temporarily ignores Forge API.
 
 ### `cogs/stats.py`
 
@@ -1067,4 +1085,4 @@ Docker restarts the container automatically after 3 failed `psutil` checks probi
 
 ## AI Agent Prompt Instructions
 
-> **System Instruction for all AIs:** At each change, add recent architectural or functional changes to this file (`docs/information.md`),and keep track of versions, update to and if broadly applicable, append new features to `README.md`. This `information.md` file can always be longer, never shorter. It must remain the comprehensive canonical source of truth for the codebase history and technical roadmap. Maintain this documented style, structure, and depth explicitly going forward.
+> **System Instruction for all AIs:** At each change, add recent architectural or functional changes to this file (`docs/information.md`),and keep track of versions, update to and if broadly applicable, append new features to `README.md`. This `information.md` file can always be longer (or same size), never shorter. It must remain the comprehensive canonical source of truth for the codebase history and technical roadmap. Maintain this documented style, structure, and depth explicitly going forward.
