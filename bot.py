@@ -9,6 +9,9 @@ import signal
 from src.config import config
 from src.logger import logger
 from src.server_tmux import TmuxServerManager
+from src.log_dispatcher import log_dispatcher
+from src.log_watcher import LogWatcher
+from src.join_guard import JoinGuard
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
@@ -37,6 +40,17 @@ class MinecraftBot(commands.Bot):
         
         self.synced = False  # Prevent duplicate syncs
         self._sync_lock = asyncio.Lock()  # Prevent race conditions
+        
+        # Initialize Security modules
+        self.join_guard = JoinGuard(self)
+        self.log_watcher = LogWatcher(self)
+        
+        # Attach event listener
+        self.add_listener(self.on_minecraft_player_login, 'on_minecraft_player_login')
+
+    async def on_minecraft_player_login(self, username: str, uuid: str):
+        """Dispatched custom event from LogWatcher when a user connects."""
+        await self.join_guard.handle_player_login(username, uuid)
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         # Ignore cooldowns or permission errors for the debug channel, just show ephemeral to user
@@ -120,23 +134,25 @@ class MinecraftBot(commands.Bot):
             
         logger.info("=== Bot Startup: Loading Extensions ===")
         # Load cogs - wrap os.listdir for async
+        loaded_count = 0
         try:
             filenames = await asyncio.to_thread(os.listdir, './cogs')
             for filename in filenames:
                 if filename.endswith('.py') and filename != '__init__.py':
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
-                        logger.info(f"Loaded cog: {filename}")
+                        logger.debug(f"Loaded cog: {filename}")
+                        loaded_count += 1
                     except Exception as e:
                         logger.error(f"Failed to load cog {filename}: {e}")
         except FileNotFoundError:
             logger.warning("No cogs directory found!")
         
-        logger.info("=== All extensions loaded ===")
+        logger.info(f"=== {loaded_count} extensions loaded successfully ===")
 
     async def on_ready(self):
         """Called when bot is fully connected and ready"""
-        logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
+        logger.debug(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info("=== Bot Connected to Discord ===")
         
         if is_simulation:
@@ -168,40 +184,43 @@ class MinecraftBot(commands.Bot):
         logger.info(f"Using Guild: {guild.name} ({guild.id})")
 
         # Run Dynamic Setup
-        logger.info("Running dynamic setup...")
+        logger.debug("Running dynamic setup...")
         from src.setup_helper import SetupHelper
         setup_helper = SetupHelper(self)
         try:
             updates = await setup_helper.ensure_setup(guild)
             # In simulation, this updates memory config but skips saving
             config.update_dynamic_config(updates)
-            logger.info(f"Dynamic Config Updated: {updates}")
+            logger.debug(f"Dynamic Config Updated: {updates}")
         except Exception as e:
             logger.error(f"Dynamic Setup Failed: {e}", exc_info=True)
             
         # VERY IMPORTANT: Resolve roles so the @has_role decorators check IDs correctly
-        logger.info("Resolving role permissions...")
+        logger.debug("Resolving role permissions...")
         config.resolve_role_permissions(guild)
         
         # Sync commands to this guild
-        logger.info("Syncing slash commands to guild...")
+        logger.debug("Syncing slash commands to guild...")
         try:
             self.tree.copy_global_to(guild=guild)
             synced = await self.tree.sync(guild=guild)
-            logger.info(f"Synced {len(synced)} commands to {guild.name}")
+            logger.info(f"✅ Synced {len(synced)} commands to {guild.name}")
             self.synced = True
         except Exception as e:
             logger.error(f"Failed to sync commands: {e}", exc_info=True)
             return
 
         # Update presence based on initial state
-        logger.info("Setting bot presence...")
+        logger.debug("Setting bot presence...")
         try:
             if self.server.is_running():
                 await self.change_presence(
                     activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"),
                     status=discord.Status.online
                 )
+                # Ensure the background tasks are running if the server is online
+                await log_dispatcher.start()
+                self.log_watcher.start()
             else:
                 await self.change_presence(
                     activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),

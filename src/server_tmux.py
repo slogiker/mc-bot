@@ -12,6 +12,7 @@ class TmuxServerManager(ServerInterface):
     def __init__(self):
         self.session_name = "minecraft"
         self._intentional_stop = True  # Cache in memory to avoid blocking I/O
+        self._start_time = None
         self._state_file = os.path.join(config.SERVER_DIR, 'bot_state.json')
         self._state_lock = asyncio.Lock()  # Prevent race conditions
         
@@ -45,6 +46,9 @@ class TmuxServerManager(ServerInterface):
     def is_intentionally_stopped(self) -> bool:
         """Return cached state (non-blocking)"""
         return self._intentional_stop
+        
+    def get_start_time(self) -> float | None:
+        return self._start_time
 
     async def _load_state(self):
         """Load state from file asynchronously"""
@@ -57,7 +61,8 @@ class TmuxServerManager(ServerInterface):
                         content = await f.read()
                         data = json.loads(content)
                         self._intentional_stop = data.get('intentional_stop', True)
-                        logger.info(f"Loaded state: intentional_stop={self._intentional_stop}")
+                        self._start_time = data.get('start_time')
+                        logger.info(f"Loaded state: intentional_stop={self._intentional_stop}, start_time={self._start_time}")
                 else:
                     logger.info("No state file found, assuming intentional stop")
                     self._intentional_stop = True
@@ -72,10 +77,13 @@ class TmuxServerManager(ServerInterface):
                 # Ensure directory exists (use asyncio.to_thread)
                 await asyncio.to_thread(os.makedirs, os.path.dirname(self._state_file), exist_ok=True)
                 
-                data = {'intentional_stop': self._intentional_stop}
+                data = {
+                    'intentional_stop': self._intentional_stop,
+                    'start_time': self._start_time
+                }
                 async with aiofiles.open(self._state_file, 'w') as f:
                     await f.write(json.dumps(data, indent=2))
-                logger.info(f"Saved state: intentional_stop={self._intentional_stop}")
+                logger.info(f"Saved state: intentional_stop={self._intentional_stop}, start_time={self._start_time}")
             except Exception as e:
                 logger.error(f"Failed to save state: {e}")
 
@@ -128,8 +136,11 @@ class TmuxServerManager(ServerInterface):
             logger.error(msg)
             return False, msg
         
+        
         # Update state
+        import time
         self._intentional_stop = False
+        self._start_time = time.time()
         await self._save_state()
         
         logger.info("Server started successfully")
@@ -143,6 +154,7 @@ class TmuxServerManager(ServerInterface):
         
         # Mark as intentional stop FIRST
         self._intentional_stop = True
+        self._start_time = None
         await self._save_state()
         
         # Send stop command via tmux

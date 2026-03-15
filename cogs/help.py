@@ -49,10 +49,11 @@ class Help(commands.Cog):
             # Handle commands not in categories (if any)
             all_categorized = set(c for cmds in categories.values() for c in cmds)
             uncategorized = ""
-            for cmd in self.bot.tree.get_commands():
+            for cmd in self.bot.tree.walk_commands():
                 if cmd.name not in all_categorized and cmd.name != "help":
                      if cmd.name in allowed_commands:
                         uncategorized += f"**/{cmd.name}** - {cmd.description}\n"
+                        total_cmds += 1
             
             if uncategorized:
                 embed.add_field(name="📦 Other", value=uncategorized, inline=False)

@@ -9,7 +9,8 @@ import aiohttp
 
 class BackupManager:
     def __init__(self):
-        self.backup_dir = '/app/backups'
+        # Resolve backup dir relative to the project root properly
+        self.backup_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backups'))
         self.auto_dir = os.path.join(self.backup_dir, 'auto')
         self.custom_dir = os.path.join(self.backup_dir, 'custom')
         

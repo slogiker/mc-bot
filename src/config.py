@@ -161,8 +161,8 @@ class Config:
         self.OWNER_ID = bot_cfg.get('owner_id')
         
         # Hardcoded/default values (not user-configurable)
-        # TODO: Make RCON_HOST configurable for multi-container setups
-        self.RCON_HOST = "127.0.0.1"
+        # Hardcoded/default values (not user-configurable mostly)
+        self.RCON_HOST = os.getenv("RCON_HOST", "127.0.0.1")
 
         self.RCON_PORT = 25575
         self.SERVER_JAR = "server.jar"

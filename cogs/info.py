@@ -187,18 +187,50 @@ class Info(commands.Cog):
             if self.bot.server.is_running():
                 embed.add_field(name="Status", value="🟢 Online", inline=True)
                 
+                # Uptime check
+                uptime_str = "Unknown"
+                if hasattr(self.bot.server, 'get_start_time'):
+                    start_time = self.bot.server.get_start_time()
+                    if start_time:
+                        import time
+                        from datetime import timedelta
+                        delta = timedelta(seconds=int(time.time() - start_time))
+                        uptime_str = str(delta)
+                embed.add_field(name="Uptime", value=uptime_str, inline=True)
+                
                 # TPS Check (RCON)
+                tps = "Unknown"
                 try:
-                    # 'debug start' -> wait -> 'debug stop' is accurate but slow (requires waiting).
-                    # 'forge tps' or 'paper tps' is better.
-                    # fallback: approximate based on recent tick times if available?
-                    # For now, let's try a quick 'forge tps' or nothing if vanilla.
-                    # Vanilla doesn't have a direct /tps command. 
-                    # We can use /debug, but that spans time.
-                    # Let's just list players for now and maybe implement a TPS task later.
-                    pass
-                except:
-                    pass
+                    # Attempt Paper/Forge direct TPS fetch
+                    try:
+                         tps_raw = await rcon_cmd("tps")
+                         # Usually returns "TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0"
+                         if "TPS from last" in tps_raw:
+                             tps = tps_raw.split(":")[-1].strip().split(",")[0].strip()
+                         else:
+                             raise ValueError("Not a valid TPS string")
+                    except Exception:
+                         # Vanilla Fallback: Use debug start/stop to infer TPS
+                         await rcon_cmd("debug start")
+                         await asyncio.sleep(1.0) # wait exactly 1 second
+                         debug_raw = await rcon_cmd("debug stop")
+                         
+                         if "Stopped tick profiling after" in debug_raw:
+                             import re
+                             # Sample: "Stopped tick profiling after 1 seconds and 20 ticks (20.00 ticks per second)"
+                             match = re.search(r'\(([\d.]+)\s+ticks per second\)', debug_raw)
+                             if match:
+                                 tps = match.group(1)
+                             else:
+                                 tps = "N/A (Vanilla)"
+                         else:
+                             tps = "N/A (Vanilla)"
+                except Exception as e:
+                    from src.logger import logger
+                    logger.debug(f"TPS check failed: {e}")
+                    tps = "N/A"
+                    
+                embed.add_field(name="TPS", value=tps, inline=True)
 
                 try:
                     players_raw = await rcon_cmd("list")
@@ -222,7 +254,7 @@ class Info(commands.Cog):
                             player_list = "\n".join([f"👤 {n}" for n in names if n])
                             embed.add_field(name="Players", value=f"**{current}/{max_players}**\n{player_list}", inline=False)
                         else:
-                            embed.add_field(name="Players", value=f"{current}/{max_players}", inline=False)
+                            embed.add_field(name="Players", value=f"**{current}/{max_players}**", inline=False)
                     else:
                         embed.add_field(name="Players", value=players_raw, inline=False)
                 except Exception as e:

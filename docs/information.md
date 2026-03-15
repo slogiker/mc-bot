@@ -2,12 +2,35 @@
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v2.7.2`  
+**Version:** `v2.8.0-dev`  
 **Last Updated:** March 2026  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
 
 > This document is the single source of truth for architecture, commands, configuration, version history, bugs, todos, and internal notes. It is intentionally verbose and designed to be fed directly to LLMs or read by developers onboarding to the project.
+### `src/setup_views.py`
+
+Modern multi-step Discord form. See [Section 3.6](#36-setup-wizard-flow). Uses `SetupState` dataclass for form state. Fetches version list from Modrinth API on first load.
+
+### `src/utils.py`
+
+Key functions:
+
+- `has_role(cmd_name)` → `app_commands.check` decorator. 3-step check: ID map → name map → @everyone.
+- `rcon_cmd(cmd)` → async RCON via `aiomcrcon.Client`. Returns response string or error.
+- `send_debug(bot, msg)` → send to debug channel + log.
+- `get_uuid(username)` → looks up in `usercache.json`.
+- `parse_server_version()` → reads `latest.log` line by line for "Starting minecraft server version".
+
+
+### `src/mc_link_manager.py` _(NEW)_
+
+`MCLinkManager` class (not a singleton — instantiated per-use in cogs).
+
+- `link_account(discord_id, mc_username, is_premium)` → writes to `data/mc_links.json`. Automatically removes any previous link for that MC username (prevents two accounts sharing one username).
+- `unlink_account(discord_id)` → returns `bool`.
+- `get_link_by_discord(discord_id)` → `dict | None`.
+- `get_link_by_mc(mc_username)` → `dict | None` (includes `discord_id` key).
 
 ---
 
@@ -60,7 +83,10 @@ MC-Bot is a self-hosted Discord bot that manages a Minecraft Java server running
 mc-bot/
 ├── bot.py                      # Main entry point. Bot class, startup, shutdown
 ├── Dockerfile                  # Python 3.11 + Java 21 + tmux + playit agent
+├── Dockerfile.test             # Test-only Docker image (pytest, no runtime deps)
 ├── docker-compose.yml          # mc-bot service
+├── docker-compose.test.yml     # Isolated test-runner compose file
+├── Makefile                    # make test / test-verbose / test-single / up / down
 ├── requirements.txt            # Python dependencies
 ├── .env.example                # Environment variable template
 ├── .gitignore
@@ -76,8 +102,9 @@ mc-bot/
 │   ├── control_panel.py        # Sticky interactive control panel embed
 │   ├── economy.py.disabled     # [DISABLED] /balance, /pay, /economy_set + Word Hunt
 │   ├── events.py               # /event_create, /event_list, /event_delete
-│   ├── help.py                 # /help
-│   ├── info.py                 # /status, /version, /seed, /info
+│   ├── help.py                 # /help — dynamic, permission-filtered
+│   ├── info.py                 # /status, /version, /seed, /info (+ uptime, TPS fallback)
+│   ├── link.py                 # /link, /unlink, /unlink_admin — offline-mode account protection
 │   ├── management.py           # /start, /stop, /restart, /control, /bot_restart
 │   ├── mods.py                 # /mods
 │   ├── players.py              # /players
@@ -92,25 +119,46 @@ mc-bot/
 │   ├── auto_setup.py           # Standalone fallback: creates Discord roles/channels via API
 │   ├── backup_manager.py       # Zip world, upload via pyonesend, retention cleanup
 │   ├── config.py               # Singleton Config class, JSON r/w with FileLock
+│   ├── join_guard.py           # NEW: Intercepts logins, kicks unverified offline accounts, DM challenge
 │   ├── log_dispatcher.py       # Singleton — tail -F fan-out
+│   ├── log_watcher.py          # NEW: Subscribes to LogDispatcher, parses User Authenticator lines
 │   ├── logger.py               # Daily rotation, monthly zip, custom format
 │   ├── mc_installer.py         # Download Paper/Vanilla/Fabric JARs, configure props
+│   ├── mc_link_manager.py      # NEW: CRUD for Discord↔MC username linkage (data/mc_links.json)
 │   ├── mc_manager.py           # Helper: get_server_properties() reader
 │   ├── mod_updater.py          # Modrinth plugin/mod fetcher
+│   ├── mojang.py               # NEW: Mojang API lookup — checks if MC username is premium
 │   ├── server_info_manager.py  # Manages #server-information channel embed
 │   ├── server_interface.py     # Abstract base class ServerInterface
 │   ├── server_mock.py          # MockServerManager for --simulate mode
-│   ├── server_tmux.py          # TmuxServerManager (real server control)
+│   ├── server_tmux.py          # TmuxServerManager (real server control, tracks start_time)
 │   ├── setup_helper.py         # Creates Discord roles/channels/categories
 │   ├── setup_views.py          # Multi-step setup form UI (discord.ui)
 │   ├── utils.py                # rcon_cmd(), has_role(), send_debug(), get_uuid()
+│   ├── utils_views.py          # NEW: ChallengeView + CodeModal for DM verification UI
 │   ├── version_fetcher.py      # Cached API calls for Paper/Vanilla/Fabric versions
 │   └── views.py                # Shared generic UI views
 │
 ├── data/                       # Persistent config (mounted as volume)
 │   ├── bot_config.json         # Machine state (channel IDs, guild ID, economy, events)
-│   └── user_config.json        # User preferences (RAM, schedule, role permissions)
-│   └── playit_secret.key       # Auto-generated Playit agent authentication key
+│   ├── user_config.json        # User preferences (RAM, schedule, role permissions)
+│   ├── mc_links.json           # [gitignored] Discord↔MC account linkage DB (auto-created)
+│   └── playit_secret.key       # [gitignored] Auto-generated Playit agent authentication key
+│
+├── docs/                       # Documentation
+│   ├── information.md          # (this file — comprehensive version + roadmap + commands)
+│   └── i18n-implementation.md  # Deferred i18n plan (JSON locale approach)
+│
+├── implementations/            # In-depth technical implementation specs
+│   └── offline-protection.md   # Full spec for Mascan-proof offline mode join guard
+│
+├── tests/                      # Docker-based pytest suite
+│   ├── conftest.py             # Shared fixtures (world dirs, config, mock logs)
+│   ├── test_backup.py          # BackupManager unit tests
+│   ├── test_config.py          # Config validation tests
+│   ├── test_mc_link_manager.py # MCLinkManager CRUD tests
+│   ├── test_utils.py           # Utility function tests
+│   └── test_version_fetcher.py # VersionFetcher API + fallback tests
 │
 ├── install/                    # Installation helpers
 │   ├── install.sh              # Linux/WSL installer (Docker + .env + compose up)
@@ -118,9 +166,6 @@ mc-bot/
 │   ├── wsl_docker_setup.sh     # Called by install.bat — installs Docker Engine inside WSL
 │   ├── simulate.py             # Launches bot with --simulate flag for local testing
 │   └── update.py               # Dev rebuild script: updates from git checks and rebuilds docker
-│
-├── docs/                       # Documentation
-│   ├── information.md          # (this file — comprehensive version + roadmap + commands)
 │
 ├── mc-server/                  # Minecraft server files (gitignored, Docker volume)
 │   ├── server.jar
@@ -150,6 +195,9 @@ bot.py main()
   └─ MinecraftBot.__init__()
        ├─ config.set_simulation_mode(is_simulation)
        ├─ TmuxServerManager() or MockServerManager()
+       ├─ JoinGuard(bot)               — login interceptor
+       ├─ LogWatcher(bot)              — subscribes to LogDispatcher
+       ├─ add_listener(on_minecraft_player_login)
        └─ setup_hook()
             ├─ Load all cogs from ./cogs/*.py
             └─ (sync happens in on_ready, not here)
@@ -162,7 +210,8 @@ bot.py main()
        │    └─ Create/find channels: command, log, debug
        ├─ config.update_dynamic_config(updates)
        ├─ tree.copy_global_to(guild) + tree.sync(guild)
-       └─ Set bot presence (Online/Offline based on server state)
+       ├─ Set bot presence (Online/Offline based on server state)
+       └─ If server is_running() → log_dispatcher.start() + log_watcher.start()
 ```
 
 ### 3.2 Log Dispatcher
@@ -192,6 +241,7 @@ line = await asyncio.wait_for(self.log_queue.get(), timeout=1.0)
 - `console.py` — streams to Discord log channel
 - `automation.py` — scans for trigger phrases
 - `economy.py` — monitors for Word Hunt winners
+- `log_watcher.py` — scans for User Authenticator login events (join guard)
 
 ### 3.3 Server Manager Hierarchy
 
@@ -340,7 +390,7 @@ config.get(key, default=None)                  → safe attribute getter
 | ------------------------------ | -------------------- | ---------------- |
 | `config.TOKEN`                 | env                  | Bot token        |
 | `config.RCON_PASSWORD`         | env                  | RCON password    |
-| `config.RCON_HOST`             | hardcoded            | `127.0.0.1`      |
+| `config.RCON_HOST`             | env/hardcoded        | `127.0.0.1` (overridable via `RCON_HOST` env var) |
 | `config.RCON_PORT`             | hardcoded            | `25575`          |
 | `config.SERVER_DIR`            | bot_config           | `/app/mc-server` |
 | `config.GUILD_ID`              | bot_config           | Discord guild ID |
@@ -370,7 +420,7 @@ config.get(key, default=None)                  → safe attribute getter
 | `/stop`          | `stop`        | Graceful stop. Sends `stop` command via RCON, waits 5s, kills tmux if needed. Cooldown: 30s. |
 | `/restart`       | `restart`     | Stop + start with `RESTART_DELAY` (5s) gap. Cooldown: 60s.                                   |
 | `/control`       | `control`     | Spawns inline ControlView with Start/Stop/Restart/Status buttons.                            |
-| `/bot_restart`   | `bot_restart` | `sys.exit(0)` — hot-restarts the bot process utilizing Docker's auto-restart policy.         |
+| `/bot_restart`   | `bot_restart` | `sys.exit(0)` — hot-restarts the bot process.
 | `/cmd <command>` | owner only    | Execute raw RCON command. Audit-logged to debug channel.                                     |
 
 ### Server Information
@@ -422,6 +472,14 @@ config.get(key, default=None)                  → safe attribute getter
 | `/event_create <name> <time> [description] [mentions]` | `event_manage` | Schedule event. Time format: `YYYY-MM-DD HH:MM`. Auto-reminders at 24h and 1h before. |
 | `/event_list`                                          | open           | Shows all upcoming events with Discord timestamps.                                    |
 | `/event_delete <index>`                                | `event_manage` | Delete event by list index.                                                           |
+
+### Account Linking
+
+| Command                           | Permission      | Description                                                                       |
+| --------------------------------- | --------------- | --------------------------------------------------------------------------------- |
+| `/link <username>`                | open            | Link Discord account to a Minecraft username. Auto-detects premium vs offline.    |
+| `/unlink`                         | open            | Unlink your own Minecraft account.                                                |
+| `/unlink_admin [user] [username]` | `cmd`           | Force-unlink a user's MC account by Discord user or MC username.                 |
 
 ### Automation & AI
 
@@ -649,13 +707,27 @@ Sticky control panel in `COMMAND_CHANNEL_ID`. Refreshes every 2 minutes. Tries t
 
 Events stored in `bot_config['events']` as list of dicts. `tasks.loop(minutes=1)` checks all events. Sends reminders at 24h and 1h before event time. Tracks `reminded_24h` and `reminded_1h` flags per event. Cleans events >24h past.
 
+### `cogs/link.py`
+
+Commands: `/link <username>`, `/unlink`, `/unlink_admin`
+
+The account linking cog for protecting offline-mode servers against impersonation. On `/link`:
+
+1. Checks if that MC username is already bound to another Discord ID.
+2. Calls Mojang API (`src/mojang.py`) to detect premium vs cracked accounts.
+3. Stores the result in `data/mc_links.json` via `src/mc_link_manager.py`.
+
+Premium-detected accounts get a `🟢` note (no DM challenge required on reconnect). Cracked accounts get a `🟡` note indicating they'll need periodic re-verification via DM.
+
+`/unlink_admin` accepts either a Discord `Member` or a raw MC username string and supports force-removal for Admin use.
+
 ### `cogs/help.py`
 
-Builds dynamic help embed by cross-referencing user's roles against `config.ROLE_PERMISSIONS`. Only shows commands the user has permission to use. Categorizes commands into sections.
+Builds dynamic help embed by cross-referencing user's roles against `config.ROLE_PERMISSIONS`. Only shows commands the user has permission to use. Categorizes commands into sections. Uses `bot.tree.walk_commands()` for dynamic iteration — auto-includes new commands without hardcoding.
 
 ### `cogs/info.py`
 
-`/info` uses `psutil` for system metrics (CPU %, RAM %, Disk %). Tries to get IP from `PlayitCog.tunnels`. Gets seed from `server.properties`. Gets spawn from `bot_config`. Gets TPS via RCON (TODO: vanilla doesn't have `/tps`, only Paper/Forge do). Also triggers `ServerInfoManager.update_info()` to refresh the info channel.
+`/info` uses `psutil` for system metrics (CPU %, RAM %, Disk %). Tries to get IP from `PlayitCog.tunnels`. Gets seed from `server.properties`. Gets spawn from `bot_config`. **Uptime** is read from `bot.server.get_start_time()` (added in v2.8.0-dev) and displayed as `H:MM:SS`. **TPS** first attempts RCON `tps` (Paper/Forge only), then falls back to `/debug start` + 1s sleep + `/debug stop` parsing the tick count for Vanilla servers. Also triggers `ServerInfoManager.update_info()` to refresh the info channel.
 
 ### `cogs/management.py`
 
@@ -772,7 +844,9 @@ After refactoring, this module is now a thin helper containing only `get_server_
 `TmuxServerManager`:
 
 - All tmux operations use `subprocess.run` (synchronous) wrapped in `asyncio.to_thread` or `loop.run_in_executor`.
-- State file: `mc-server/bot_state.json` → `{"intentional_stop": bool}`.
+- State file: `mc-server/bot_state.json` → `{"intentional_stop": bool, "start_time": float|null}`.
+- `start_time` is set to `time.time()` on every successful server start, cleared to `null` on stop. Persisted across bot restarts.
+- `get_start_time() → float | None` exposes the epoch timestamp for uptime calculation.
 - Start command: `cd /app/mc-server && java -XmsXXX -XmxXXX -jar server.jar nogui` inside tmux.
 - Stop: sends `stop` RCON command, waits 5s, kills tmux session if still alive.
 - `is_running()`: checks `tmux has-session -t minecraft` return code.
@@ -798,6 +872,57 @@ Key functions:
 - `get_uuid(username)` → looks up in `usercache.json`.
 - `parse_server_version()` → reads `latest.log` line by line for "Starting minecraft server version".
 
+
+### `src/mc_link_manager.py` _(NEW)_
+
+`MCLinkManager` class (not a singleton — instantiated per-use in cogs).
+
+- `link_account(discord_id, mc_username, is_premium)` → writes to `data/mc_links.json`. Automatically removes any previous link for that MC username (prevents two accounts sharing one username).
+- `unlink_account(discord_id)` → returns `bool`.
+- `get_link_by_discord(discord_id)` → `dict | None`.
+- `get_link_by_mc(mc_username)` → `dict | None` (includes `discord_id` key).
+- All file I/O is async via `asyncio.to_thread`, protected by an internal `asyncio.Lock`.
+- Schema per record: `{"mc_username": str, "is_premium": bool, "linked_at": ISO_TIMESTAMP}`
+
+### `src/mojang.py` _(NEW)_
+
+`verify_premium_mc_account(username: str) → bool`
+
+- Queries `https://api.mojang.com/users/profiles/minecraft/<username>`.
+- Returns `True` if 200 OK + UUID present (real Mojang account).
+- Returns `False` if 404 (cracked / nonexistent).
+- **Fail-open**: on rate limit (429), server error (5xx), or network failure → returns `True` to avoid blocking real players during Mojang outages.
+
+### `src/log_watcher.py` _(NEW)_
+
+`LogWatcher(bot)`
+
+- Subscribes to the centralized `log_dispatcher` queue (re-uses the same `tail -F` process, no extra subprocess).
+- Scans each line with two regex patterns:
+  - `User Authenticator #N/INFO` — Vanilla/Paper/Fabric format
+  - `Netty.*/INFO` — Forge/NeoForge format
+- On match, dispatches `bot.dispatch('minecraft_player_login', username, uuid)`.
+- `start()` / `stop()` manage subscription lifecycle.
+
+### `src/join_guard.py` _(NEW)_
+
+`JoinGuard(bot)` — security gatekeeper called via `on_minecraft_player_login` event.
+
+Login decision tree:
+1. No link found → Mojang API check. Premium → allow. Cracked → kick with message.
+2. Link found, `is_premium=True` → allow immediately.
+3. Link found, `is_premium=False` (cracked account):
+   - Within 5-minute grace window (tracked in `recently_disconnected`) → allow.
+   - Outside grace window → kick + DM Discord user a 4-digit Challenge code.
+4. `handle_player_quit(username)` starts the 5-minute grace timer.
+5. `complete_challenge(username)` is called on successful verification → grants fresh grace period.
+6. Challenges expire after 120 seconds; DM embed is edited to show ❌.
+
+### `src/utils_views.py` _(NEW)_
+
+- `ChallengeView(discord.ui.View)` — holds a `Verify Identity` button. Sent in DM challenges.
+- `CodeModal(discord.ui.Modal)` — 4-character `TextInput` for code submission. On correct code: calls `join_guard.complete_challenge()`.
+
 ### `src/version_fetcher.py`
 
 `VersionFetcher` singleton with 1-hour cache per platform. Methods: `get_versions(platform, limit)`, `get_latest_version(platform)`. Fallback to hardcoded list if API fails.
@@ -817,28 +942,60 @@ Key functions:
 | 5   | JSON Economy Race Condition                       | Wrapped JSON reads/writes with `asyncio.Lock` since all bot reads/writes happen sequentially in the same Thread.                               |
 | 6   | missing `OWNER_ID` population                     | Defined logic in `setup_helper.py` to identify Guild owner.                                                                                    |
 
-### 10.2 Logic Bugs -- Pending / Under Review
+### 10.2 Logic Bugs — Fixed / Pending
 
-| #   | File                    | Bug                                                                                                                                      | Status       |
-| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| 1   | `src/backup_manager.py` | Backup dir mismatch: Docker volume mounts `./backups:/app/backups`. Ensure `config.SERVER_DIR` stays relative to absolute Docker setups. | Open         |
-| ~~2~~   | ~~`src/backup_manager.py`~~ | ~~`_zip_world()` silently created empty backups when world directory didn't exist.~~ | FIXED v2.7.1 |
-| 2   | `cogs/automation.py`    | `cog_unload()` references `self.log_task` but also `self.log_scan_task` -- inconsistent naming. One is never cancelled.                  | FIXED v2.6.0 |
-| 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command -- TPS section in `/info` silently skips correctly, but should theoretically read the difference.  | Open         |
-| 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       | FIXED v2.6.0 |
-| 5   | `cogs/stats.py`         | `get_uuid_online` uses `aiohttp` but no explicit timeout -- hangs if Mojang API goes down completely.                                    | FIXED v2.6.0 |
+| #   | File                    | Bug                                                                                                                                      | Status               |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1   | `src/backup_manager.py` | Backup dir mismatch: Docker volume mounts `./backups:/app/backups`. Absolute path resolution added via `os.path.abspath`.                | ✅ FIXED v2.8.0-dev  |
+| ~~2~~   | ~~`src/backup_manager.py`~~ | ~~`_zip_world()` silently created empty backups when world directory didn't exist.~~ | ✅ FIXED v2.7.1 |
+| 2   | `cogs/automation.py`    | `cog_unload()` references `self.log_task` but also `self.log_scan_task` -- inconsistent naming. One is never cancelled.                  | ✅ FIXED v2.6.0      |
+| 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command — TPS section falls back to `/debug start` + `/debug stop` method, then `N/A (Vanilla)`.           | ✅ FIXED v2.8.0-dev  |
+| 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       | ✅ FIXED v2.6.0      |
+| 5   | `cogs/stats.py`         | `get_uuid_online` uses `aiohttp` but no explicit timeout -- hangs if Mojang API goes down completely.                                    | ✅ FIXED v2.6.0      |
 
-### 10.3 Code Quality -- Low Priority
+### 10.3 Code Quality — Low Priority
 
 - ~~`cogs/console.py` has duplicate `from datetime import datetime` imports.~~ FIXED v2.6.0
 - ~~`src/server_info_manager.py` has leading whitespace on line 1.~~ FIXED v2.6.0
-- `cogs/help.py` categories list hardcodes command names -- won't auto-update when commands are added.
+- ~~`cogs/help.py` categories list hardcodes command names — won't auto-update when commands are added.~~ FIXED v2.8.0-dev (uses `bot.tree.walk_commands()`).
+- Startup logs from `bot.py` were excessively verbose at INFO level for individual cog loads. Changed to DEBUG. FIXED v2.8.0-dev.
 
 ---
 
 ## 11. Version History & Recent Changes
 
-### v2.7.2 -- Setup Flow & Polishing Update _(Current)_
+### v2.8.0-dev — Security, Uptime & Code Hardening _(Current dev)_
+
+> ⚠️ Pre-release development branch. Not yet promoted to stable.
+
+**Player Linking System (Offline-Mode Impersonation Protection):**
+- Added `cogs/link.py` — `/link`, `/unlink`, `/unlink_admin` slash commands.
+- Added `src/mc_link_manager.py` — async JSON CRUD for Discord↔MC username relations.
+- Added `src/mojang.py` — Mojang API wrapper for premium account detection (fail-open on outages).
+- Added `src/log_watcher.py` — subscribes to `LogDispatcher`, emits `on_minecraft_player_login` bot events by parsing `User Authenticator` log lines.
+- Added `src/join_guard.py` — full login decision engine: allows premium, kicks unlinked cracked, DM-challenges linked cracked accounts outside 5-minute grace window.
+- Added `src/utils_views.py` — `ChallengeView` + `CodeModal` for interactive 4-digit DM verification.
+- Wired `JoinGuard` and `LogWatcher` into `bot.py` startup; background tasks auto-start when server is online.
+- Added 4 unit tests for `MCLinkManager` covering link, unlink, replace, and username-theft cases.
+
+**Server Uptime Statistics:**
+- `src/server_tmux.py` now persists `start_time` (epoch float) to `bot_state.json` on every server start; clears it on intentional stop.
+- `cogs/info.py` reads `bot.server.get_start_time()` and displays a human-readable uptime delta in the `/info` embed.
+
+**Bug Fixes:**
+- `src/backup_manager.py` — resolved Docker backup directory mismatch by using `os.path.abspath` relative to project root.
+- `cogs/info.py` — Vanilla TPS fallback: tries `/debug start` + 1s sleep + `/debug stop`, parses tick count from output. Falls back to `N/A (Vanilla)` if not matched.
+- `src/config.py` — `RCON_HOST` is now configurable via `RCON_HOST` environment variable (defaults to `127.0.0.1`).
+- `cogs/help.py` — replaced hardcoded command categories with `bot.tree.walk_commands()` for dynamic help generation.
+- `bot.py` — startup log verbosity reduced; individual cog loading messages moved to `DEBUG` level.
+
+**Documentation & Infrastructure:**
+- Added `docs/i18n-implementation.md` — deferred i18n implementation plan.
+- Added `implementations/offline-protection.md` — full technical spec for the mascan-proof join guard.
+- Tests expanded: `tests/test_mc_link_manager.py` with 4 async tests.
+- `.gitignore` updated: `data/mc_links.json`, `data/playit_secret.key`, `data/test_*.json` now correctly excluded.
+
+### v2.7.2 — Setup Flow & Polishing Update
 
 **Setup UX Improvements:**
 - Removed all emojis from the `/setup` flow (dropdowns, buttons, titles) for a cleaner, professional look.
@@ -870,7 +1027,7 @@ Key functions:
 - Added Docker-based test suite: `Dockerfile.test`, `docker-compose.test.yml`, 48 tests across 4 modules (config validation, backup manager, version fetcher, utilities).
 - Added `Makefile` with `make test`, `make test-verbose`, `make test-single` targets.
 
-### v2.6.0 -- Bug Fix & Hardening Release _(Current)_
+### v2.6.0 -- Bug Fix & Hardening Release
 
 28-issue comprehensive bug fix and code hardening pass based on senior code review (`overview.md`).
 
@@ -975,6 +1132,10 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - ✅ Offline mode whitelist (MD5 UUID generation, no Mojang dependency)
 - ✅ Simulation / Ghost Mode for local CI/CD tests without MC Servers
 - ✅ RCON Port protection + Docker container isolation
+- ✅ **Server Uptime Statistics** — tracked from `start_time` in `bot_state.json`, displayed in `/info`
+- ✅ **Player Linking System** — `/link` command, Mojang premium detection, 5-min grace window, Discord DM challenge for cracked accounts
+- ✅ **Vanilla TPS Fallback** — `/debug start`+`/debug stop` RCON method for non-Paper servers
+- ✅ **Dynamic `/help`** — permission-filtered using `bot.tree.walk_commands()`, no hardcoded lists
 
 ---
 
@@ -984,15 +1145,14 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 
 - [ ] **SQLite via `aiosqlite`** — replace `bot_config.json` economy and events storage arrays outright. JSON has minor race conditions under rapid concurrent loads, even with limits.
 - [ ] **Minecraft→Discord chat bridge** — pipe in-game chat to a Discord channel directly, scanning logs.
-- [ ] **Player linking system** — `/link <mc_username>` command. Require Discord accounts mapped to MC usernames for Word Hunt bounds.
 - [ ] **Mascan-proof the offline whitelist** — add a secondary verification layer for proxied connections implying BungeeCord/Velocity setups where standard MD5 hashes are bypassed for premium connections.
-- [ ] **Full Translation Support (i18n)** — Extract English responses to a JSON/YAML locale file so the bot logic works transparently anywhere globally.
+- [ ] **Full Translation Support (i18n)** — Extract English responses to a JSON/YAML locale file so the bot logic works transparently anywhere globally. _(Plan documented in `docs/i18n-implementation.md`)_
 
 ### 🟡 Medium Priority
 
 - [ ] **Windows Native Installer (install.ps1)** — Full PowerShell script utilizing `dism.exe` for WSL/VirtualMachinePlatform enabling, Ubuntu installation natively, and colorized UI blocks.
 - [ ] **Cloud Storage Synchronization** — Background async uploading of generated backups to Google Drive using standard Python API integration.
-- [ ] **Server uptime statistics** — track uptime start time, display in `/info`.
+- ~~[ ] **Server uptime statistics** — track uptime start time, display in `/info`.~~ ✅ Done v2.8.0-dev
 - [ ] **Performance metrics dashboard** — periodic embed showing TPS trend, player count over time, RAM usage history.
 - [ ] **Allowlist request system** — Discord UI modal allowing external users to request entry without Admin manipulation.
 - [ ] **Scheduled announcements** — `/announce_schedule <time> <message>`.

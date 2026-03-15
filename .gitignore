@@ -21,10 +21,13 @@ ENV/
 mc-server/
 backups/
 
-# Bot State & Config (contains secrets!)
+# Bot State & Config (contains secrets / machine-generated state!)
 bot_state.json
 *.json.backup
 config.json
+data/mc_links.json
+data/playit_secret.key
+data/test_*.json
 
 # Logs
 *.log
