@@ -1,7 +1,7 @@
 # mc-bot — Manual Test Report
 **Date:** 2026-03-16  
 **Tester:** slogiker  
-**Environment:** CM4, Docker, fresh clone via `setup.sh`
+**Environment:** CM4 (compute module 4), Docker, fresh clone via `setup.sh`
 
 ---
 
@@ -73,7 +73,7 @@ The bot starts polling RCON immediately after launching the Minecraft process, b
 - `server.properties` does not have `rcon.enable=true` set (or the `/setup` command doesn't write it)
 - The Minecraft server takes longer than 60s to fully start on this hardware (CM4), so RCON simply isn't ready in time
 
-**Root cause:** `rcon.enable=true` was previously written to `server.properties` during setup, but a code change removed or broke this. RCON is disabled by default in vanilla Minecraft, so without the bot explicitly enabling it, the connection will always be refused.
+**Root cause:** `rcon.enable=true` is written to `server.properties` during setup by server initialization, but file isnt created at the time of trying reaching it. RCON is disabled by default in vanilla Minecraft, but it should be enabled by bot itself, if its not proceed with ths fix.
 
 **Impact:** All RCON-dependent commands (`/tps`, `/list`, debug commands, etc.) fail permanently after startup.
 
@@ -167,7 +167,7 @@ INFO     ModUpdater: ✨ Update complete! Successfully downloaded **6** new `.ja
 On a completely fresh install with no mods present, ModUpdater still:
 - Describes the operation as an "update" (not an "install")
 - Says it analyzed "5 local files" when the `mc-server/` directory was empty
-- Says it moved "old files" to a backup folder when there were no old files
+- Says it moved "old files" to a backup folder when there were no old files, but old folder was created (see BUG-08)
 - Says it downloaded "updates" when these are first-time installs
 
 The "5 local files" likely refers to default mods bundled inside the Docker image at `/app/mc-server/mods/` at build time — but from the user's perspective, no mods existed.
