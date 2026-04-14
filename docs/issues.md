@@ -103,6 +103,21 @@
 
 ---
 
+## P2 — Docker Build Performance
+
+### 13. `Dockerfile` / `docker-compose.yml` — 400s+ build time, stale cache causes invisible code changes
+**Files:** `Dockerfile`, `docker-compose.yml`  
+**Scenario:** `docker compose up --build` takes 400+ seconds. The main culprit is the large `apt-get` layer (Java 21 + Playit install). Cache was intentionally disabled during testing because Docker sometimes served a cached layer that didn't reflect recent code changes — meaning bot.py/cogs edits weren't visible in the running container without a `--no-cache` build.  
+**Root cause:** The `COPY bot.py / cogs/ / src/` steps are correctly placed after `pip install` to benefit from layer caching, but the `CACHEBUST` arg in docker-compose invalidates everything on every rebuild anyway. The Playit PPA install alone is slow and re-runs unnecessarily.  
+**Goal:** Fast iterative rebuilds for code changes (should be <10s), full rebuild only when dependencies actually change.  
+**Ideas to explore:**
+- Split the Dockerfile into a stable base image (Java + Playit + pip deps) and a thin app layer (just COPY of .py files) — code changes only rebuild the app layer
+- Use a pre-built base image pushed to a registry so the apt layer is never re-run locally
+- Remove `CACHEBUST` from docker-compose (it defeats all caching) and instead rely on proper layer ordering
+- For development: mount source files as a volume instead of COPYing them, so changes are instant without any rebuild
+
+---
+
 ## Things to Test After Next Deployment
 
 - [ ] Does `/setup` correctly restrict to `#mc-commands` channel only?
