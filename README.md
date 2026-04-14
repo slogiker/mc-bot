@@ -40,14 +40,91 @@ Define keyword → RCON command triggers so your server reacts to in-game chat a
 
 ---
 
-## 🛠️ Quick Start
+## 🚀 Getting Started (From Absolute Zero)
 
-### Prerequisites
+This section walks you through every step from nothing to a running server. Even if you've never used Discord bots or Docker before, follow these steps in order.
 
-- A Linux host (Ubuntu/Debian recommended) or Windows with WSL
-- A [Discord Bot Token](https://discord.com/developers/applications)
+---
 
-### Installation (Linux)
+### Step 1 — Create a Discord Bot
+
+You need to create a Discord "application" and get a bot token. This is free and takes about 3 minutes.
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) and log in with your Discord account.
+2. Click **"New Application"** in the top-right corner.
+3. Give it a name (e.g. `MC-Bot`) and click **"Create"**.
+4. In the left sidebar, click **"Bot"**.
+5. Click **"Reset Token"** → copy and save the token somewhere safe. **You will need this during installation.** Treat it like a password — never share it publicly.
+
+> **Lost your token?** You can always go back to the Bot page and reset it to get a new one.
+
+---
+
+### Step 2 — Enable Required Bot Intents
+
+Still on the **Bot** page, scroll down to **"Privileged Gateway Intents"** and enable **both** of these:
+
+| Intent | Why it's needed |
+|--------|----------------|
+| **Server Members Intent** | Required to read Discord role membership for the permission system |
+| **Message Content Intent** | Required for the bot to read messages in channels |
+
+Click **"Save Changes"** after enabling them.
+
+---
+
+### Step 3 — Invite the Bot to Your Server
+
+1. In the left sidebar, click **"OAuth2"** → **"URL Generator"**.
+2. Under **"SCOPES"**, check these two boxes:
+
+   - ☑ `bot`
+   - ☑ `applications.commands`
+
+3. A **"BOT PERMISSIONS"** section will appear below. Check the following permissions:
+
+   **General Permissions**
+   - ☑ Manage Roles *(creates MC Owner / MC Admin / MC Player roles during setup)*
+   - ☑ Manage Channels *(creates the bot's Discord channels during setup)*
+   - ☑ View Channels
+
+   **Text Permissions**
+   - ☑ Send Messages
+   - ☑ Send Messages in Threads
+   - ☑ Create Public Threads
+   - ☑ Manage Messages
+   - ☑ Embed Links
+   - ☑ Attach Files
+   - ☑ Read Message History
+   - ☑ Mention @everyone, @here, and All Roles *(for event reminders)*
+   - ☑ Add Reactions
+   - ☑ Use External Emojis
+
+   > **Shortcut:** If you're setting this up just for a private friends server, you can check **Administrator** under General Permissions instead of selecting individual permissions. This is simpler but gives the bot full server access.
+
+4. Scroll to the bottom and copy the generated **URL**.
+5. Open the URL in your browser, select your server from the dropdown, and click **"Authorize"**.
+
+The bot will now appear in your server's member list (shown as offline until you run it).
+
+---
+
+### Step 4 — Prepare Your Machine
+
+You need a computer or VPS to host the bot and server. Requirements:
+
+- **OS:** Linux (Ubuntu/Debian recommended) or Windows with WSL2
+- **RAM:** At least 4 GB (2 GB for Minecraft + 100 MB for bot + OS overhead)
+- **Disk:** At least 5 GB free
+- **Internet:** Required for Playit.gg tunnel (or open port 25565 manually)
+
+Docker is installed automatically by the installer if it's not already present.
+
+---
+
+### Step 5 — Install MC-Bot
+
+**Linux:**
 
 ```bash
 git clone https://github.com/slogiker/mc-bot.git
@@ -56,25 +133,70 @@ chmod +x install/install.sh
 ./install/install.sh
 ```
 
-The installer will:
+**Windows (WSL2):**
 
-1. Install Docker if missing
-2. Prompt for your **Discord Bot Token**
-3. Ask if you want **Playit.gg** public access (recommended)
-   - If yes and it's your first time: the installer tells you a claim link will appear after startup — you open it, create a free account, click Claim, done
-   - If yes and you have an existing key: paste it and skip the claim flow
-4. Auto-generate a secure RCON password
-5. Build and start the Docker container
-
-Then run `/setup` in Discord to install the Minecraft server.
-
-### Installation (Windows)
+> **Warning:** Windows support is not stable and may require additional manual tweaks to get working. Linux is strongly recommended.
 
 ```
 install\install.bat
 ```
 
-The batch script automates WSL2 + Docker Engine setup with resume-on-reboot logic. It handles 8 steps from checking prerequisites to running `docker compose up`. See [`docs/information.md`](docs/information.md) for step-by-step details.
+The installer will:
+
+1. Install Docker if missing
+2. Prompt for your **Discord Bot Token** (from Step 1)
+3. Ask if you want **Playit.gg** public access (recommended for most users)
+   - If yes — a claim link will appear after startup; open it, create a free account, click Claim
+   - If you already have a Playit.gg key — paste it to skip the claim flow
+4. Auto-generate a secure RCON password
+5. Build and start the Docker container
+
+---
+
+### Step 6 — Run the Setup Wizard
+
+When the container starts, the bot automatically creates dedicated channels (`#mc-commands`, `#mc-console`, `#mc-debug`, `#mc-info`, `#mc-backups`) and three Discord roles (`MC Owner`, `MC Admin`, `MC Player`) before anything else.
+
+Once you see these channels, go to **`#mc-commands`** and type:
+
+```
+/setup
+```
+
+The bot only listens for commands in that channel. The setup wizard will guide you through:
+
+1. Choosing a Minecraft platform (**Paper**, **Vanilla**, or **Fabric**)
+2. Picking a version
+3. Setting difficulty, world seed, max players, and RAM
+4. Optionally adding mods or plugins by Modrinth slug
+5. Installing the server and starting it for the first time
+
+---
+
+### Step 7 — Connect and Play
+
+Once setup completes, type `/ip` in Discord. Your friends paste that address into Minecraft's multiplayer screen. No port forwarding needed if you're using Playit.gg.
+
+---
+
+## 🛠️ Quick Start (If You Already Have a Bot Token)
+
+```bash
+git clone https://github.com/slogiker/mc-bot.git
+cd mc-bot
+chmod +x install/install.sh
+./install/install.sh
+```
+
+Then run `/setup` in Discord.
+
+### Windows
+
+```
+install\install.bat
+```
+
+See [`docs/information.md`](docs/information.md) for the detailed Windows WSL2 + Docker setup walkthrough.
 
 ---
 
@@ -198,6 +320,12 @@ A: The bot runs a background crash checker every 30 seconds. If the server goes 
 
 **Q: What if the Playit tunnel goes down?**
 A: The bot monitors the Playit tmux session every 30 seconds. If it dies, the bot auto-restarts it (up to 2 attempts). If both attempts fail, the server owner gets pinged in Discord with instructions to fix it manually.
+
+**Q: The bot is in my server but commands don't appear — what do I do?**
+A: Make sure you checked both `bot` and `applications.commands` scopes when generating the invite URL (Step 3). If the bot is already in the server, kick it and re-invite using a corrected URL. Then run `/sync` in Discord after the bot starts.
+
+**Q: The bot says "Missing Permissions" during setup — what do I do?**
+A: The bot needs **Manage Roles** and **Manage Channels** permissions. Either re-invite using the correct permissions from Step 3, or go to Server Settings → Roles → find the bot's role and enable those permissions manually.
 
 **Q: Can I run this on a Raspberry Pi?**
 A: Technically yes if it's a Pi 4 (4GB+) running 64-bit OS with Docker installed, but performance will be limited. A small VPS or old laptop is a better option.
