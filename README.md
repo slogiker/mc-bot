@@ -46,36 +46,46 @@ This section walks you through every step from nothing to a running server. Even
 
 ---
 
-### Step 1 — Create a Discord Bot
-
-You need to create a Discord "application" and get a bot token. This is free and takes about 3 minutes.
+### Step 1 — Create a Discord Application
 
 1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) and log in with your Discord account.
 2. Click **"New Application"** in the top-right corner.
 3. Give it a name (e.g. `MC-Bot`) and click **"Create"**.
-4. In the left sidebar, click **"Bot"**.
-5. Click **"Reset Token"** → copy and save the token somewhere safe. **You will need this during installation.** Treat it like a password — never share it publicly.
-
-> **Lost your token?** You can always go back to the Bot page and reset it to get a new one.
-
-> **Important:** On the same Bot page, find the **"Public Bot"** toggle and **turn it off**. This prevents anyone else from inviting your bot to their server — only you will be able to add it.
 
 ---
 
-### Step 2 — Enable Required Bot Intents
+### Step 2 — Configure the Bot
 
-Still on the **Bot** page, scroll down to **"Privileged Gateway Intents"** and enable **both** of these:
+In the left sidebar, click **"Bot"**. Do all of the following on this page before moving on:
+
+**Get your token:**
+- Click **"Reset Token"** → copy and save it somewhere safe. You will need this during installation. Treat it like a password — never share it publicly.
+
+**Disable public access:**
+- Find the **"Public Bot"** toggle and **turn it off**. This prevents anyone else from inviting your bot to their server.
+
+**Enable required intents** (scroll down to "Privileged Gateway Intents"):
 
 | Intent | Why it's needed |
 |--------|----------------|
 | **Server Members Intent** | Required to read Discord role membership for the permission system |
 | **Message Content Intent** | Required for the bot to read messages in channels |
 
-Click **"Save Changes"** after enabling them.
+Click **"Save Changes"**.
 
 ---
 
-### Step 3 — Invite the Bot to Your Server
+### Step 3 — Fix the Installation Settings
+
+In the left sidebar, click **"Installation"**. This step is required after turning off Public Bot — skipping it will cause a save error.
+
+- Find the **"Install Link"** dropdown at the top and set it to **None**.
+
+Click **"Save Changes"**.
+
+---
+
+### Step 4 — Invite the Bot to Your Server
 
 1. In the left sidebar, click **"OAuth2"** → **"URL Generator"**.
 2. Under **"SCOPES"**, check these two boxes:
@@ -111,7 +121,7 @@ The bot will now appear in your server's member list (shown as offline until you
 
 ---
 
-### Step 4 — Prepare Your Machine
+### Step 5 — Prepare Your Machine
 
 You need a computer or VPS to host the bot and server. Requirements:
 
@@ -124,7 +134,7 @@ Docker is installed automatically by the installer if it's not already present.
 
 ---
 
-### Step 5 — Install MC-Bot
+### Step 6 — Install MC-Bot
 
 **Linux:**
 
@@ -146,7 +156,7 @@ install\install.bat
 The installer will:
 
 1. Install Docker if missing
-2. Prompt for your **Discord Bot Token** (from Step 1)
+2. Prompt for your **Discord Bot Token** (from Step 2)
 3. Ask if you want **Playit.gg** public access (recommended for most users)
    - If yes — a claim link will appear after startup; open it, create a free account, click Claim
    - If you already have a Playit.gg key — paste it to skip the claim flow
@@ -155,7 +165,7 @@ The installer will:
 
 ---
 
-### Step 6 — Run the Setup Wizard
+### Step 7 — Run the Setup Wizard
 
 When the container starts, the bot automatically creates dedicated channels (`#mc-commands`, `#mc-console`, `#mc-debug`, `#mc-info`, `#mc-backups`) and three Discord roles (`MC Owner`, `MC Admin`, `MC Player`) before anything else.
 
@@ -175,7 +185,7 @@ The bot only listens for commands in that channel. The setup wizard will guide y
 
 ---
 
-### Step 7 — Connect and Play
+### Step 8 — Connect and Play
 
 Once setup completes, type `/ip` in Discord. Your friends paste that address into Minecraft's multiplayer screen. No port forwarding needed if you're using Playit.gg.
 
