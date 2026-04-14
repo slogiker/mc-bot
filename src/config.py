@@ -138,12 +138,16 @@ class Config:
         
         user_tz = user_cfg.get('timezone', 'auto')
         if user_tz.lower() == 'auto':
-            try:
-                import urllib.request
-                with urllib.request.urlopen("http://ip-api.com/json/", timeout=3) as response:
-                    self.TIMEZONE = json.loads(response.read().decode()).get('timezone', 'UTC')
-            except Exception:
-                self.TIMEZONE = 'UTC'
+            self.TIMEZONE = 'UTC'
+            def fetch_tz():
+                try:
+                    import urllib.request
+                    with urllib.request.urlopen("http://ip-api.com/json/", timeout=3) as response:
+                        self.TIMEZONE = json.loads(response.read().decode()).get('timezone', 'UTC')
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=fetch_tz, daemon=True).start()
         else:
             self.TIMEZONE = user_tz
             

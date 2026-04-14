@@ -100,9 +100,9 @@ class ConsoleCog(commands.Cog):
                                     status=discord.Status.online
                                 )
                             elif "joined the game" in msg:
-                                match = re.match(r'^(\w+) joined the game', msg)
-                                if match:
-                                    player_name = match.group(1)
+                                join_match = re.match(r'^(\w+) joined the game', msg)
+                                if join_match:
+                                    player_name = join_match.group(1)
                                     bot_config = config.load_bot_config()
                                     current_players = bot_config.get('online_players', [])
                                     if player_name not in current_players:
@@ -117,9 +117,9 @@ class ConsoleCog(commands.Cog):
                                     await self.send_event_notification("join", player_name)
                                 
                             elif "left the game" in msg:
-                                match = re.match(r'^(\w+) left the game', msg)
-                                if match:
-                                    player_name = match.group(1)
+                                leave_match = re.match(r'^(\w+) left the game', msg)
+                                if leave_match:
+                                    player_name = leave_match.group(1)
                                     bot_config = config.load_bot_config()
                                     current_players = bot_config.get('online_players', [])
                                     if player_name in current_players:

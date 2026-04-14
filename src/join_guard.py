@@ -67,12 +67,12 @@ class JoinGuard:
 
     async def _issue_challenge(self, mc_username: str, discord_id: int):
         """Kicks the player with a code, slides into their DMs."""
-        import random
+        import secrets
         # Generate 4 digit code
-        code = str(random.randint(1000, 9999))
+        code = str(secrets.randbelow(9000) + 1000)
         
         # Kick player with instructions
-        kick_reason = f"Verification Required. Check your Discord DMs.\nCode: {code}"
+        kick_reason = f"Verification Required. Check your Discord DMs. Code: {code}"
         await self._kick_player(mc_username, kick_reason)
         
         # Cancel any existing challenge for this user
@@ -146,9 +146,10 @@ class JoinGuard:
         # Wait a brief moment to ensure they are actually connected enough to be kicked
         await asyncio.sleep(1.0) 
         
-        # Escape quotes in reason
-        escaped_reason = reason.replace('"', '\\"')
-        cmd = f'kick {username} "{escaped_reason}"'
+        # Sanitize inputs for RCON
+        clean_username = username.replace('\n', '').replace('\r', '').replace('"', '')
+        clean_reason = reason.replace('\n', ' ').replace('\r', '').replace('"', '\\"')
+        cmd = f'kick {clean_username} "{clean_reason}"'
         try:
             await rcon_cmd(cmd)
         except Exception as e:

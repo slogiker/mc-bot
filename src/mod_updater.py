@@ -44,7 +44,7 @@ class ModUpdater:
             async with session.get(url) as resp:
                 if resp.status == 200:
                     return await resp.json()
-        except:
+        except Exception:
             pass
         return None
 
@@ -57,7 +57,7 @@ class ModUpdater:
                 if resp.status == 200:
                     hits = (await resp.json()).get("hits", [])
                     return hits[0] if hits else None
-        except:
+        except Exception:
             pass
         return None
 
@@ -98,7 +98,7 @@ class ModUpdater:
             async with session.get(url) as resp:
                 if resp.status == 200:
                     return await resp.json()
-        except:
+        except Exception:
             pass
         return []
 
@@ -132,7 +132,7 @@ class ModUpdater:
             
         return False, "Download failed"
 
-    async def update_all(self, game_version, loader=None):
+    async def update_all(self, game_version, loader=None, is_setup=False):
         """
         Main execution flow.
         Runs through the mods folder, identifies all jars, backs them up, and replaces them with updated dependencies.
@@ -149,28 +149,34 @@ class ModUpdater:
             await self._send_status(f"ℹ️ No existing `.jar` files found in `{self.target_dir}` to update.")
             return True
 
-        await self._send_status(f"🔍 Analyzing **{len(local_mods)}** local files...")
+        if is_setup:
+            await self._send_status(f"🔍 Analyzing **{len(local_mods)}** foundational files...")
+        else:
+            await self._send_status(f"🔍 Analyzing **{len(local_mods)}** local files...")
         
         # 1. Backup old files
         timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
         backup_dir = os.path.join(config.SERVER_DIR, f"old_mods_{timestamp}")
-        os.makedirs(backup_dir, exist_ok=True)
         
-        for filename in local_mods:
-            old_path = os.path.join(self.target_dir, filename)
-            new_path = os.path.join(backup_dir, filename)
-            shutil.move(old_path, new_path)
-            
-        await self._send_status(f"📦 Moved old files to `old_mods_{timestamp}/`")
+        if not is_setup:
+            os.makedirs(backup_dir, exist_ok=True)
+            for filename in local_mods:
+                old_path = os.path.join(self.target_dir, filename)
+                new_path = os.path.join(backup_dir, filename)
+                shutil.move(old_path, new_path)
+            await self._send_status(f"📦 Moved old files to `old_mods_{timestamp}/`")
+            scan_dir = backup_dir
+        else:
+            scan_dir = self.target_dir
 
         summary = {}
         mods_to_process = deque()
         processed_or_queued = set()
 
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=45)) as session:
-            # 2. Identify projects from backed-up jars
+            # 2. Identify projects from backed-up (or local) jars
             for filename in local_mods:
-                jar_path = os.path.join(backup_dir, filename)
+                jar_path = os.path.join(scan_dir, filename)
                 mod_id = await asyncio.to_thread(self._find_modrinth_project_sync, jar_path, filename)
                 
                 project = await self._get_project_from_id(session, mod_id)
@@ -187,7 +193,10 @@ class ModUpdater:
                 else:
                     summary[filename] = {"title": filename, "status": "Not Found", "version": "---"}
                     
-            await self._send_status(f"📡 Downloading updates for Minecraft `{game_version}` ({loader})...")
+            if is_setup:
+                await self._send_status(f"📡 Installing foundational mods for Minecraft `{game_version}` ({loader})...")
+            else:
+                await self._send_status(f"📡 Downloading updates for Minecraft `{game_version}` ({loader})...")
 
             # 3. Process the queue (including discovered dependencies)
             updated_count = 0
@@ -224,7 +233,10 @@ class ModUpdater:
                             processed_or_queued.add(dep_slug)
                             summary[dep_slug] = {"title": dep_title, "status": "Dep Queued", "version": "---"}
                             
-        await self._send_status(f"✨ Update complete! Successfully downloaded **{updated_count}** new `.jar` files.")
+        if is_setup:
+            await self._send_status(f"✨ Installation complete! Downloaded **{updated_count}** `.jar` files.")
+        else:
+            await self._send_status(f"✨ Update complete! Successfully downloaded **{updated_count}** new `.jar` files.")
         
         # Format the summary for discord (truncate if too long)
         final_msg = "```\nUpdate Summary:\n"

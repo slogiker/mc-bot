@@ -958,6 +958,23 @@ Login decision tree:
 | 9   | `src/setup_views.py`    | Server platform (`paper`, `vanilla`, `fabric`) was used during install but never saved to `bot_config.json` — features like TPS monitor had no way to detect server type. | ✅ FIXED v2.8.0-dev |
 | 10  | `cogs/management.py`    | `/restart` used `os.execv` which replaces the process image; inside Docker (PID 1) this causes an unclean container exit instead of a clean restart. | ✅ FIXED v2.8.0-dev (now uses `bot.close()` + `sys.exit(0)`) |
 | 11  | `cogs/automation.py`    | `cog_unload()` never called `log_dispatcher.unsubscribe()` — orphaned queues accumulated in `_subscribers` on every hot-reload. | ✅ FIXED v2.8.0-dev |
+| 12  | `src/config.py`         | Blocking HTTP call to ip-api.com at import time delays bot startup. Replaced with background thread async fetch.                       | ✅ FIXED v2.8.0-dev  |
+| 13  | `cogs/automation.py`    | Heavy disk I/O on every log line from `load_user_config()`. Added 30s cache interval.                                                    | ✅ FIXED v2.8.0-dev  |
+| 14  | Multiple Files          | Bare `except:` handlers in players.py, admin.py, mod_updater.py swallowing system exits. Replaced with context-specific exceptions.     | ✅ FIXED v2.8.0-dev  |
+| 15  | `cogs/control_panel.py` | Potential `IndexError` on index 0 of `embeds` list. Wrapped with bounds and attribute checks.                                            | ✅ FIXED v2.8.0-dev  |
+| 16  | `cogs/console.py`       | Variable shadowing on `match` loop variable overwriting regex scope. Renamed to `join_match`.                                            | ✅ FIXED v2.8.0-dev  |
+
+### 10.3 Untested Bugs (Reported from manual testing)
+
+| #   | File                    | Bug                                                                                                                                      | Status               |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 19  | `cogs/automation.py`    | `AttributeError` on cog load for missing `motd_loop.start()`.                                                                            | 🟡 Untested Fix (v2.8.0-dev) |
+| 20  | `bot.py`                | `interaction_check` coroutine never awaited in `setup_hook`.                                                                             | 🟡 Untested Fix (v2.8.0-dev) |
+| 21  | RCON                    | RCON connection refused for 60s, timeout. Fixed in setup_views EULA config sequence.                                                     | 🟡 Untested Fix (v2.8.0-dev) |
+| 22  | `install.sh`            | Playit secret key extraction fails silently and misleading footer instructions.                                                            | 🟡 Untested Fix (v2.8.0-dev) |
+| 23  | `src/mod_updater.py`    | `ModUpdater` lacks `.client` object on fresh install, fails essential fetch. Switched to `aiohttp.ClientSession`.                        | 🟡 Untested Fix (v2.8.0-dev) |
+| 24  | `src/mod_updater.py`    | Creates unnecessary backup folders and says "Updating" when mods folder is empty. Added `is_setup` flag.                                 | 🟡 Untested Fix (v2.8.0-dev) |
+
 
 ### 10.3 Code Quality — Low Priority
 
@@ -1004,6 +1021,14 @@ Login decision tree:
 - `src/config.py` — `RCON_HOST` is now configurable via `RCON_HOST` environment variable (defaults to `127.0.0.1`).
 - `cogs/help.py` — replaced hardcoded command categories with `bot.tree.walk_commands()` for dynamic help generation.
 - `bot.py` — startup log verbosity reduced; individual cog loading messages moved to `DEBUG` level.
+- `bot.py` — Fixed dangling coroutine `RuntimeWarning` on `@tree.interaction_check`.
+- `install/install.sh` — Playit tunnel key extraction fixed to use the explicit `mc-bot` static container name.
+- `src/mc_installer.py` — Server EULA acceptance and RCON `.properties` injection correctly sequenced so RCON doesn't timeout for 60s during initial setup.
+- `cogs/tasks.py` — Replaced blocking `os.system` tmux commands with `asyncio.create_subprocess_exec` to keep the event loop responsive.
+- `src/mc_link_manager.py` — Fixed concurrent access race conditions by wrapping read-modify-write cycles with `asyncio.Lock()`.
+- `src/join_guard.py` — Implemented strict input sanitation (stripping `\n` and `\r`) from RCON messages to prevent command injection, and utilized secure `secrets.randbelow` for auth code generation.
+- `cogs/automation.py` — Removed undefined `self.motd_loop.start()` on initialization to prevent cog crash.
+- `src/mod_updater.py` — Added missing `aiohttp.ClientSession()` on initial load to prevent crash fetching explicit mods, and fixed log framing UI so fresh installs don't pretend to be "updates" and skip empty backup folder creation.
 
 **Documentation & Infrastructure:**
 - Added `docs/i18n-implementation.md` — deferred i18n implementation plan.
@@ -1161,8 +1186,8 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 
 - [ ] **SQLite via `aiosqlite`** — replace `bot_config.json` economy and events storage arrays outright. JSON has minor race conditions under rapid concurrent loads, even with limits.
 - [ ] **Minecraft→Discord chat bridge** — pipe in-game chat to a Discord channel directly, scanning logs.
-- [ ] **Mascan-proof the offline whitelist** — add a secondary verification layer for proxied connections implying BungeeCord/Velocity setups where standard MD5 hashes are bypassed for premium connections.
-- [ ] **Full Translation Support (i18n)** — Extract English responses to a JSON/YAML locale file so the bot logic works transparently anywhere globally. _(Plan documented in `docs/i18n-implementation.md`)_
+- [ ] **Mascan-proof the offline whitelist** — add a secondary verification layer for proxied connections implying BungeeCord/Velocity setups where standard MD5 hashes are bypassed for premium connections. _(Plan documented in `implementations/offline-protection.md`)_
+- [ ] **Full Translation Support (i18n)** — Extract English responses to a JSON/YAML locale file so the bot logic works transparently anywhere globally. _(Plan documented in `implementations/i18n-implementation.md`)_
 
 ### 🟡 Medium Priority
 

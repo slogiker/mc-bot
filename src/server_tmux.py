@@ -75,7 +75,9 @@ class TmuxServerManager(ServerInterface):
         async with self._state_lock:
             try:
                 # Ensure directory exists (use asyncio.to_thread)
-                await asyncio.to_thread(os.makedirs, os.path.dirname(self._state_file), exist_ok=True)
+                state_dir = os.path.dirname(self._state_file)
+                if state_dir:
+                    await asyncio.to_thread(os.makedirs, state_dir, exist_ok=True)
                 
                 data = {
                     'intentional_stop': self._intentional_stop,

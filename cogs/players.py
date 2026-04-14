@@ -144,7 +144,7 @@ class PlayersCog(commands.Cog):
         try:
             with open(filepath, 'r') as f:
                 return json.load(f)
-        except:
+        except (FileNotFoundError, json.JSONDecodeError):
             return []
 
     @app_commands.command(name="players_manage", description="Interactive GUI to manage Bans, Whitelists, and Ops")

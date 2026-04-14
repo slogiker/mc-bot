@@ -195,7 +195,7 @@ class DifficultySelect(ui.Select):
             )
         ]
         super().__init__(
-            placeholder="Choose difficulty...",
+            placeholder=f"Currently: {current_value.title()}",
             options=options,
             min_values=1,
             max_values=1
@@ -254,8 +254,10 @@ class MaxPlayersSelect(ui.Select):
             discord.SelectOption(label="100 Players", value="100", default=(current_value == 100)),
             discord.SelectOption(label="Custom Amount", value="custom", description="Enter custom value")
         ]
+        known = {5: "5", 10: "10", 20: "20", 50: "50", 100: "100"}
+        label = known.get(current_value, str(current_value))
         super().__init__(
-            placeholder="Choose max players...",
+            placeholder=f"Currently: {label} Players",
             options=options,
             min_values=1,
             max_values=1
@@ -294,8 +296,10 @@ class RAMSelect(ui.Select):
             discord.SelectOption(label="32 GB", value="32", description="Maximum", default=(current_value == 32)),
             discord.SelectOption(label="Custom Amount", value="custom", description="Enter custom value")
         ]
+        known = {1, 2, 4, 8, 16, 32}
+        label = f"{current_value} GB" if current_value in known else f"{current_value} GB (custom)"
         super().__init__(
-            placeholder="Choose RAM allocation...",
+            placeholder=f"Currently: {label}",
             options=options,
             min_values=1,
             max_values=1
@@ -698,6 +702,24 @@ class SetupView(ui.View):
             if not success:
                 raise Exception(result)
             
+            # STEP 2.5: Generate Files
+            embed.description = "**Step 2.5/5:** Launching server to generate files..."
+            await message.edit(embed=embed)
+            
+            import asyncio
+            import subprocess
+            proc = await asyncio.create_subprocess_exec(
+                "java", "-jar", "server.jar", "nogui",
+                cwd=config.SERVER_DIR,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            # Wait for it to exit due to EULA missing
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=45.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+            
             # STEP 3: Accept EULA
             embed.description = "**Step 3/5:** Accepting Minecraft EULA..."
             await message.edit(embed=embed)
@@ -748,36 +770,38 @@ class SetupView(ui.View):
                             
                             # Fetch project and versions directly via Modrinth API
                             await updater_callback(f"Downloading '{slug}'...")
-                            api_base = "https://api.modrinth.com/v2"
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(f"{api_base}/project/{slug}") as resp:
-                                    project = await resp.json() if resp.status == 200 else None
-                                if project:
-                                    params = {
-                                        "game_versions": f'["{setup_config["version"]}"]',
-                                        "loaders": f'["{loader_override}"]',
-                                    }
-                                    async with session.get(f"{api_base}/project/{slug}/version", params=params) as resp:
-                                        versions = await resp.json() if resp.status == 200 else []
-                                    if versions:
-                                        version = versions[0]
-                                        files = version.get("files", [])
-                                        primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
-                                        if primary_file:
-                                            import os
-                                            from src.config import config as app_config
-                                            mods_dir = os.path.join(app_config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
-                                            os.makedirs(mods_dir, exist_ok=True)
-                                            filepath = os.path.join(mods_dir, primary_file["filename"])
-                                            async with session.get(primary_file["url"]) as resp:
-                                                with open(filepath, 'wb') as f:
-                                                    f.write(await resp.read())
-                                            logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
+                            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                                async with session.get(f"https://api.modrinth.com/v2/project/{slug}") as p_resp:
+                                    if p_resp.status == 200:
+                                        project = await p_resp.json()
+                                        params = {
+                                            "loaders": f'["{loader_override}"]',
+                                            "game_versions": f'["{setup_config["version"]}"]'
+                                        }
+                                        async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
+                                            if v_resp.status == 200:
+                                                versions = await v_resp.json()
+                                                if versions:
+                                                    version = versions[0]
+                                                    primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
+                                                    
+                                                    import os
+                                                    from src.config import config as app_config
+                                                    mods_dir = os.path.join(app_config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
+                                                    os.makedirs(mods_dir, exist_ok=True)
+                                                    
+                                                    filepath = os.path.join(mods_dir, primary_file["filename"])
+                                                    async with session.get(primary_file["url"]) as d_resp:
+                                                        if d_resp.status == 200:
+                                                            with open(filepath, 'wb') as f:
+                                                                f.write(await d_resp.read())
+                                                    logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
+
                         except Exception as e:
                             logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
             
             # Then run the standard update_all to catch any existing
-            await updater.update_all(game_version=setup_config['version'], loader=loader_override)
+            await updater.update_all(game_version=setup_config['version'], loader=loader_override, is_setup=True)
             
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."

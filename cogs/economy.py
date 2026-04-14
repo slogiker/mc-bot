@@ -189,5 +189,5 @@ class EconomyCog(commands.Cog):
 #     #     
 #     #     await interaction.response.send_message(f"✅ Set {user.mention}'s balance to **{amount}**.", ephemeral=True)
 
-async def setup(bot):
-    await bot.add_cog(EconomyCog(bot))
+# async def setup(bot):
+#     await bot.add_cog(EconomyCog(bot))

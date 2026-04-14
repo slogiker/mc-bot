@@ -56,34 +56,36 @@ class MCLinkManager:
 
     async def link_account(self, discord_id: int, mc_username: str, is_premium: bool = False):
         """Link a Discord ID to a Minecraft username."""
-        data = await self._read_data()
-        
-        # Remove any existing link for this MC username
-        discord_id_str = str(discord_id)
-        to_remove = []
-        for d_id, info in data.items():
-            if info["mc_username"].lower() == mc_username.lower():
-                to_remove.append(d_id)
-        
-        for d_id in to_remove:
-            del data[d_id]
+        async with self.lock:
+            data = await asyncio.to_thread(self._read_sync)
             
-        data[discord_id_str] = {
-            "mc_username": mc_username,
-            "is_premium": is_premium,
-            "linked_at": datetime.now(timezone.utc).isoformat()
-        }
-        await self._write_data(data)
+            # Remove any existing link for this MC username
+            discord_id_str = str(discord_id)
+            to_remove = []
+            for d_id, info in data.items():
+                if info["mc_username"].lower() == mc_username.lower():
+                    to_remove.append(d_id)
+            
+            for d_id in to_remove:
+                del data[d_id]
+                
+            data[discord_id_str] = {
+                "mc_username": mc_username,
+                "is_premium": is_premium,
+                "linked_at": datetime.now(timezone.utc).isoformat()
+            }
+            await asyncio.to_thread(self._write_sync, data)
 
     async def unlink_account(self, discord_id: int) -> bool:
         """Unlink a Discord ID."""
-        data = await self._read_data()
-        discord_id_str = str(discord_id)
-        if discord_id_str in data:
-            del data[discord_id_str]
-            await self._write_data(data)
-            return True
-        return False
+        async with self.lock:
+            data = await asyncio.to_thread(self._read_sync)
+            discord_id_str = str(discord_id)
+            if discord_id_str in data:
+                del data[discord_id_str]
+                await asyncio.to_thread(self._write_sync, data)
+                return True
+            return False
 
     async def get_link_by_discord(self, discord_id: int) -> dict | None:
         """Get link info for a specific Discord ID."""
