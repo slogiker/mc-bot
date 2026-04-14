@@ -172,9 +172,11 @@ class ControlPanelCog(commands.Cog):
         # A simple wipe of bot messages if we want a pure command channel:
         try:
             async for old_msg in channel.history(limit=20):
-                if old_msg.author == self.bot.user and old_msg.id != self.message_id and "Control Panel" in str(old_msg.embeds[0].title if old_msg.embeds else ""):
-                    await old_msg.delete()
-        except: pass
+                if old_msg.author == self.bot.user and old_msg.id != self.message_id:
+                    title = str(old_msg.embeds[0].title) if old_msg.embeds and getattr(old_msg.embeds[0], 'title', None) else ""
+                    if "Control Panel" in title:
+                        await old_msg.delete()
+        except discord.HTTPException: pass
 
         try:
             new_msg = await channel.send(embed=embed, view=view)

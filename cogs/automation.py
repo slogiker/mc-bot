@@ -18,7 +18,6 @@ class AutomationCog(commands.Cog):
         self.bot = bot
         self.log_task = None
         self.stop_scan = asyncio.Event()
-        self.motd_loop.start()
 
     def cog_unload(self):
         if self.log_task:
@@ -62,8 +61,13 @@ class AutomationCog(commands.Cog):
                         
                         if "[Bot]" in clean_line: continue # Skip bot's own messages (via RCON echo)
 
-                        user_config = config.load_user_config()
-                        triggers = user_config.get('triggers', {})
+                        import time
+                        if getattr(self, '_last_cfg_sync', 0) < time.time() - 30:
+                            user_config = config.load_user_config()
+                            self._cached_triggers = user_config.get('triggers', {})
+                            self._last_cfg_sync = time.time()
+                        
+                        triggers = getattr(self, '_cached_triggers', {})
                         
                         lower_line = clean_line.lower()
                         

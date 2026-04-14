@@ -44,7 +44,7 @@ class Admin(commands.Cog):
             logger.error(f"Error in backup_now command: {e}", exc_info=True)
             try:
                 await interaction.followup.send(f"❌ Backup command failed: {e}", ephemeral=True)
-            except:
+            except discord.HTTPException:
                 pass
 
     @app_commands.command(name="logs", description="Show last N log lines")
@@ -54,7 +54,7 @@ class Admin(commands.Cog):
         try:
             # Use docker logs to get the last N lines
             # This avoids issues with file locking or path resolution and matches console.py's approach
-            container_name = "mc-bot" # Assuming container name, or we can look it up
+            container_name = os.getenv("CONTAINER_NAME", "mc-bot")
             # Check if running in container or if we can access docker
             
             proc = await asyncio.create_subprocess_exec(
@@ -122,7 +122,7 @@ class Admin(commands.Cog):
             logger.error(f"Error in whitelist_add command: {e}", exc_info=True)
             try:
                 await interaction.followup.send(f"❌ Command failed: {e}", ephemeral=True)
-            except:
+            except discord.HTTPException:
                 pass
 
 async def setup(bot):

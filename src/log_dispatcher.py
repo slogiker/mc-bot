@@ -11,7 +11,7 @@ class LogDispatcher:
         self._process = None
 
     def subscribe(self) -> asyncio.Queue:
-        q = asyncio.Queue()
+        q = asyncio.Queue(maxsize=100)
         self._subscribers.append(q)
         return q
 

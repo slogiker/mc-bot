@@ -284,8 +284,8 @@ else
                 echo -e "Configuring Minecraft Java tunnel (port 25565)..."
                 
                 # Extract the secret key before killing the session
-                # Playit stores its secret in /etc/playit/playit.toml when run as root
-                SECRET_KEY=$(docker exec mc-bot sh -c "cat /etc/playit/playit.toml 2>/dev/null | grep 'secret_key' | cut -d'\"' -f2 || true")
+                # Playit stores its secret in /root/.config/playit_gg/playit.toml
+                SECRET_KEY=$(docker exec mc-bot sh -c "cat /root/.config/playit_gg/playit.toml 2>/dev/null | grep 'secret_key' | cut -d'\"' -f2 || true")
                 
                 # Kill the claim session cleanly (don't use send-keys C-c which can fail)
                 docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
@@ -334,5 +334,5 @@ echo ""
 echo -e "Your bot should be online in Discord."
 echo -e "Run: ${CYAN}/setup${NC} in Discord to initialize channels."
 echo ""
-echo -e "To view logs: ${CYAN}$COMPOSE_CMD logs -f mc-bot${NC}"
-echo -e "To start tunnel: ${CYAN}$COMPOSE_CMD logs -f playit${NC} (if configured)"
+echo -e "To view bot logs:    ${CYAN}$COMPOSE_CMD logs -f mc-bot${NC}"
+echo -e "To view Playit logs: ${CYAN}docker exec mc-bot cat /app/logs/playit.log${NC} (if configured)"

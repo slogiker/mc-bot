@@ -111,7 +111,6 @@ class MinecraftBot(commands.Bot):
         self.tree.on_error = self.on_tree_error
         
         # Global command channel check
-        @self.tree.interaction_check
         async def restrict_command_channel(interaction: discord.Interaction) -> bool:
             # We only restrict actual slash commands
             if interaction.type != discord.InteractionType.application_command:
@@ -131,6 +130,8 @@ class MinecraftBot(commands.Bot):
                 return False
                 
             return True
+            
+        self.tree.interaction_check = restrict_command_channel
             
         logger.info("=== Bot Startup: Loading Extensions ===")
         # Load cogs - wrap os.listdir for async

@@ -19,10 +19,10 @@ class Management(commands.Cog):
     @app_commands.command(name="control", description="Spawn the Control Panel")
     @has_role("control")
     async def control(self, interaction: discord.Interaction):
-        from src.views import ControlView
+        from cogs.control_panel import ControlPanelView
         embed = discord.Embed(title="🎛️ Minecraft Server Control", description="Manage the server using the buttons below.", color=0x5865F2)
         embed.add_field(name="Status", value="🟢 Online" if self.bot.server.is_running() else "🔴 Offline")
-        await interaction.response.send_message(embed=embed, view=ControlView(self.bot))
+        await interaction.response.send_message(embed=embed, view=ControlPanelView(self.bot))
 
     @app_commands.command(name="start", description="Start the server")
     @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
