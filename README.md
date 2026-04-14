@@ -58,6 +58,8 @@ You need to create a Discord "application" and get a bot token. This is free and
 
 > **Lost your token?** You can always go back to the Bot page and reset it to get a new one.
 
+> **Important:** On the same Bot page, find the **"Public Bot"** toggle and **turn it off**. This prevents anyone else from inviting your bot to their server — only you will be able to add it.
+
 ---
 
 ### Step 2 — Enable Required Bot Intents
