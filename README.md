@@ -54,7 +54,17 @@ This section walks you through every step from nothing to a running server. Even
 
 ---
 
-### Step 2 — Configure the Bot
+### Step 2 — Fix the Installation Settings
+
+In the left sidebar, click **"Installation"**.
+
+- Find the **"Install Link"** dropdown at the top and set it to **None**.
+
+Click **"Save Changes"**.
+
+---
+
+### Step 3 — Configure the Bot
 
 In the left sidebar, click **"Bot"**. Do all of the following on this page before moving on:
 
@@ -70,16 +80,6 @@ In the left sidebar, click **"Bot"**. Do all of the following on this page befor
 |--------|----------------|
 | **Server Members Intent** | Required to read Discord role membership for the permission system |
 | **Message Content Intent** | Required for the bot to read messages in channels |
-
-Click **"Save Changes"**.
-
----
-
-### Step 3 — Fix the Installation Settings
-
-In the left sidebar, click **"Installation"**. This step is required after turning off Public Bot — skipping it will cause a save error.
-
-- Find the **"Install Link"** dropdown at the top and set it to **None**.
 
 Click **"Save Changes"**.
 
