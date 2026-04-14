@@ -952,13 +952,29 @@ Login decision tree:
 | 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command — TPS section falls back to `/debug start` + `/debug stop` method, then `N/A (Vanilla)`.           | ✅ FIXED v2.8.0-dev  |
 | 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       | ✅ FIXED v2.6.0      |
 | 5   | `cogs/stats.py`         | `get_uuid_online` uses `aiohttp` but no explicit timeout -- hangs if Mojang API goes down completely.                                    | ✅ FIXED v2.6.0      |
+| 6   | `cogs/tasks.py`         | `create_backup()` returns 3 values `(success, filename, filepath)` but the daily backup task only unpacked 2 — raises `ValueError` every scheduled backup run. | ✅ FIXED v2.8.0-dev |
+| 7   | `src/setup_views.py`    | `asyncio` was imported locally inside `_start_installation()` only, making it unavailable in `_save_config_to_file()` — `NameError` at runtime after setup. | ✅ FIXED v2.8.0-dev |
+| 8   | `docker-compose.yml`    | `data/` directory not mounted as a Docker volume — `bot_config.json` and `user_config.json` were wiped on every `docker compose up --build`. | ✅ FIXED v2.8.0-dev |
+| 9   | `src/setup_views.py`    | Server platform (`paper`, `vanilla`, `fabric`) was used during install but never saved to `bot_config.json` — features like TPS monitor had no way to detect server type. | ✅ FIXED v2.8.0-dev |
+| 10  | `cogs/management.py`    | `/restart` used `os.execv` which replaces the process image; inside Docker (PID 1) this causes an unclean container exit instead of a clean restart. | ✅ FIXED v2.8.0-dev (now uses `bot.close()` + `sys.exit(0)`) |
+| 11  | `cogs/automation.py`    | `cog_unload()` never called `log_dispatcher.unsubscribe()` — orphaned queues accumulated in `_subscribers` on every hot-reload. | ✅ FIXED v2.8.0-dev |
 
 ### 10.3 Code Quality — Low Priority
 
 - ~~`cogs/console.py` has duplicate `from datetime import datetime` imports.~~ FIXED v2.6.0
 - ~~`src/server_info_manager.py` has leading whitespace on line 1.~~ FIXED v2.6.0
 - ~~`cogs/help.py` categories list hardcodes command names — won't auto-update when commands are added.~~ FIXED v2.8.0-dev (uses `bot.tree.walk_commands()`).
+- ~~`requirements.txt` listed `mcrcon` package which was never imported anywhere; `aio-mc-rcon` is the only RCON library used.~~ FIXED v2.8.0-dev (removed)
+- ~~`src/installer_views.py` entire file was dead code, fully replaced by `src/setup_views.py`, nothing imported it.~~ FIXED v2.8.0-dev (deleted)
 - Startup logs from `bot.py` were excessively verbose at INFO level for individual cog loads. Changed to DEBUG. FIXED v2.8.0-dev.
+
+### 10.4 Open Issues — Pending Fix
+
+| #   | File                       | Issue                                                                                                                                                                       |
+| --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `cogs/admin.py`            | `/logs` runs `docker logs mc-bot` as a subprocess from inside the container. This requires `/var/run/docker.sock` to be mounted (it isn't). Silently falls back to reading `latest.log` which only contains bot logs, not server logs. |
+| 2   | `src/config.py`            | `WORLD_FOLDER` is hardcoded as `"world"`. Minecraft's world folder name is set by `level-name` in `server.properties` and can be changed. If it's changed, backups silently target the wrong directory. |
+| 3   | `cogs/control_panel.py`    | `add_view(ControlPanelView)` is registered in `on_ready` instead of `setup_hook`. Discord.py recommends `setup_hook` for persistent views — button clicks in the window between connect and `on_ready` fire will return "Unknown interaction". |
 
 ---
 

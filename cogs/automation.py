@@ -18,7 +18,6 @@ class AutomationCog(commands.Cog):
         self.bot = bot
         self.log_task = None
         self.stop_scan = asyncio.Event()
-        self.motd_loop.start()
 
     def cog_unload(self):
         if self.log_task:

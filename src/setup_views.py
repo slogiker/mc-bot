@@ -746,33 +746,33 @@ class SetupView(ui.View):
                             # so we'll simulate passing it to the config and letting update_all handle it, 
                             # OR we can manually fetch them. We'll add them to the mod_updater's config.
                             
-                            # Easiest way: just call the API to find the versions
+                            # Fetch project and versions directly via Modrinth API
                             await updater_callback(f"Downloading '{slug}'...")
-                            project = await updater.client.get_project(slug)
-                            if project:
-                                versions = await updater.client.get_project_versions(
-                                    project.id, 
-                                    game_versions=[setup_config['version']], 
-                                    loaders=[loader_override]
-                                )
-                                if versions:
-                                    # Get primary file of latest valid version
-                                    version = versions[0]
-                                    primary_file = next((f for f in version.files if f.primary), version.files[0])
-                                    
-                                    # Create mods dir if missing
-                                    import os
-                                    from src.config import config as app_config
-                                    mods_dir = os.path.join(app_config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
-                                    os.makedirs(mods_dir, exist_ok=True)
-                                    
-                                    # Download
-                                    filepath = os.path.join(mods_dir, primary_file.filename)
-                                    async with aiohttp.ClientSession() as session:
-                                        async with session.get(primary_file.url) as resp:
-                                            with open(filepath, 'wb') as f:
-                                                f.write(await resp.read())
-                                    logger.info(f"Downloaded plugin {project.title} to {filepath}")
+                            api_base = "https://api.modrinth.com/v2"
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(f"{api_base}/project/{slug}") as resp:
+                                    project = await resp.json() if resp.status == 200 else None
+                                if project:
+                                    params = {
+                                        "game_versions": f'["{setup_config["version"]}"]',
+                                        "loaders": f'["{loader_override}"]',
+                                    }
+                                    async with session.get(f"{api_base}/project/{slug}/version", params=params) as resp:
+                                        versions = await resp.json() if resp.status == 200 else []
+                                    if versions:
+                                        version = versions[0]
+                                        files = version.get("files", [])
+                                        primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
+                                        if primary_file:
+                                            import os
+                                            from src.config import config as app_config
+                                            mods_dir = os.path.join(app_config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
+                                            os.makedirs(mods_dir, exist_ok=True)
+                                            filepath = os.path.join(mods_dir, primary_file["filename"])
+                                            async with session.get(primary_file["url"]) as resp:
+                                                with open(filepath, 'wb') as f:
+                                                    f.write(await resp.read())
+                                            logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
                         except Exception as e:
                             logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
             
