@@ -263,7 +263,7 @@ else
                 
                 # Fetch playit logs from tmux
                 # The agent prints the link directly to console
-                LOGS=$(docker exec mc-bot tmux capture-pane -t playit -p || true)
+                LOGS=$(docker exec mc-bot tmux capture-pane -t playit -p -S - || true)
                 CLAIM_URL=$(echo "$LOGS" | grep -o 'https://playit.gg/claim/[a-zA-Z0-9-]*' | tail -n 1)
                 
                 if [ -z "$CLAIM_URL" ]; then
