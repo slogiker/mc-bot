@@ -5,6 +5,21 @@
 
 ---
 
+## P0 — Operational (Not Code Bugs)
+
+### 0. Infinite server restart loop after pulling new code
+**Symptom:** Logs show "Server started successfully" followed 29s later by "Server process not found — attempting restart" on a loop.  
+**Cause:** Docker used a cached image layer that still contains the old buggy restart counter code (where `restart_attempts` reset to 0 instead of incrementing). The server is also likely crashing immediately because no `server.jar` exists yet (haven't run `/setup`).  
+**Fix:** Force a clean rebuild — the cached layer won't be used:
+```bash
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+```
+Then run `/setup` in Discord to install the Minecraft server.
+
+---
+
 ## P1 — Will Break Under Certain Conditions
 
 ### 1. `join_guard.py` — Player kicked but DM never received

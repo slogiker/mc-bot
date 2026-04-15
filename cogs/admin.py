@@ -4,6 +4,7 @@ from discord.ext import commands
 import asyncio
 import os
 import json
+import aiohttp
 from collections import deque
 from src.config import config
 from src.utils import rcon_cmd, send_debug, has_role
@@ -124,6 +125,52 @@ class Admin(commands.Cog):
                 await interaction.followup.send(f"❌ Command failed: {e}", ephemeral=True)
             except discord.HTTPException:
                 pass
+
+    async def _modrinth_search(self, query: str, limit: int = 5) -> list[dict]:
+        """Search Modrinth for mods/plugins. Returns list of hit dicts."""
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+                params = {"query": query, "limit": limit}
+                async with session.get("https://api.modrinth.com/v2/search", params=params) as resp:
+                    if resp.status == 200:
+                        return (await resp.json()).get("hits", [])
+        except Exception:
+            pass
+        return []
+
+    @app_commands.command(name="mod_search", description="Search Modrinth for mods or plugins by name")
+    @app_commands.describe(query="Mod or plugin name (select a result to see details and get the slug)")
+    async def mod_search(self, interaction: discord.Interaction, query: str):
+        await interaction.response.defer(ephemeral=True)
+        hits = await self._modrinth_search(query, limit=5)
+        if not hits:
+            await interaction.followup.send("No results found on Modrinth.", ephemeral=True)
+            return
+
+        lines = ["**Top Modrinth results** — copy a slug into the `/setup` plugins step:\n"]
+        for hit in hits:
+            name = hit.get("title", "?")
+            slug = hit.get("slug", "?")
+            summary = hit.get("description", "")[:80]
+            project_type = hit.get("project_type", "")
+            type_icon = "🔧" if project_type == "plugin" else "🧩" if project_type == "mod" else "📦"
+            lines.append(f"{type_icon} **{name}** — slug: `{slug}`\n  *{summary}*")
+
+        await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+    @mod_search.autocomplete("query")
+    async def mod_search_autocomplete(self, interaction: discord.Interaction, current: str):
+        if len(current) < 2:
+            return []
+        hits = await self._modrinth_search(current, limit=5)
+        return [
+            app_commands.Choice(
+                name=f"{h.get('title', '?')} ({h.get('slug', '?')})"[:100],
+                value=h.get("slug", "")
+            )
+            for h in hits
+        ]
+
 
 async def setup(bot):
     await bot.add_cog(Admin(bot))

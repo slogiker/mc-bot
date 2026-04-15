@@ -48,7 +48,7 @@ class ServerInfoManager:
             channel = await self.get_or_create_channel(guild)
             
             # Gather information
-            ip_address = getattr(config, 'SERVER_ADDRESS', 'slogikerserver.ddns.net')
+            ip_address = self._get_address()
             version = self._get_version()
             seed = self._get_seed()
             spawn = self._get_spawn()
@@ -92,6 +92,22 @@ class ServerInfoManager:
         except Exception as e:
             logger.error(f"Failed to update server info: {e}", exc_info=True)
 
+    def _get_address(self) -> str:
+        # Prefer live Playit address from the cog's cache
+        try:
+            playit_cog = self.bot.get_cog("PlayitCog")
+            if playit_cog and playit_cog.tunnels:
+                return playit_cog.tunnels[0]
+            if playit_cog and playit_cog.cached_address:
+                return playit_cog.cached_address
+        except Exception:
+            pass
+        # Fall back to static config value if set
+        addr = getattr(config, 'SERVER_ADDRESS', None)
+        if addr:
+            return addr
+        return "Run /ip in Discord to get the address"
+
     def _get_version(self) -> str:
         # Try to read installed version from config or properties
         try:
@@ -106,29 +122,15 @@ class ServerInfoManager:
         return config.get('installed_version', 'Unknown') 
 
     def _get_seed(self) -> str:
-        # 1. Try to read seed from server.properties first
         try:
             from src.mc_manager import get_server_properties
             props = get_server_properties()
-            if props and props.get('level-seed'):
-                return props.get('level-seed')
-        except Exception:
-            pass
-            
-        # 2. If not defined, it was generated randomly. Read from world/level.dat using nbtlib.
-        try:
-            import os
-            import nbtlib
-            level_dat_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, 'level.dat')
-            if os.path.exists(level_dat_path):
-                nbt_file = nbtlib.load(level_dat_path)
-                seed = nbt_file.root['Data'].get('RandomSeed')
-                if seed is not None:
-                    return str(int(seed))
+            if props is not None:
+                seed = props.get('level-seed', '').strip()
+                return seed if seed else 'Random'
         except Exception as e:
-            logger.debug(f"Failed to read seed from level.dat: {e}")
-            
-        return 'Random/Hidden'
+            logger.debug(f"Failed to read seed from server.properties: {e}")
+        return 'Random'
 
     def _get_spawn(self) -> Optional[str]:
         # Read from config

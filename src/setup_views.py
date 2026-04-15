@@ -524,7 +524,11 @@ class SetupView(ui.View):
         elif step == 6:  # Plugins/Mods
             embed = discord.Embed(
                 title="Minecraft Server Setup",
-                description=f"**{progress}** - Plugins & Mods\nYou can enter a comma-separated list of Modrinth project slugs (e.g. `essentials, vault, clear-lagg`) to auto-download them during setup.",
+                description=(
+                    f"**{progress}** - Plugins & Mods\n"
+                    "Enter a comma-separated list of Modrinth slugs to auto-download during setup.\n"
+                    "💡 **Not sure of the slug?** Close this and run `/mod_search <name>` — it autocompletes as you type and shows the exact slug to use."
+                ),
                 color=discord.Color.blue()
             )
             
