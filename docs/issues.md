@@ -197,14 +197,15 @@ ERROR Failed to upload backup: Cannot connect to host transfer.sh:443 ssl:defaul
 
 ## Feature Requests
 
-### 21. `/update` cog — Update Minecraft server version via Discord
-**Request:** A `/update <version>` command that downloads the specified Minecraft server version and replaces the current `server.jar` without wiping world data.  
+### 21. `/update` cog — Update Minecraft server jar and plugins via Discord
+**Request:** A `/update <version>` command that updates both the server jar and all installed plugins to their latest compatible versions without wiping world data.  
 **Behaviour:**
 - Stop server if running
 - Download new `server.jar` from the appropriate source (Mojang API for vanilla, or server type equivalent)
-- Replace existing jar, preserving `world/`, `plugins/`, `server.properties`
+- For each plugin in `mc-server/plugins/`, check Modrinth for the latest version compatible with the new server version and download it
+- Replace existing jar and plugin jars, preserving `world/`, `server.properties`, and plugin config folders
 - Restart server
-- Confirm new version in Discord
+- Report in Discord: new server version + list of plugins updated (old → new version)
 **Note:** Was discussed in a prior session. Not yet implemented.
 
 ---
