@@ -133,6 +133,82 @@ Then run `/setup` in Discord to install the Minecraft server.
 
 ---
 
+---
+
+## P1 — Reported During Live Testing (2026-04-15)
+
+### 14. `cogs/playit.py` — `/ip` returns "no Playit secret key found" after fresh install
+**Symptom:** After running `setup.sh`, `/ip` in Discord returns "no Playit secret key found" even after completing the Playit claim flow.  
+**Likely cause:** `install.sh` claim flow extracts the secret key from `/root/.config/playit_gg/playit.toml` and writes it to `data/playit_secret.key`, but that path may not be written by the time the extraction runs, or the key is never written at all if playit exits before generating the config. The bot then reads `data/playit_secret.key` on startup and finds it empty or missing.  
+**Related:** Issue noted earlier — Playit binary may exit silently with no output, meaning tmux session never starts and the claim URL never appears.  
+**Fix needed:** Verify `data/playit_secret.key` is non-empty before declaring claim flow complete. Log the raw output of playit on first run to confirm it's actually starting.
+
+---
+
+### 15. `cogs/backup.py` — Backup download fails with transfer.sh connection error
+**Symptom:**
+```
+ERROR Failed to upload backup: Cannot connect to host transfer.sh:443 ssl:default [Connect call failed ('144.76.136.153', 443)]
+```
+**Cause:** `/backup_download` uploads the zip to `transfer.sh` then sends the link to Discord. `transfer.sh` is an external public service — it's unreliable and sometimes blocks connections or goes down. This is a hard dependency on a third-party service with no fallback.  
+**Fix needed:** Either (a) send the file directly as a Discord attachment (limited to 25MB, sufficient for most world backups), or (b) try direct attachment first and fall back to transfer.sh only if the file is too large. Remove the hard dependency on transfer.sh.
+
+---
+
+## P2 — UX Issues Reported During Live Testing (2026-04-15)
+
+### 16. `src/server_info_manager.py` — Seed still shows as "Random/Hidden"
+**Symptom:** `/info` shows seed as "Random/Hidden" instead of the actual world seed.  
+**Cause:** `server_info_manager.py` does not read `mc-server/server.properties`. The seed is set by the Minecraft server on first world generation and stored in `level.dat`, not `server.properties`. Reading the seed requires either parsing `level.dat` (NBT format) or running the RCON command `seed` while the server is running.  
+**Fix needed:** When server is running, execute RCON command `seed` and parse the response (`Seed: [1234567890]`). When server is off, fall back to parsing `level.dat` via the existing NBT utilities in `cogs/stats.py`.
+
+---
+
+### 17. `src/setup_views.py` — Mod selection UX needs full redesign
+**Current behaviour:** Free-text slug input in a modal textarea. No validation, no feedback, no autocomplete.  
+**Required behaviour:**
+- Replace textarea with a single text input field in the setup flow
+- As user types, show a live list of top 5–10 Modrinth results underneath (same API as `/mod_search`)
+- Selecting a result adds the full mod object (name, slug, Modrinth URL) to an array — not just the slug string
+- Add a "View selected mods" button that shows the current array and allows removing individual mods
+**Note:** Discord slash command autocomplete (the `autocomplete=True` parameter on options) fires on each keystroke and is the right mechanism for this. `/mod_search` already implements the Modrinth search — the setup flow should reuse that logic.
+
+---
+
+### 18. `src/setup_views.py` — Mod selection autocomplete not appearing in Discord
+**Symptom:** The autocomplete dropdown for mod selection does not appear when typing in Discord.  
+**Likely cause:** The autocomplete handler may not be correctly registered or the setup flow uses a modal input (which does not support autocomplete) rather than a proper slash command option with `autocomplete=True`.  
+**Fix needed:** Ensure mod selection uses a dedicated slash command option with an `@app_commands.autocomplete` decorator, not a modal text field.
+
+---
+
+### 19. `cogs/console.py` / `cogs/tasks.py` — Log channel streaming full terminal output
+**Symptom:** Log channel is receiving all raw terminal/server output instead of just formatted player-visible events.  
+**Required behaviour:** Revert to displaying `/logs n` style output — last N lines of clean server log, not a live stream of everything. The "stream everything to Discord" mode is too noisy and needs to be disabled for now.  
+**Fix needed:** Disable the live terminal stream to the log channel. Restore the previous behaviour of posting the last N log lines on demand or on a filtered basis.
+
+---
+
+### 20. `cogs/backup.py` — Backup download requires typing full filename manually
+**Symptom:** `/backup_download` requires the user to type the exact backup filename (long timestamped zip name). No autocomplete.  
+**Fix needed:** Add `autocomplete=True` to the filename parameter and register an autocomplete handler that reads the `backups/` directory and returns matching filenames as the user types. Apply the same pattern to any other command that takes a filename parameter.
+
+---
+
+## Feature Requests
+
+### 21. `/update` cog — Update Minecraft server version via Discord
+**Request:** A `/update <version>` command that downloads the specified Minecraft server version and replaces the current `server.jar` without wiping world data.  
+**Behaviour:**
+- Stop server if running
+- Download new `server.jar` from the appropriate source (Mojang API for vanilla, or server type equivalent)
+- Replace existing jar, preserving `world/`, `plugins/`, `server.properties`
+- Restart server
+- Confirm new version in Discord
+**Note:** Was discussed in a prior session. Not yet implemented.
+
+---
+
 ## Things to Test After Next Deployment
 
 - [ ] Does `/setup` correctly restrict to `#mc-commands` channel only?
@@ -141,3 +217,7 @@ Then run `/setup` in Discord to install the Minecraft server.
 - [ ] Do plugin slugs with typos show an error in Discord instead of silently failing?
 - [ ] Does setup wizard timeout message show after 10 min of inactivity?
 - [ ] Does the max players dropdown show "Currently: 5 Players" after navigating away and back?
+- [ ] Does `/ip` correctly read `data/playit_secret.key` after fresh install?
+- [ ] Does `/backup_download` send file as Discord attachment instead of transfer.sh link?
+- [ ] Does mod autocomplete appear in setup flow when typing?
+- [ ] Does `/info` show actual seed value (via RCON `seed` command or level.dat parsing)?
