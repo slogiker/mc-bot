@@ -247,29 +247,47 @@ else
             docker exec -d mc-bot tmux new-session -d -s playit "playit --secret \$(cat /app/data/playit_secret.key)"
         else
             echo -e "Starting Playit agent to generate claim link..."
-            docker exec -d mc-bot tmux new-session -d -s playit "playit"
-            
-            echo -e "Waiting for claim URL (timeout 5m)..."
             CLAIM_URL=""
-            TIMEOUT=300
-            START_TIME=$(date +%s)
-            
-            while [ -z "$CLAIM_URL" ]; do
-                CURRENT_TIME=$(date +%s)
-                if [ $((CURRENT_TIME - START_TIME)) -gt $TIMEOUT ]; then
-                    echo -e "${RED}[ERROR] Timeout waiting for Playit claim URL.${NC}"
+            MAX_RETRIES=3
+            for attempt in $(seq 1 $MAX_RETRIES); do
+                echo -e "Attempt $attempt/$MAX_RETRIES: starting Playit agent..."
+                docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
+                sleep 1
+                docker exec -d mc-bot tmux new-session -d -s playit "playit"
+
+                echo -e "Waiting for claim URL (timeout 2m)..."
+                TIMEOUT=120
+                START_TIME=$(date +%s)
+
+                while [ -z "$CLAIM_URL" ]; do
+                    CURRENT_TIME=$(date +%s)
+                    if [ $((CURRENT_TIME - START_TIME)) -gt $TIMEOUT ]; then
+                        echo -e "${YELLOW}[WARN] Attempt $attempt/$MAX_RETRIES timed out.${NC}"
+                        break
+                    fi
+
+                    LOGS=$(docker exec mc-bot tmux capture-pane -t playit -p -S - || true)
+                    CLAIM_URL=$(echo "$LOGS" | grep -o 'https://playit.gg/claim/[a-zA-Z0-9-]*' | tail -n 1)
+
+                    if [ -z "$CLAIM_URL" ]; then
+                        sleep 2
+                    fi
+                done
+
+                if [ -n "$CLAIM_URL" ]; then
                     break
                 fi
-                
-                # Fetch playit logs from tmux
-                # The agent prints the link directly to console
-                LOGS=$(docker exec mc-bot tmux capture-pane -t playit -p -S - || true)
-                CLAIM_URL=$(echo "$LOGS" | grep -o 'https://playit.gg/claim/[a-zA-Z0-9-]*' | tail -n 1)
-                
-                if [ -z "$CLAIM_URL" ]; then
-                    sleep 2
+
+                if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                    echo -e "${YELLOW}Retrying in 3 seconds...${NC}"
+                    sleep 3
                 fi
             done
+
+            if [ -z "$CLAIM_URL" ]; then
+                echo -e "${RED}[ERROR] Could not get Playit claim URL after $MAX_RETRIES attempts.${NC}"
+                echo -e "${YELLOW}To debug, run: docker exec mc-bot tmux capture-pane -t playit -p${NC}"
+            fi
             
             if [ -n "$CLAIM_URL" ]; then
                 echo -e ""
