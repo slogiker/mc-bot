@@ -282,14 +282,11 @@ else
         if [ -n "$SECRET_KEY" ]; then
             echo -e "Creating Minecraft Java tunnel (port 25565)..."
             docker exec mc-bot playit --platform_docker --secret "$SECRET_KEY" tunnels prepare \
-                --type minecraft-java --name minecraft 2>&1 || true
-
-            echo -e "Fetching public address..."
-            docker exec mc-bot playit --platform_docker --secret "$SECRET_KEY" tunnels list 2>&1 || true
+                --type minecraft-java --name minecraft both 1 2>&1 || true
 
             # Start the persistent agent in a tmux session with stdout logging
             docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
-            docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret $SECRET_KEY -s -l /app/logs/playit.log"
+            docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret_path /app/data/playit_secret.key -s -l /app/logs/playit.log"
             sleep 2
             if docker exec mc-bot tmux has-session -t playit 2>/dev/null; then
                 echo -e "${GREEN}[OK] Playit agent running in background.${NC}"
@@ -301,7 +298,7 @@ else
     elif [ -s "data/playit_secret.key" ]; then
         # Already have a key from .env or previous install — just start the agent
         echo -e "Starting Playit agent with existing secret key..."
-        docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret \$(cat /app/data/playit_secret.key) -s -l /app/logs/playit.log"
+        docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret_path /app/data/playit_secret.key -s -l /app/logs/playit.log"
     fi
 fi
 
