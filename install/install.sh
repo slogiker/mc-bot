@@ -250,7 +250,7 @@ else
 
             # Generate a claim code inside the container and build the URL
             echo -e "Generating claim code..."
-            CLAIM_CODE=$(docker exec mc-bot playit claim generate 2>&1 | tr -d '[:space:]') || true
+            CLAIM_CODE=$(docker exec mc-bot playit -s claim generate 2>&1 | tail -1 | tr -d '[:space:]') || true
             echo -e "  [debug] playit output: ${CLAIM_CODE}"
 
             if [ -z "$CLAIM_CODE" ]; then
@@ -268,7 +268,7 @@ else
                 echo -e ""
 
                 # Exchange the claim code for a secret key (waits until browser claim is done)
-                SECRET_KEY=$(docker exec mc-bot playit claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tr -d '[:space:]') || true
+                SECRET_KEY=$(docker exec mc-bot playit -s claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | tr -d '[:space:]') || true
 
                 if [ -z "$SECRET_KEY" ]; then
                     echo -e "${RED}[ERROR] Did not receive a secret key from Playit. Try running the installer again.${NC}"
@@ -289,7 +289,7 @@ else
 
             # Start the persistent agent in a tmux session with stdout logging
             docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
-            docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret $SECRET_KEY -s"
+            docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret $SECRET_KEY -s -l /app/logs/playit.log"
             sleep 2
             if docker exec mc-bot tmux has-session -t playit 2>/dev/null; then
                 echo -e "${GREEN}[OK] Playit agent running in background.${NC}"
@@ -301,7 +301,7 @@ else
     elif [ -s "data/playit_secret.key" ]; then
         # Already have a key from .env or previous install — just start the agent
         echo -e "Starting Playit agent with existing secret key..."
-        docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret \$(cat /app/data/playit_secret.key) -s"
+        docker exec mc-bot tmux new-session -d -s playit "playit --platform_docker --secret \$(cat /app/data/playit_secret.key) -s -l /app/logs/playit.log"
     fi
 fi
 
