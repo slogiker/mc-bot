@@ -134,42 +134,61 @@ class ModsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def _modrinth_search(self, query: str, limit: int = 10) -> list[dict]:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+                params = {"query": query, "limit": limit, "index": "relevance"}
+                async with session.get("https://api.modrinth.com/v2/search", params=params) as resp:
+                    if resp.status == 200:
+                        return (await resp.json()).get("hits", [])
+        except Exception:
+            pass
+        return []
+
     @app_commands.command(name="mod_search", description="Search and install mods/plugins from Modrinth")
-    @app_commands.describe(query="Name of the mod/plugin to search for")
+    @app_commands.describe(query="Name or slug of the mod/plugin — autocomplete searches as you type")
     @has_role("mods")
     async def mod_search(self, interaction: discord.Interaction, query: str):
         await interaction.response.defer()
-        
-        api_url = "https://api.modrinth.com/v2/search"
-        params = {
-            "query": query,
-            "limit": 10,
-            "index": "relevance"
-        }
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, params=params) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        hits = data.get('hits', [])
-                        
-                        if not hits:
-                            await interaction.followup.send(f"❌ No results found for `{query}`.")
-                            return
-                            
-                        view = ModrinthSearchView(hits, self.bot)
-                        embed = discord.Embed(
-                            title=f"🔍 Modrinth Search: {query}",
-                            description="Select a mod from the dropdown below to install it directly to the server.",
-                            color=discord.Color.green()
-                        )
-                        await interaction.followup.send(embed=embed, view=view)
-                    else:
-                        await interaction.followup.send(f"❌ Failed to contact Modrinth API: HTTP {resp.status}")
-        except Exception as e:
-            logger.error(f"Modrinth search failed: {e}")
-            await interaction.followup.send("❌ Error searching Modrinth.")
+
+        hits = await self._modrinth_search(query)
+
+        if not hits:
+            await interaction.followup.send(f"❌ No results found for `{query}`.")
+            return
+
+        type_icon = {"plugin": "🔧", "mod": "🧩", "modpack": "📦"}
+        lines = []
+        for h in hits[:10]:
+            icon = type_icon.get(h.get("project_type", ""), "📦")
+            name = h.get("title", "?")
+            slug = h.get("slug", "?")
+            summary = h.get("description", "")[:72]
+            downloads = h.get("downloads", 0)
+            dl = f"{downloads:,}"
+            lines.append(f"{icon} **{name}** — slug: `{slug}` · {dl} downloads\n  *{summary}*")
+
+        view = ModrinthSearchView(hits, self.bot)
+        embed = discord.Embed(
+            title=f"Modrinth Search: {query}",
+            description="\n\n".join(lines) + "\n\nSelect from the dropdown to install directly.",
+            color=discord.Color.green()
+        )
+        await interaction.followup.send(embed=embed, view=view)
+
+    @mod_search.autocomplete("query")
+    async def mod_search_autocomplete(self, interaction: discord.Interaction, current: str):
+        if len(current) < 2:
+            return []
+        hits = await self._modrinth_search(current, limit=8)
+        type_icon = {"plugin": "🔧", "mod": "🧩", "modpack": "📦"}
+        return [
+            app_commands.Choice(
+                name=f"{type_icon.get(h.get('project_type',''), '📦')} {h.get('title','?')} ({h.get('slug','?')})"[:100],
+                value=h.get("slug", "")
+            )
+            for h in hits
+        ]
 
 
 

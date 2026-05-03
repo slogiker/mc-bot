@@ -753,6 +753,86 @@ Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`)
 - No address on tunnel → tunnel still initializing
 - Network error → internet connectivity issue
 
+#### Playit CLI Reference (v0.17.1)
+
+The `playit` binary is installed via apt from `playit-cloud.github.io/ppa` inside the Docker container. Full CLI reference:
+
+```
+Usage: playit [OPTIONS] [COMMAND]
+
+Commands:
+  version      Print version
+  account      Account operations
+  claim        Setting up a new playit agent (first-time)
+  start        Start the playit agent
+  tunnels      Manage tunnels
+  reset        Remove the secret key so the agent can be re-claimed
+  secret-path  Show file path where the playit secret is stored
+  setup        Interactive setup wizard (Linux)
+  help         Print help for a subcommand
+
+Options:
+  --secret <SECRET>     Secret code for the agent (pass directly)
+  --secret_path <PATH>  Path to file containing the secret key
+  -w, --secret_wait     Wait for secret_path file to become available
+  -s, --stdout          Force all logs to stdout (IMPORTANT: required for tmux capture)
+  -l, --log_path <PATH> Write logs to a file instead of stdout
+  --platform_docker     Override platform version string to "docker"
+  -h, --help            Print help
+```
+
+**`claim` subcommand:**
+```
+playit claim generate                    # Prints a random claim code (stdout, scriptable)
+playit claim url <CODE>                  # Prints the full https://playit.gg/claim/<CODE> URL
+playit claim exchange [--wait N] <CODE>  # Blocks until user claims in browser, prints secret key
+                                         # --wait 0 = wait forever (default), N = timeout in seconds
+```
+
+**`tunnels` subcommand:**
+```
+playit --secret <KEY> tunnels list                                     # Prints: [id] [type] [count] [public-address]
+playit --secret <KEY> tunnels prepare <PORT_TYPE> <PORT_COUNT>         # Create tunnel if it doesn't exist
+        --type [TUNNEL_TYPE]   e.g. minecraft-java
+        --name [NAME]          tunnel name
+        --exact                require exact match
+        --ignore_name          ignore name when matching
+```
+
+**`account` subcommand:**
+```
+playit account login-url   # Generate a browser login link
+```
+
+**Correct first-time claim flow (used in `install.sh`):**
+```bash
+# 1. Generate a claim code (scriptable, instant)
+CLAIM_CODE=$(docker exec mc-bot playit claim generate)
+
+# 2. Show the URL to the user
+echo "https://playit.gg/claim/${CLAIM_CODE}"
+
+# 3. Wait for browser claim — returns the secret key when done
+SECRET_KEY=$(docker exec mc-bot playit claim exchange --wait 0 "$CLAIM_CODE")
+
+# 4. Save secret and create the minecraft tunnel
+echo "$SECRET_KEY" > data/playit_secret.key
+docker exec mc-bot playit --secret "$SECRET_KEY" tunnels prepare both 1 --type minecraft-java --name minecraft
+
+# 5. Get the public address
+docker exec mc-bot playit --secret "$SECRET_KEY" tunnels list | awk '{print $4}'
+
+# 6. Start persistent agent (use -s so logs go to stdout, visible in tmux)
+docker exec -d mc-bot tmux new-session -d -s playit "playit --secret $SECRET_KEY -s"
+```
+
+**Key lessons learned (2026-05-03 investigation):**
+- Without `-s`, playit logs to a **file** by default — tmux `capture-pane` sees nothing
+- Old approach (grep tmux for claim URL) was fundamentally broken for this reason
+- `playit claim generate` + `claim exchange` is the correct scriptable API — no polling or tmux needed
+- Secret key config path (`/root/.config/playit_gg/playit.toml`) was also wrong; `claim exchange` returns the key directly via stdout
+- `tunnels list` output format: `[tunnel-id] [port-type] [port-count] [public-address]` → `awk '{print $4}'` extracts the address
+
 ### `cogs/settings.py`
 
 Implements the interactive `/settings` command utilizing multiple Modals (`RamModal`, `ScheduleModal`, `TimezoneModal`, `PermissionsModal`). Directly modifies `user_config.json` via the `config` singleton and hot-reloads running state variables (Java heap, logic intervals, timezone lookups) without requiring a restart.
@@ -964,16 +1044,20 @@ Login decision tree:
 | 15  | `cogs/control_panel.py` | Potential `IndexError` on index 0 of `embeds` list. Wrapped with bounds and attribute checks.                                            | ✅ FIXED v2.8.0-dev  |
 | 16  | `cogs/console.py`       | Variable shadowing on `match` loop variable overwriting regex scope. Renamed to `join_match`.                                            | ✅ FIXED v2.8.0-dev  |
 
-### 10.3 Untested Bugs (Reported from manual testing)
+### 10.3 Bugs Found During Manual Testing (2026-03-16 CM4 Live Test)
+
+> All items below were discovered during hands-on testing on a Raspberry Pi CM4 running a fresh Docker install. Fixes applied in v2.8.0-dev.
 
 | #   | File                    | Bug                                                                                                                                      | Status               |
 | --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 19  | `cogs/automation.py`    | `AttributeError` on cog load for missing `motd_loop.start()`.                                                                            | 🟡 Untested Fix (v2.8.0-dev) |
-| 20  | `bot.py`                | `interaction_check` coroutine never awaited in `setup_hook`.                                                                             | 🟡 Untested Fix (v2.8.0-dev) |
-| 21  | RCON                    | RCON connection refused for 60s, timeout. Fixed in setup_views EULA config sequence.                                                     | 🟡 Untested Fix (v2.8.0-dev) |
-| 22  | `install.sh`            | Playit secret key extraction fails silently and misleading footer instructions.                                                            | 🟡 Untested Fix (v2.8.0-dev) |
-| 23  | `src/mod_updater.py`    | `ModUpdater` lacks `.client` object on fresh install, fails essential fetch. Switched to `aiohttp.ClientSession`.                        | 🟡 Untested Fix (v2.8.0-dev) |
-| 24  | `src/mod_updater.py`    | Creates unnecessary backup folders and says "Updating" when mods folder is empty. Added `is_setup` flag.                                 | 🟡 Untested Fix (v2.8.0-dev) |
+| 19  | `cogs/automation.py`    | `AttributeError` on cog load — `motd_loop.start()` called before the loop was defined. Bot failed to load the entire automation cog.    | ✅ FIXED v2.8.0-dev — removed the premature `start()` call; loop starts only when explicitly triggered. |
+| 20  | `bot.py`                | `interaction_check` coroutine never awaited in `setup_hook`, producing `RuntimeWarning` and silently skipping all interaction permission checks. | ✅ FIXED v2.8.0-dev — wired `await` correctly. |
+| 21  | RCON / `src/setup_views.py` | RCON connection refused for ~60s after server start. Root cause: `rcon.enable=true` was not written to `server.properties` before the server launched, so RCON was never enabled. | ✅ FIXED v2.8.0-dev — `configure_server_properties()` now runs and EULA is accepted before the server process starts, ensuring RCON config is present on first boot. |
+| 22a | `install/install.sh`    | Misleading completion message told users to run `docker compose logs -f playit` to "start the tunnel" — that command views logs, not starts a process, and `playit` is not a separate Docker service (it runs inside `mc-bot` via tmux). | ✅ FIXED v2.8.0-dev — footer instructions corrected. |
+| 22b | `install/install.sh`    | Playit secret key extraction fails silently after the claim flow. Playit binary may exit before writing its config file, so `data/playit_secret.key` is never populated. | 🔴 Still open — tracked in section 10.4 #8. |
+| 23  | `src/mod_updater.py`    | `'ModUpdater' object has no attribute 'client'` crash when fetching any explicitly named plugin/mod on fresh install. `aiohttp.ClientSession` was never initialised on the object. | ✅ FIXED v2.8.0-dev — switched to creating a fresh `aiohttp.ClientSession()` per request instead of relying on a shared instance. |
+| 24  | `src/mod_updater.py`    | On a fresh install with no mods, ModUpdater described the operation as an "update", said it "analyzed N local files" (were defaults bundled in the image), and created a timestamped `old_mods_*` backup folder for files that were not user-placed. | ✅ FIXED v2.8.0-dev — added `is_setup` flag; fresh installs skip the backup step and use "Installing" framing instead of "Updating". |
+| 25  | `docker-compose.yml`    | No `playit` Docker service defined. By design — Playit agent runs inside the `mc-bot` container via a dedicated `tmux` session named `playit`, not as a separate compose service. Not a bug; noted here for clarity. | ℹ️ By design — use `docker exec -it mc-bot tmux attach -t playit` to inspect. |
 
 
 ### 10.3 Code Quality — Low Priority
@@ -991,11 +1075,72 @@ Login decision tree:
 | --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `cogs/admin.py`            | `/logs` runs `docker logs mc-bot` as a subprocess from inside the container. This requires `/var/run/docker.sock` to be mounted (it isn't). Silently falls back to reading `latest.log` which only contains bot logs, not server logs. |
 | 2   | `src/config.py`            | `WORLD_FOLDER` is hardcoded as `"world"`. Minecraft's world folder name is set by `level-name` in `server.properties` and can be changed. If it's changed, backups silently target the wrong directory. |
-| 3   | `cogs/control_panel.py`    | `add_view(ControlPanelView)` is registered in `on_ready` instead of `setup_hook`. Discord.py recommends `setup_hook` for persistent views — button clicks in the window between connect and `on_ready` fire will return "Unknown interaction". |
+| ~~3~~   | ~~`cogs/control_panel.py`~~    | ~~`add_view(ControlPanelView)` is registered in `on_ready` instead of `setup_hook`.~~ | ✅ FIXED v2.8.1 — moved to `cog_load()`. |
+| 4   | `src/setup_views.py`       | Confirmation step shows `Version: latest (Latest available will be used)`. The actual resolved version is only fetched during download. Could be resolved on navigate-to-confirmation step. P3/cosmetic. |
+| 5   | `cogs/automation.py`       | 30-second trigger cache means new `/trigger_add` commands don't fire for up to 30s. Expected behavior but worth noting to users. P3/cosmetic. |
+| 6   | `cogs/backup.py`           | `/backup_download` Discord CDN attachment URLs expire. If user saves the link and tries later, it won't work. Discord limitation, no code fix possible — worth noting in `/help` text. |
+| 7   | `Dockerfile` / `docker-compose.yml` | `docker compose up --build` takes 400+ seconds. Java 21 + Playit apt layers are re-run on every rebuild. Goal: split into stable base image + thin app layer so code changes rebuild in <10s. |
+| ~~8~~   | ~~`install/install.sh`~~       | ~~Playit secret key extraction may fail silently after fresh install. Playit binary may exit before writing `/root/.config/playit_gg/playit.toml`.~~ | ✅ FIXED 2026-05-03 — See v2.8.2 below. |
+| 9   | `src/setup_views.py`       | Mod selection UX: free-text slug textarea has no validation, no autocomplete, no live search. Needs redesign using slash command autocomplete (`@app_commands.autocomplete`) reusing `/mod_search` Modrinth logic. Modal inputs do not support autocomplete — this requires moving mod selection out of the modal. |
 
 ---
 
 ## 11. Version History & Recent Changes
+
+### v2.8.2 — Playit Claim Flow Rewrite (2026-05-03)
+
+**Root cause investigation:**
+- `playit` binary (v0.17.1) writes logs to a **file by default**, not stdout. The old `install.sh` ran `playit` inside a detached tmux session and polled `tmux capture-pane` for the claim URL — this always returned empty output because nothing reached stdout.
+- The old approach also looked for the secret key at `/root/.config/playit_gg/playit.toml` which is incorrect — the key is not written there by default.
+- Old `tunnel add` subcommand does not exist in v0.17; it was renamed to `tunnels prepare`.
+
+**Fix (`install/install.sh`):**
+- Replaced entire tmux-polling claim flow with the correct scriptable CLI:
+  - `playit claim generate` → prints a claim code to stdout instantly
+  - `playit claim exchange --wait 0 <code>` → blocks until user claims in browser, prints secret key to stdout directly — no polling, no grep, no timeout loops
+  - `playit tunnels prepare both 1 --type minecraft-java --name minecraft` → correct tunnel creation command
+  - `playit --secret KEY tunnels list | awk '{print $4}'` → extracts public address after setup
+  - Agent started with `-s` flag to force stdout logging (visible in tmux if needed for debugging)
+- Removed all retry loops, tmux polling, and the incorrect config file path extraction
+- Both the "already have a key" and "existing key on disk" paths also updated to use `-s` flag
+
+---
+
+### v2.8.1 — Bug Fix & Hardening Pass
+
+**Join Guard — DM Fallback (`src/join_guard.py`):**
+- Added `from src.config import config` import (was missing, would have crashed on DM failure).
+- `_issue_challenge()` now catches `discord.Forbidden` separately from generic exceptions. When a player's Discord DMs are disabled, the verification embed + button is posted in `COMMAND_CHANNEL_ID` as a public mention instead. Previously the player was permanently locked out — kicked with no way to complete verification.
+- Challenge is stored in `active_challenges` only after a message is successfully sent (prevents ghost entries that block the player's next login attempt).
+- Kick reason updated to mention both DMs and the Discord channel.
+
+**Setup Wizard Timeout (`src/setup_views.py`):**
+- Added `async def on_timeout(self)` to `SetupView`. When the 10-minute idle timeout fires, the dead ephemeral embed is replaced with `"Setup timed out — run /setup again."` Previously buttons went dead with no explanation.
+
+**Plugin Install Failure Surfacing (`src/setup_views.py`):**
+- Plugin download loop now collects all failed slugs into `failed_slugs = []`. Bad slugs (Modrinth 404, no compatible version, network error) are appended to the list.
+- After all plugins are processed, if any failed, a "⚠️ Plugin Install Failures" field is added to the success embed with the list of bad slugs and a suggestion to use `/mod_search` to find the correct slug. Previously failures were logged only and the user thought everything installed.
+- Improved error detection: non-200 status codes and empty version lists now explicitly raise before the `except` block rather than silently succeeding.
+
+**Backup Downloads — Replace transfer.sh with Discord Attachment (`cogs/backup.py`):**
+- `backup_download` command and `BackupDownloadView.download_button` now send `discord.File(filepath)` directly as a Discord attachment. `backup_manager.upload_backup()` is no longer called from either location. Minecraft world zips are always well under the 25MB Discord limit.
+- Added `@backup_download.autocomplete("filename")` handler. Reads both `backup_manager.auto_dir` and `backup_manager.custom_dir`, lists `.zip` files filtered by the user's current input, returns up to 25 choices sorted newest-first. Users no longer need to type the full timestamped filename.
+
+**Real World Seed (`src/server_info_manager.py`):**
+- `_get_seed()` is now `async` and implements a two-step lookup:
+  1. If server is running: RCON `seed` command, parses `Seed: [N]` with regex `r'Seed: \[(-?\d+)\]'`.
+  2. Otherwise: loads `mc-server/world/level.dat` via `nbtlib` in a thread (`asyncio.to_thread`). Tries 1.18+ path `Data.WorldGenSettings.seed` first, then pre-1.18 `Data.RandomSeed`.
+  3. Returns `'Unknown'` only if both fail.
+- `update_info()` now awaits `_get_seed()`. Previously the method read `level-seed` from `server.properties`, which is empty when Minecraft generates a random seed — so it always showed `'Random'`.
+- Added `import os, re` at module level; removed unused `import logging`.
+
+**Playit API Debug Logging (`cogs/playit.py`):**
+- Added `logger.debug(f"Playit API raw response: {data}")` after parsing the API response JSON, before the tunnel-type filter. Makes field-name mismatches diagnosable in the log file without changing behavior.
+
+**Control Panel Persistent View Registration (`cogs/control_panel.py`):**
+- Added `async def cog_load(self)` to `ControlPanelCog` that calls `self.bot.add_view(ControlPanelView(self.bot))`. Removed the `@commands.Cog.listener() on_ready()` method that previously did this. The persistent view is now registered during `setup_hook` (before `on_ready`), eliminating the race window where button clicks could return "Unknown interaction".
+
+---
 
 ### v2.8.0-dev — Security, Uptime & Code Hardening _(Current dev)_
 
@@ -1177,6 +1322,10 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - ✅ **Player Linking System** — `/link` command, Mojang premium detection, 5-min grace window, Discord DM challenge for cracked accounts
 - ✅ **Vanilla TPS Fallback** — `/debug start`+`/debug stop` RCON method for non-Paper servers
 - ✅ **Dynamic `/help`** — permission-filtered using `bot.tree.walk_commands()`, no hardcoded lists
+- ✅ **Direct Backup Downloads** — `/backup_download` sends Discord file attachments directly; autocomplete handler lists available `.zip` files as you type
+- ✅ **Real World Seed Display** — `/info` reads actual seed via RCON when server is online; falls back to `level.dat` nbtlib parsing when offline
+- ✅ **Setup Wizard Timeout Message** — `SetupView.on_timeout()` replaces dead buttons with a helpful "run /setup again" message after 10 minutes of inactivity
+- ✅ **Join Guard DM Fallback** — `discord.Forbidden` on DM challenge send falls back to command-channel mention; players with DMs disabled are never permanently locked out
 
 ---
 

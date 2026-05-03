@@ -90,7 +90,8 @@ class PlayitCog(commands.Cog):
                         return None, f"❌ Playit API returned error (status {resp.status}). Is your tunnel claimed?"
                     
                     data = await resp.json()
-                    
+                    logger.debug(f"Playit API raw response: {data}")
+
                     if not data:
                         return None, "❌ No tunnels configured on your Playit account. Create one at https://playit.gg"
                     

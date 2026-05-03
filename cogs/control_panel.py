@@ -111,6 +111,9 @@ class ControlPanelCog(commands.Cog):
         self.message_id = None
         self.control_panel_task.start()
 
+    async def cog_load(self):
+        self.bot.add_view(ControlPanelView(self.bot))
+
     def cog_unload(self):
         self.control_panel_task.cancel()
 
@@ -122,6 +125,9 @@ class ControlPanelCog(commands.Cog):
     @control_panel_task.before_loop
     async def before_task(self):
         await self.bot.wait_until_ready()
+        # Restore message_id from config so we edit the existing panel after restart
+        bot_config = config.load_bot_config()
+        self.message_id = bot_config.get('control_panel_message_id')
 
     async def update_panel(self):
         channel_id = config.COMMAND_CHANNEL_ID
@@ -164,8 +170,15 @@ class ControlPanelCog(commands.Cog):
                 msg = await channel.fetch_message(self.message_id)
                 await msg.edit(embed=embed, view=view)
                 return
+            except discord.NotFound:
+                # Message was deleted — need to post a new one
+                self.message_id = None
+                bot_config = config.load_bot_config()
+                bot_config.pop('control_panel_message_id', None)
+                config.save_bot_config(bot_config)
             except Exception:
-                self.message_id = None # Message was deleted or unreachable
+                # Transient error (rate limit, network) — skip this tick, retry next loop
+                return
 
         # If we got here, we need to send a new message
         # Let's delete previous messages from bot in this channel to keep it clean maybe?
@@ -181,14 +194,11 @@ class ControlPanelCog(commands.Cog):
         try:
             new_msg = await channel.send(embed=embed, view=view)
             self.message_id = new_msg.id
+            bot_config = config.load_bot_config()
+            bot_config['control_panel_message_id'] = new_msg.id
+            config.save_bot_config(bot_config)
         except Exception as e:
             logger.error(f"Failed to send Control Panel: {e}")
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        # Register persistent view
-        self.bot.add_view(ControlPanelView(self.bot))
-
 
 async def setup(bot):
     await bot.add_cog(ControlPanelCog(bot))

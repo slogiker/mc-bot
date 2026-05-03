@@ -7,7 +7,7 @@ class LogDispatcher:
         self._subscribers = []
         self._running = False
         self._task = None
-        self._buffer = deque(maxlen=50)
+        self._buffer = deque(maxlen=200)
         self._process = None
 
     def subscribe(self) -> asyncio.Queue:

@@ -4,6 +4,7 @@ from src.mc_link_manager import MCLinkManager
 from src.mojang import verify_premium_mc_account
 from src.logger import logger
 from src.utils import rcon_cmd
+from src.config import config
 import discord
 
 class JoinGuard:
@@ -71,48 +72,60 @@ class JoinGuard:
         # Generate 4 digit code
         code = str(secrets.randbelow(9000) + 1000)
         
-        # Kick player with instructions
-        kick_reason = f"Verification Required. Check your Discord DMs. Code: {code}"
+        kick_reason = f"Verification Required. Check your Discord DMs or the server Discord channel. Code: {code}"
         await self._kick_player(mc_username, kick_reason)
-        
+
         # Cancel any existing challenge for this user
         if mc_username in self.active_challenges:
             self.active_challenges[mc_username]["timeout_task"].cancel()
-            
-        # Send DM
+
+        # Fetch user
         try:
-            # We have to fetch the user if they're not cached
             user = self.bot.get_user(discord_id)
             if not user:
                 user = await self.bot.fetch_user(discord_id)
-                
-            embed = discord.Embed(
-                title="🔒 Minecraft Login Verification",
-                description=f"Someone (hopefully you) is trying to log into the Minecraft server as **{mc_username}** outside of the grace period.\n\n"
-                            f"To verify your identity and allow the connection, please click the button below and enter the code: **`{code}`**\n\n"
-                            f"*(This code expires in 2 minutes)*",
-                color=discord.Color.orange()
-            )
-            
-            # Note: We need to register a persistent view/button somewhere to listen to this.
-            # For simplicity, we can do a command-based challenge or a View. Let's do a View.
-            from src.utils_views import ChallengeView 
-            
-            view = ChallengeView(self, mc_username, code)
+        except Exception as e:
+            logger.error(f"JoinGuard: Could not fetch user {discord_id}: {e}")
+            return
+
+        embed = discord.Embed(
+            title="🔒 Minecraft Login Verification",
+            description=f"Someone (hopefully you) is trying to log into the Minecraft server as **{mc_username}** outside of the grace period.\n\n"
+                        f"To verify your identity and allow the connection, please click the button below and enter the code: **`{code}`**\n\n"
+                        f"*(This code expires in 2 minutes)*",
+            color=discord.Color.orange()
+        )
+
+        from src.utils_views import ChallengeView
+        view = ChallengeView(self, mc_username, code)
+
+        msg = None
+        try:
             msg = await user.send(embed=embed, view=view)
-            
-            # Setup timeout
+            logger.info(f"JoinGuard: Sent DM challenge to {user.name} for {mc_username}.")
+        except discord.Forbidden:
+            logger.warning(f"JoinGuard: DMs disabled for {user.name}, falling back to command channel.")
+            try:
+                channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID)
+                if channel:
+                    msg = await channel.send(
+                        f"{user.mention} — your DMs are disabled. Verification code for **{mc_username}**:",
+                        embed=embed,
+                        view=view
+                    )
+            except Exception as e:
+                logger.error(f"JoinGuard: Failed to send challenge to command channel: {e}")
+        except Exception as e:
+            logger.error(f"JoinGuard: Failed to send DM challenge to {discord_id}: {e}")
+
+        if msg is not None:
             timeout_task = asyncio.create_task(self._challenge_timeout(mc_username, msg, view))
-            
             self.active_challenges[mc_username] = {
                 "discord_id": discord_id,
                 "code": code,
                 "timeout_task": timeout_task,
                 "message": msg
             }
-            logger.info(f"JoinGuard: Sent DM challenge to {user.name} for {mc_username}.")
-        except Exception as e:
-            logger.error(f"JoinGuard: Failed to send DM challenge to {discord_id}: {e}")
 
     async def complete_challenge(self, mc_username: str):
         """Called when a user successfully answers the interactive DM."""

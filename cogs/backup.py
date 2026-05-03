@@ -121,29 +121,42 @@ class BackupCog(commands.Cog):
             
         await interaction.followup.send(msg, ephemeral=True)
 
-    @app_commands.command(name="backup_download", description="Get a download link for a specific backup")
-    @app_commands.describe(filename="The exact filename of the backup")
+    @app_commands.command(name="backup_download", description="Download a specific backup directly")
+    @app_commands.describe(filename="The backup file to download")
     async def backup_download(self, interaction: discord.Interaction, filename: str):
         await interaction.response.defer(ephemeral=True)
-        
-        # Search for file
+
         filepath = None
         if os.path.exists(os.path.join(backup_manager.custom_dir, filename)):
             filepath = os.path.join(backup_manager.custom_dir, filename)
         elif os.path.exists(os.path.join(backup_manager.auto_dir, filename)):
             filepath = os.path.join(backup_manager.auto_dir, filename)
-            
+
         if not filepath:
             await interaction.followup.send(f"❌ Backup `{filename}` not found.", ephemeral=True)
             return
 
-        await interaction.followup.send("⏳ Uploading backup...", ephemeral=True)
-        link = await backup_manager.upload_backup(filepath)
-        
-        if link:
-            await interaction.followup.send(f"✅ Download ready: {link}\n*(Link expires in 1 hour)*", ephemeral=True)
-        else:
-            await interaction.followup.send("❌ Upload failed.", ephemeral=True)
+        await interaction.followup.send("⏳ Preparing download...", ephemeral=True)
+        try:
+            await interaction.followup.send(file=discord.File(filepath), ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to send backup file: {e}")
+            await interaction.followup.send("❌ Failed to send the file.", ephemeral=True)
+
+    @backup_download.autocomplete("filename")
+    async def backup_download_autocomplete(self, interaction: discord.Interaction, current: str):
+        files = []
+        for directory in (backup_manager.custom_dir, backup_manager.auto_dir):
+            try:
+                files.extend(f for f in os.listdir(directory) if f.endswith(".zip"))
+            except (FileNotFoundError, OSError):
+                pass
+        files.sort(reverse=True)
+        return [
+            app_commands.Choice(name=f, value=f)
+            for f in files
+            if current.lower() in f.lower()
+        ][:25]
 
 class BackupDownloadView(discord.ui.View):
     def __init__(self, filepath):
@@ -151,24 +164,22 @@ class BackupDownloadView(discord.ui.View):
         self.filepath = filepath
         self.uploaded = False
 
-    @discord.ui.button(label="Upload & Download", style=discord.ButtonStyle.primary, emoji="☁️")
+    @discord.ui.button(label="Download", style=discord.ButtonStyle.primary, emoji="⬇️")
     async def download_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
-        
+
         if self.uploaded:
-             await interaction.followup.send("Already uploaded!", ephemeral=True)
-             return
-             
-        await interaction.followup.send("⏳ Uploading...", ephemeral=True)
-        link = await backup_manager.upload_backup(self.filepath)
-        
-        if link:
-            await interaction.followup.send(f"✅ Download Link: {link}\n*(Expires naturally via provider)*", ephemeral=True)
+            await interaction.followup.send("Already sent!", ephemeral=True)
+            return
+
+        try:
+            await interaction.followup.send(file=discord.File(self.filepath), ephemeral=True)
             self.uploaded = True
             button.disabled = True
             await interaction.edit_original_response(view=self)
-        else:
-            await interaction.followup.send("❌ Upload failed.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to send backup file: {e}")
+            await interaction.followup.send("❌ Failed to send the file.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(BackupCog(bot))

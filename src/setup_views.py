@@ -418,13 +418,21 @@ class SetupView(ui.View):
         self.state = SetupState()
         self.message: Optional[discord.Message] = None
         
+    async def on_timeout(self):
+        try:
+            await self.interaction.edit_original_response(
+                content="Setup timed out — run /setup again.", embed=None, view=None
+            )
+        except Exception:
+            pass
+
     async def start(self):
         """Start the setup process"""
         embed, view_items = self._get_step_content(0)
         self.clear_items()
         for item in view_items:
             self.add_item(item)
-        
+
         await self.interaction.response.send_message(embed=embed, view=self, ephemeral=True)
         self.message = await self.interaction.original_response()
     
@@ -761,48 +769,47 @@ class SetupView(ui.View):
             loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
             
             # Install specific plugins if provided
+            failed_slugs = []
             if setup_config.get('plugins'):
                 plugin_slugs = [slug.strip() for slug in setup_config['plugins'].split(',') if slug.strip()]
                 if plugin_slugs:
                     await updater_callback(f"Fetching {len(plugin_slugs)} user-specified plugins...")
                     for slug in plugin_slugs:
                         try:
-                            # Use ModUpdater's search or direct DL. 
-                            # ModUpdater doesn't have a direct 'download by slug' method exposed easily for new installs,
-                            # so we'll simulate passing it to the config and letting update_all handle it, 
-                            # OR we can manually fetch them. We'll add them to the mod_updater's config.
-                            
                             # Fetch project and versions directly via Modrinth API
                             await updater_callback(f"Downloading '{slug}'...")
                             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
                                 async with session.get(f"https://api.modrinth.com/v2/project/{slug}") as p_resp:
-                                    if p_resp.status == 200:
-                                        project = await p_resp.json()
-                                        params = {
-                                            "loaders": f'["{loader_override}"]',
-                                            "game_versions": f'["{setup_config["version"]}"]'
-                                        }
-                                        async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
-                                            if v_resp.status == 200:
-                                                versions = await v_resp.json()
-                                                if versions:
-                                                    version = versions[0]
-                                                    primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
-                                                    
-                                                    import os
-                                                    from src.config import config as app_config
-                                                    mods_dir = os.path.join(app_config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
-                                                    os.makedirs(mods_dir, exist_ok=True)
-                                                    
-                                                    filepath = os.path.join(mods_dir, primary_file["filename"])
-                                                    async with session.get(primary_file["url"]) as d_resp:
-                                                        if d_resp.status == 200:
-                                                            with open(filepath, 'wb') as f:
-                                                                f.write(await d_resp.read())
-                                                    logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
+                                    if p_resp.status != 200:
+                                        raise Exception(f"Project not found (HTTP {p_resp.status})")
+                                    project = await p_resp.json()
+                                    params = {
+                                        "loaders": f'["{loader_override}"]',
+                                        "game_versions": f'["{setup_config["version"]}"]'
+                                    }
+                                    async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
+                                        if v_resp.status == 200:
+                                            versions = await v_resp.json()
+                                            if not versions:
+                                                raise Exception("No compatible version found")
+                                            version = versions[0]
+                                            primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
+
+                                            mods_dir = os.path.join(config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
+                                            os.makedirs(mods_dir, exist_ok=True)
+
+                                            filepath = os.path.join(mods_dir, primary_file["filename"])
+                                            async with session.get(primary_file["url"]) as d_resp:
+                                                if d_resp.status == 200:
+                                                    with open(filepath, 'wb') as f:
+                                                        f.write(await d_resp.read())
+                                            logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
+                                        else:
+                                            raise Exception(f"Version fetch failed (HTTP {v_resp.status})")
 
                         except Exception as e:
                             logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
+                            failed_slugs.append(slug)
             
             # Then run the standard update_all to catch any existing
             await updater.update_all(game_version=setup_config['version'], loader=loader_override, is_setup=True)
@@ -859,8 +866,15 @@ class SetupView(ui.View):
                 inline=False
             )
             
+            if failed_slugs:
+                embed.add_field(
+                    name="⚠️ Plugin Install Failures",
+                    value=f"The following could not be installed: `{'`, `'.join(failed_slugs)}`\nCheck the slug spelling at modrinth.com and use `/mod_search` to find the correct slug.",
+                    inline=False
+                )
+
             embed.set_footer(text="Use /help to see all available commands")
-            
+
             await message.edit(embed=embed)
             
             # Trigger control panel update immediately so it shows correct status
