@@ -165,10 +165,10 @@ if [ -z "$SKIP_CONFIG" ]; then
     echo ""
     echo -e "Do you want to configure ${CYAN}Playit.gg${NC} for public access?"
     echo -e "(Free tunneling — no port forwarding needed)"
-    read -p "> [y/N] " setup_playit
-    
+    read -p "> [Y/n] " setup_playit
+
     PLAYIT_KEY=""
-    if [[ $setup_playit =~ ^[Yy]$ ]]; then
+    if [[ -z "$setup_playit" || $setup_playit =~ ^[Yy]$ ]]; then
         echo ""
         echo -e "Do you already have a ${CYAN}Playit Secret Key${NC}? [y/N]"
         echo -e "(If this is your first time, just press Enter)"
