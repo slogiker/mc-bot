@@ -236,7 +236,7 @@ else
     $COMPOSE_CMD up -d --build
 
     # Setup Playit Claim Flow
-    if [[ $setup_playit =~ ^[Yy]$ ]] && [ -z "$PLAYIT_KEY" ]; then
+    if [[ -z "$setup_playit" || $setup_playit =~ ^[Yy]$ ]] && [ -z "$PLAYIT_KEY" ]; then
         echo ""
         echo -e "${BLUE}[5/5] Setting up Playit Tunnel...${NC}"
 
