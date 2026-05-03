@@ -250,7 +250,7 @@ else
 
             # Generate a claim code inside the container and build the URL
             echo -e "Generating claim code..."
-            CLAIM_CODE=$(docker exec mc-bot playit -s claim generate 2>&1 | tail -1 | tr -d '[:space:]') || true
+            CLAIM_CODE=$(docker exec mc-bot playit -s claim generate 2>&1 | tail -1 | awk '{print $NF}') || true
             echo -e "  [debug] playit output: ${CLAIM_CODE}"
 
             if [ -z "$CLAIM_CODE" ]; then
@@ -268,7 +268,7 @@ else
                 echo -e ""
 
                 # Exchange the claim code for a secret key (waits until browser claim is done)
-                SECRET_KEY=$(docker exec mc-bot playit -s claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | tr -d '[:space:]') || true
+                SECRET_KEY=$(docker exec mc-bot playit -s claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | awk '{print $NF}') || true
 
                 if [ -z "$SECRET_KEY" ]; then
                     echo -e "${RED}[ERROR] Did not receive a secret key from Playit. Try running the installer again.${NC}"
