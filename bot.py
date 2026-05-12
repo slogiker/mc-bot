@@ -139,7 +139,7 @@ class MinecraftBot(commands.Bot):
         try:
             filenames = await asyncio.to_thread(os.listdir, './cogs')
             for filename in filenames:
-                if filename.endswith('.py') and filename != '__init__.py':
+                if filename.endswith('.py') and not filename.startswith('_'):
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
                         logger.debug(f"Loaded cog: {filename}")
