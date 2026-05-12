@@ -45,6 +45,11 @@ class Tasks(commands.Cog):
         """Check if server crashed and restart if needed"""
         try:
             if not self.bot.server.is_running() and not self.bot.server.is_intentionally_stopped():
+                # Guard: no server.jar means /setup hasn't been run yet — nothing to restart
+                if not os.path.exists(os.path.join(config.SERVER_DIR, config.SERVER_JAR)):
+                    logger.debug("Server not running and no server.jar found — setup not complete, skipping crash recovery.")
+                    return
+
                 # specific check to ensure we update status if it crashed
                 if self.bot.status != discord.Status.dnd:
                      await self.bot.change_presence(
@@ -124,7 +129,7 @@ class Tasks(commands.Cog):
                         if cmd_channel and owner_id:
                             await cmd_channel.send(
                                 f"<@{owner_id}> 🚨 The Playit tunnel has crashed and failed to auto-restart after 2 attempts. "
-                                f"Check your Playit configuration or restart manually with `tmux new-session -d -s playit 'playit --secret $(cat /app/data/playit_secret.key)'`."
+                                f"Check your Playit configuration or restart manually with `tmux new-session -d -s playit 'playit --platform_docker --secret_path /app/data/playit_secret.key -s'`."
                             )
                         self.playit_restart_attempts += 1
                         return
@@ -135,7 +140,10 @@ class Tasks(commands.Cog):
                     logger.warning(f"Playit tunnel not running. Restart attempt {self.playit_restart_attempts}/2...")
                     await send_debug(self.bot, f"Playit tunnel not running — restart attempt {self.playit_restart_attempts}/2...")
                     
-                    start_proc = await asyncio.create_subprocess_shell('tmux new-session -d -s playit "playit --secret $(cat /app/data/playit_secret.key)"')
+                    start_proc = await asyncio.create_subprocess_exec(
+                        "tmux", "new-session", "-d", "-s", "playit",
+                        "playit --platform_docker --secret_path /app/data/playit_secret.key -s"
+                    )
                     await start_proc.wait()
 
                     # Verify it actually started

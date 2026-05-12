@@ -73,42 +73,35 @@ class PlayitCog(commands.Cog):
             logger.warning("No Playit secret key found. Cannot fetch IP.")
             return None, "❌ No Playit secret key found. Run the installer or add your key to `data/playit_secret.key`."
 
-        url = "https://api.playit.gg/account/tunnels"
+        url = "https://api.playit.gg/v1/agents/rundata"
         headers = {
-            "Authorization": f"agent-key {secret_key}"
+            "Authorization": f"Agent-Key {secret_key}",
+            "Content-Type": "application/json",
         }
 
         try:
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, headers=headers) as resp:
+                async with session.post(url, headers=headers, json={}) as resp:
                     if resp.status == 401:
                         logger.error("Playit API returned 401 Unauthorized")
                         return None, "❌ Playit rejected the secret key (401 Unauthorized). Your key may be expired or invalid."
                     elif resp.status != 200:
                         logger.error(f"Playit API returned status {resp.status}: {await resp.text()}")
                         return None, f"❌ Playit API returned error (status {resp.status}). Is your tunnel claimed?"
-                    
+
                     data = await resp.json()
                     logger.debug(f"Playit API raw response: {data}")
 
-                    if not data:
+                    tunnels = data.get("data", {}).get("tunnels", [])
+                    if not tunnels:
                         return None, "❌ No tunnels configured on your Playit account. Create one at https://playit.gg"
-                    
-                    # Search for a minecraft-java tunnel
-                    for tunnel in data:
-                        if tunnel.get("tunnel_type") == "minecraft-java" and tunnel.get("custom_domain"):
-                            return tunnel.get("custom_domain"), None
 
-                    # Fallback to the first tunnel's formatted address if no explicit java one found
-                    for tunnel in data:
-                        if tunnel.get("custom_domain"):
-                            return tunnel.get("custom_domain"), None
-                        if tunnel.get("alloc"):
-                            alloc = tunnel.get("alloc")
-                            addr = f"{alloc.get('connect_address_v4', '')}:{alloc.get('connect_port_v4', '')}".strip(":")
-                            if addr:
-                                return addr, None
+                    # Prefer minecraft-java tunnel, fallback to first
+                    for tunnel in tunnels:
+                        if tunnel.get("tunnel_type") == "minecraft-java":
+                            return tunnel["display_address"], None
+                    return tunnels[0]["display_address"], None
 
             return None, "❌ Tunnels exist but none have an address assigned yet. The tunnel may still be initializing."
         except aiohttp.ClientError as e:

@@ -170,7 +170,6 @@ class Config:
 
         self.RCON_PORT = 25575
         self.SERVER_JAR = "server.jar"
-        self.WORLD_FOLDER = "world"
         self.JAVA_PATH = "java"
         self.RESTART_DELAY = 5
         self.CRASH_CHECK_INTERVAL = 30
@@ -377,5 +376,22 @@ class Config:
         
         # Try finding in other maps if needed, but for now just return default
         return default
+
+    @property
+    def WORLD_FOLDER(self) -> str:
+        """Read level-name from server.properties; fall back to 'world'."""
+        props_path = os.path.join(self.SERVER_DIR, "server.properties")
+        try:
+            with open(props_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("level-name="):
+                        value = line.split("=", 1)[1].strip()
+                        return value if value else "world"
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+        return "world"
 
 config = Config()
