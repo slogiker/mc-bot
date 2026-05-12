@@ -2,11 +2,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import re
+import time
 import psutil
 import asyncio
+from datetime import timedelta
 from src.config import config
 from src.utils import rcon_cmd, has_role, parse_server_version
-
+from src.logger import logger
 from src.server_info_manager import ServerInfoManager
 
 class Info(commands.Cog):
@@ -192,8 +195,6 @@ class Info(commands.Cog):
                 if hasattr(self.bot.server, 'get_start_time'):
                     start_time = self.bot.server.get_start_time()
                     if start_time:
-                        import time
-                        from datetime import timedelta
                         delta = timedelta(seconds=int(time.time() - start_time))
                         uptime_str = str(delta)
                 embed.add_field(name="Uptime", value=uptime_str, inline=True)
@@ -216,7 +217,6 @@ class Info(commands.Cog):
                          debug_raw = await rcon_cmd("debug stop")
                          
                          if "Stopped tick profiling after" in debug_raw:
-                             import re
                              # Sample: "Stopped tick profiling after 1 seconds and 20 ticks (20.00 ticks per second)"
                              match = re.search(r'\(([\d.]+)\s+ticks per second\)', debug_raw)
                              if match:
@@ -226,7 +226,6 @@ class Info(commands.Cog):
                          else:
                              tps = "N/A (Vanilla)"
                 except Exception as e:
-                    from src.logger import logger
                     logger.debug(f"TPS check failed: {e}")
                     tps = "N/A"
                     
@@ -239,7 +238,6 @@ class Info(commands.Cog):
                         parts = players_raw.split("players online:")
                         counts_str = parts[0]
                         
-                        import re
                         numbers = re.findall(r'\d+', counts_str)
                         if len(numbers) >= 2:
                             current = numbers[-2] # e.g., "There are 2 of a max of 20" -> "2", "20"

@@ -8,14 +8,6 @@ class Management(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def in_command_channel(self):
-        async def predicate(interaction):
-            if interaction.channel_id != config.COMMAND_CHANNEL_ID:
-                await interaction.response.send_message(f"Use <#{config.COMMAND_CHANNEL_ID}>", ephemeral=True)
-                return False
-            return True
-        return app_commands.check(predicate)
-
     @app_commands.command(name="control", description="Spawn the Control Panel")
     @has_role("control")
     async def control(self, interaction: discord.Interaction):

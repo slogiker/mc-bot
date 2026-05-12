@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 import asyncio
 import os
 import re
+import subprocess
 from src.config import config
 from src.logger import logger
 from src.utils import send_debug, rcon_cmd
@@ -13,10 +14,6 @@ class Tasks(commands.Cog):
         self.restart_attempts = 0
         self.playit_restart_attempts = 0
         # DON'T start tasks here - wait for bot to be ready
-
-    async def cog_load(self):
-        """Called when cog is loaded - bot might not be ready yet"""
-        pass
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -130,7 +127,6 @@ class Tasks(commands.Cog):
 
             # Check Playit tunnel (same pattern as MC server crash recovery)
             if os.path.exists("/app/data/playit_secret.key"):
-                import subprocess
                 proc = await asyncio.create_subprocess_exec("tmux", "has-session", "-t", "playit", stderr=subprocess.DEVNULL)
                 await proc.wait()
                 playit_running = (proc.returncode == 0)
@@ -182,21 +178,6 @@ class Tasks(commands.Cog):
         """Wait for bot to be ready before starting crash checks"""
         await self.bot.wait_until_ready()
         logger.info("Crash check task is now active")
-
-    # daily_backup kept but fixed for tuple unpacking
-    # Currently commented out in on_ready - backup.py handles scheduling
-    async def daily_backup_manual(self):
-        """Create daily backup (called manually or by scheduler)"""
-        try:
-            from src.backup_manager import backup_manager
-            logger.info("Running scheduled daily backup...")
-            success, filename, filepath = await backup_manager.create_backup()
-            if success:
-                logger.info(f"Daily backup created: {filename}")
-            else:
-                logger.error(f"Daily backup failed: {filename}")
-        except Exception as e:
-            logger.error(f"Error in daily_backup: {e}")
 
 async def setup(bot):
     await bot.add_cog(Tasks(bot))

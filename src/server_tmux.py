@@ -3,6 +3,7 @@ import asyncio
 import os
 import json
 import shlex
+import time
 import aiofiles
 from src.server_interface import ServerInterface
 from src.config import config
@@ -125,11 +126,8 @@ class TmuxServerManager(ServerInterface):
         # Start new session detached
         logger.info(f"Starting server with command: {java_cmd}")
         
-        # Run in executor to avoid blocking
-        loop = asyncio.get_event_loop()
-        res = await loop.run_in_executor(
-            None, 
-            self._run_tmux_cmd, 
+        res = await asyncio.to_thread(
+            self._run_tmux_cmd,
             ["new-session", "-d", "-s", self.session_name, "bash", "-c", java_cmd]
         )
         
@@ -138,9 +136,6 @@ class TmuxServerManager(ServerInterface):
             logger.error(msg)
             return False, msg
         
-        
-        # Update state
-        import time
         self._intentional_stop = False
         self._start_time = time.time()
         await self._save_state()
@@ -169,9 +164,7 @@ class TmuxServerManager(ServerInterface):
         # If still running, kill the session
         if self.is_running():
             logger.warning("Server didn't stop gracefully, killing tmux session")
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
+            await asyncio.to_thread(
                 self._run_tmux_cmd,
                 ["kill-session", "-t", self.session_name]
             )

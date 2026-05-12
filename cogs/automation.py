@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import asyncio
 import os
+import time
 from datetime import datetime
 from src.utils import rcon_cmd, has_role
 from src.config import config
@@ -61,7 +62,6 @@ class AutomationCog(commands.Cog):
                         
                         if "[Bot]" in clean_line: continue # Skip bot's own messages (via RCON echo)
 
-                        import time
                         if getattr(self, '_last_cfg_sync', 0) < time.time() - 30:
                             user_config = config.load_user_config()
                             self._cached_triggers = user_config.get('triggers', {})

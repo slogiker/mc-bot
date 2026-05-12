@@ -5,6 +5,7 @@ Multi-step form using Discord Select menus and Buttons for beautiful UX
 
 import discord
 import asyncio
+import subprocess
 from discord import ui
 from typing import Optional, Dict, Any
 from src.mc_installer import mc_installer
@@ -718,8 +719,6 @@ class SetupView(ui.View):
             embed.description = "**Step 2.5/5:** Launching server to generate files..."
             await message.edit(embed=embed)
             
-            import asyncio
-            import subprocess
             proc = await asyncio.create_subprocess_exec(
                 "java", "-jar", "server.jar", "nogui",
                 cwd=config.SERVER_DIR,

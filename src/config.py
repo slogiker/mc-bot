@@ -165,7 +165,6 @@ class Config:
         self.OWNER_ID = bot_cfg.get('owner_id')
         
         # Hardcoded/default values (not user-configurable)
-        # Hardcoded/default values (not user-configurable mostly)
         self.RCON_HOST = os.getenv("RCON_HOST", "127.0.0.1")
 
         self.RCON_PORT = 25575
