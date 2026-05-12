@@ -269,10 +269,13 @@ async def main():
              logger.error("No token found! Check .env file for BOT_TOKEN")
         return
 
+    if not config.RCON_PASSWORD:
+        logger.warning("RCON_PASSWORD not set — server commands (start/stop/etc) will fail until it is configured in .env")
+
     logger.info("Starting bot client...")
     
     # Setup signal handlers for graceful shutdown
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     
     def signal_handler(sig):
         logger.info(f"Received signal {sig}")
@@ -307,8 +310,4 @@ if __name__ == "__main__":
         traceback.print_exc()
         print("=" * 60)
     finally:
-        # Keep terminal open on both crash and normal shutdown
-        try:
-            input("\nPress Enter to close...")
-        except EOFError:
-            pass  # Running in non-interactive mode (Docker, pipe, etc.)
+        pass  # Nothing to clean up at this level

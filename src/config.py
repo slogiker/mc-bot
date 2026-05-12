@@ -124,8 +124,12 @@ class Config:
         # Load bot config
         try:
             bot_cfg = self.load_bot_config()
-        except Exception:
-            print("❌ bot_config.json not found! Creating default...")
+        except json.JSONDecodeError as e:
+            print(f"WARNING: bot_config.json is corrupt (JSON parse error: {e}) — recreating with defaults. Original file may need manual recovery.")
+            self._create_default_configs()
+            bot_cfg = self.load_bot_config()
+        except Exception as e:
+            print(f"WARNING: Could not load bot_config.json ({type(e).__name__}: {e}) — recreating with defaults.")
             self._create_default_configs()
             bot_cfg = self.load_bot_config()
         

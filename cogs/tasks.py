@@ -110,7 +110,7 @@ class Tasks(commands.Cog):
                 await send_debug(self.bot, "Server process not found -- attempting restart...")
                 self.restart_attempts += 1
                 
-                success = await self.bot.server.start()
+                success, _ = await self.bot.server.start()
                 if success:
                     await send_debug(self.bot, "Auto-restarted after failure.")
                     self.restart_attempts = 0
@@ -152,7 +152,7 @@ class Tasks(commands.Cog):
                     
                     start_proc = await asyncio.create_subprocess_exec(
                         "tmux", "new-session", "-d", "-s", "playit",
-                        "playit --platform_docker --secret_path /app/data/playit_secret.key -s"
+                        "bash", "-c", "playit --platform_docker --secret_path /app/data/playit_secret.key -s"
                     )
                     await start_proc.wait()
 
