@@ -7,7 +7,6 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     openjdk-21-jre-headless \
     tmux \
-    git \
     curl \
     gnupg \
     && curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor > /etc/apt/trusted.gpg.d/playit.gpg \
@@ -30,7 +29,6 @@ RUN mkdir -p /app/mc-server /app/backups /app/logs
 COPY bot.py .
 COPY cogs/ ./cogs/
 COPY src/ ./src/
-COPY data/ ./data/
 
 EXPOSE 25565
 

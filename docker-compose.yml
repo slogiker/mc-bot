@@ -6,7 +6,7 @@ x-base: &base
   container_name: mc-bot
   restart: unless-stopped
   healthcheck:
-    test: ["CMD-SHELL", "python -c 'import psutil; psutil.pid_exists(1)' || exit 1"]
+    test: ["CMD-SHELL", "pgrep -f 'python bot.py' > /dev/null || exit 1"]
     interval: 30s
     timeout: 10s
     retries: 3

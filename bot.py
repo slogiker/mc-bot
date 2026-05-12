@@ -274,21 +274,23 @@ async def main():
 
     logger.info("Starting bot client...")
     
-    # Setup signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
-    
-    def signal_handler(sig):
-        logger.info(f"Received signal {sig}")
-        loop.create_task(shutdown_handler(bot))
-    
-    # Register handlers (Windows supports SIGINT, Unix supports SIGTERM too)
+
+    def _schedule_shutdown():
+        asyncio.create_task(shutdown_handler(bot))
+
     try:
-        signal.signal(signal.SIGINT, lambda s, f: signal_handler(s))
+        # add_signal_handler is async-safe — callbacks are scheduled on the event loop
+        loop.add_signal_handler(signal.SIGINT, _schedule_shutdown)
         if hasattr(signal, 'SIGTERM'):
-            signal.signal(signal.SIGTERM, lambda s, f: signal_handler(s))
+            loop.add_signal_handler(signal.SIGTERM, _schedule_shutdown)
+    except NotImplementedError:
+        # Windows doesn't support add_signal_handler — use call_soon_threadsafe fallback
+        signal.signal(signal.SIGINT, lambda s, f: loop.call_soon_threadsafe(_schedule_shutdown))
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, lambda s, f: loop.call_soon_threadsafe(_schedule_shutdown))
     except (ValueError, OSError):
-        # Can fail if not in main thread or on windows in some contexts
-        logger.warning("Could not register signal handlers (running in non-main thread?)")
+        logger.warning("Could not register signal handlers")
     
     async with bot:
         await bot.start(token)
