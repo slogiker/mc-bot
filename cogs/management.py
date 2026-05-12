@@ -76,6 +76,11 @@ class Management(commands.Cog):
                 description=message,
                 color=0xED4245
             )
+            # Clear player list — stop doesn't fire individual "left the game" events
+            bot_cfg = config.load_bot_config()
+            if bot_cfg.get('online_players'):
+                bot_cfg['online_players'] = []
+                config.save_bot_config(bot_cfg)
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)

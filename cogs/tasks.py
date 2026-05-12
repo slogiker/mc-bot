@@ -27,6 +27,14 @@ class Tasks(commands.Cog):
             logger.info("Loading server state...")
             await self.bot.server._load_state()
         
+        # Clear stale online_players if server is not running at startup
+        if not self.bot.server.is_running():
+            bot_cfg = config.load_bot_config()
+            if bot_cfg.get('online_players'):
+                bot_cfg['online_players'] = []
+                config.save_bot_config(bot_cfg)
+                logger.info("Cleared stale online_players list on startup.")
+
         if not self.crash_check.is_running():
             logger.info("Starting crash_check task...")
             self.crash_check.start()
@@ -49,6 +57,12 @@ class Tasks(commands.Cog):
                 if not os.path.exists(os.path.join(config.SERVER_DIR, config.SERVER_JAR)):
                     logger.debug("Server not running and no server.jar found — setup not complete, skipping crash recovery.")
                     return
+
+                # Clear stale player list — crash means no "left the game" messages were fired
+                bot_config = config.load_bot_config()
+                if bot_config.get('online_players'):
+                    bot_config['online_players'] = []
+                    config.save_bot_config(bot_config)
 
                 # specific check to ensure we update status if it crashed
                 if self.bot.status != discord.Status.dnd:

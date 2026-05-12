@@ -55,7 +55,7 @@ class BackupCog(commands.Cog):
                     if cmd_channel:
                         await cmd_channel.send("⏳ Starting scheduled backup...")
 
-                    success, filename, _ = await backup_manager.create_backup(custom_name=f"auto_{today_str}")
+                    success, filename, _ = await backup_manager.create_backup()
                     
                     if success:
                         # Update last run
