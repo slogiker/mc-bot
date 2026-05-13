@@ -82,7 +82,7 @@ MC-Bot is a self-hosted Discord bot that manages a Minecraft Java server running
 ```
 mc-bot/
 ├── bot.py                      # Main entry point. Bot class, startup, shutdown
-├── Dockerfile                  # Python 3.11 + Java 21 + tmux + playit agent
+├── Dockerfile                  # Python 3.11 + Java 21 + tmux + playit agent (no git in apt; data/ volume-mounted at runtime, config creates defaults)
 ├── Dockerfile.test             # Test-only Docker image (pytest, no runtime deps)
 ├── docker-compose.yml          # mc-bot service
 ├── docker-compose.test.yml     # Isolated test-runner compose file
@@ -100,7 +100,7 @@ mc-bot/
 │   ├── backup.py               # /backup, /backup_list, /backup_download + scheduled
 │   ├── console.py              # Live log tailing → Discord, /cmd
 │   ├── control_panel.py        # Sticky interactive control panel embed
-│   ├── economy.py.disabled     # [DISABLED] /balance, /pay, /economy_set + Word Hunt
+│   ├── _economy.py             # [DISABLED] /balance, /pay, /economy_set + Word Hunt (leading underscore excludes from auto-loader)
 │   ├── events.py               # /event_create, /event_list, /event_delete
 │   ├── help.py                 # /help — dynamic, permission-filtered
 │   ├── info.py                 # /status, /version, /seed, /info (+ uptime, TPS fallback)
@@ -108,6 +108,7 @@ mc-bot/
 │   ├── management.py           # /start, /stop, /restart, /control, /bot_restart
 │   ├── mods.py                 # /mods
 │   ├── players.py              # /players
+│   ├── player_tracker.py       # Background: tracks online player list via log events
 │   ├── playit.py               # /ip — Playit.gg address fetcher via REST API
 │   ├── settings.py             # Server settings
 │   ├── setup.py                # /setup — triggers the install wizard
@@ -240,8 +241,9 @@ line = await asyncio.wait_for(self.log_queue.get(), timeout=1.0)
 
 - `console.py` — streams to Discord log channel
 - `automation.py` — scans for trigger phrases
-- `economy.py` — monitors for Word Hunt winners
 - `log_watcher.py` — scans for User Authenticator login events (join guard)
+
+Note: `_economy.py` is excluded by the bot.py cog auto-loader (leading underscore) and is never a subscriber at runtime.
 
 ### 3.3 Server Manager Hierarchy
 
@@ -406,7 +408,7 @@ config.get(key, default=None)                  → safe attribute getter
 | `config.ROLE_PERMISSIONS`      | user_config          | Dict name→cmds   |
 | `config.ROLES`                 | runtime              | Dict ID→cmds     |
 | `config.CRASH_CHECK_INTERVAL`  | hardcoded            | 30 (seconds)     |
-| `config.WORLD_FOLDER`          | hardcoded            | `world`          |
+| `config.WORLD_FOLDER`          | `@property`          | Reads `level-name` from `server.properties`; falls back to `"world"` if file missing (CFG_002) |
 
 ---
 
@@ -680,8 +682,8 @@ Two systems:
 
 ### `cogs/backup.py`
 
-- **Scheduled**: `tasks.loop(minutes=1)` checks every minute if `now.strftime("%H:%M") == backup_time`. Prevents double-fires by checking `bot_config['last_auto_backup']` against today's date.
-- **Manual**: `/backup` command → `backup_manager.create_backup()` → shows `BackupDownloadView` button.
+- **Scheduled**: `tasks.loop(minutes=1)` checks every minute if `now.strftime("%H:%M") == backup_time`. Prevents double-fires by checking `bot_config['last_auto_backup']` against today's date. Calls `create_backup()` with no name → routes to `auto_dir` → retention cleanup applies (DB_005, DB_006, BOT_041).
+- **Manual**: `/backup` command → `backup_manager.create_backup()` → shows `BackupDownloadView` button (BOT_038).
 - **Retention**: Auto backups in `backups/auto/` are deleted after `backup_keep_days` days. Custom backups in `backups/custom/` are never auto-deleted.
 
 ### `cogs/console.py`
@@ -698,7 +700,9 @@ Subscribes to `LogDispatcher`. Parses MC log format `[HH:MM:SS] [Thread/LEVEL]: 
 
 Sticky control panel in `COMMAND_CHANNEL_ID`. Refreshes every 2 minutes. Tries to `fetch_message` by cached ID and edit; if not found, cleans old bot messages and posts new one. Permission check in `_check_perm()` mirrors `has_role()` logic for button interactions.
 
-### `cogs/economy.py`
+### `cogs/_economy.py`
+
+The leading underscore causes `bot.py`'s cog auto-loader to skip this file; it is never loaded at runtime and is not a `LogDispatcher` subscriber. Preserved for future use.
 
 - **Balance/Pay**: Stored in `bot_config['economy']` as `{discord_user_id: balance}`. Pay is guarded by `asyncio.Lock`.
 - **Word Hunt**: Random interval (30–90 min), requires ≥1 online player. Announces target word via `tellraw`, subscribes temp queue to `LogDispatcher`, first player to type the word in chat wins 100 coins. Winner lookup via `bot_config['mappings']` (MC name → Discord ID). If not mapped, no coins awarded.
@@ -854,7 +858,7 @@ Stats flow:
 
 Background tasks started from `on_ready` (not `__init__`):
 
-- `crash_check` (every 30s): If server not running and not intentionally stopped → attempt restart → notify debug channel. After 2 failed restarts, pings server owner and aborts. Also monitors the Playit tmux session with the same pattern: tracks `playit_restart_attempts`, verifies restart success after 3s delay, notifies owner after 2 failures.
+- `crash_check` (every 30s): Guards against fresh-install by checking `server.jar` exists before attempting recovery — skips silently if absent (MC_012). If server not running and not intentionally stopped → attempts restart. `start()` return value is unpacked as `success, _ =` so crash retry counter increments correctly (MC_010). After 2 failed restarts, pings server owner and aborts. `online_players` is cleared on crash detection, intentional stop, and bot startup (MC_011). Also monitors the Playit tmux session: tracks `playit_restart_attempts`, restart uses `bash -c` wrapper in `create_subprocess_exec` (PT_012), verifies restart success after 3s delay (PT_013), notifies owner after 2 failures (PT_014).
 - `monitor_server_log` (every 1s): Reads `mc-server/logs/latest.log` incrementally (file position tracking). Detects join/leave/done/stopping events. Sends to log channel. Updates info channel.
 - `daily_backup` (commented out): `tasks.loop(time=...)` using pytz timezone. Disabled — `backup.py` handles scheduling more robustly.
 
@@ -866,9 +870,9 @@ Background tasks started from `on_ready` (not `__init__`):
 
 `BackupManager` singleton (`backup_manager`).
 
-- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`. Validates that the world directory exists before zipping (raises `FileNotFoundError` if missing — fixed in v2.7.1, previously created empty backups silently).
+- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Unnamed calls (`custom_name=None`) route to `auto_dir` — retention cleanup runs after each (DB_005, DB_006). Named calls route to `custom_dir` — never auto-deleted. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`. Validates that the world directory exists before zipping (raises `FileNotFoundError` if missing — fixed in v2.7.1, previously created empty backups silently).
 - `upload_backup(filepath)` → URL string via `pyonesend.OneSend().upload()`.
-- `_cleanup_auto_backups()` → deletes files older than `BACKUP_RETENTION_DAYS`.
+- `_cleanup_auto_backups()` → deletes files older than `BACKUP_RETENTION_DAYS` (DB_006).
 - Backup dirs: `BACKUP_DIR/auto/` and `BACKUP_DIR/custom/` where `BACKUP_DIR = /app/backups`.
 
 ### `src/config.py`
@@ -1074,7 +1078,7 @@ Login decision tree:
 | #   | File                       | Issue                                                                                                                                                                       |
 | --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `cogs/admin.py`            | `/logs` runs `docker logs mc-bot` as a subprocess from inside the container. This requires `/var/run/docker.sock` to be mounted (it isn't). Silently falls back to reading `latest.log` which only contains bot logs, not server logs. |
-| 2   | `src/config.py`            | `WORLD_FOLDER` is hardcoded as `"world"`. Minecraft's world folder name is set by `level-name` in `server.properties` and can be changed. If it's changed, backups silently target the wrong directory. |
+| ~~2~~   | ~~`src/config.py`~~            | ~~`WORLD_FOLDER` is hardcoded as `"world"`.~~ | ✅ FIXED — `WORLD_FOLDER` is now a `@property` reading `level-name` from `server.properties`. |
 | ~~3~~   | ~~`cogs/control_panel.py`~~    | ~~`add_view(ControlPanelView)` is registered in `on_ready` instead of `setup_hook`.~~ | ✅ FIXED v2.8.1 — moved to `cog_load()`. |
 | 4   | `src/setup_views.py`       | Confirmation step shows `Version: latest (Latest available will be used)`. The actual resolved version is only fetched during download. Could be resolved on navigate-to-confirmation step. P3/cosmetic. |
 | 5   | `cogs/automation.py`       | 30-second trigger cache means new `/trigger_add` commands don't fire for up to 30s. Expected behavior but worth noting to users. P3/cosmetic. |
@@ -1170,6 +1174,8 @@ Login decision tree:
 - `install/install.sh` — Playit tunnel key extraction fixed to use the explicit `mc-bot` static container name.
 - `src/mc_installer.py` — Server EULA acceptance and RCON `.properties` injection correctly sequenced so RCON doesn't timeout for 60s during initial setup.
 - `cogs/tasks.py` — Replaced blocking `os.system` tmux commands with `asyncio.create_subprocess_exec` to keep the event loop responsive.
+- `bot.py` — Signal handler changed from `signal.signal()` to `loop.add_signal_handler()` for async-safe SIGINT/SIGTERM handling; avoids `NotImplementedError` on non-Unix platforms (SYS_001).
+- `requirements.txt` — All dependencies pinned to exact versions. `git+https://...aio-mc-rcon` replaced with `aio-mc-rcon==3.4.2` from PyPI for reproducible builds.
 - `src/mc_link_manager.py` — Fixed concurrent access race conditions by wrapping read-modify-write cycles with `asyncio.Lock()`.
 - `src/join_guard.py` — Implemented strict input sanitation (stripping `\n` and `\r`) from RCON messages to prevent command injection, and utilized secure `secrets.randbelow` for auth code generation.
 - `cogs/automation.py` — Removed undefined `self.motd_loop.start()` on initialization to prevent cog crash.
@@ -1427,7 +1433,7 @@ Host machine
 
 ### Healthcheck
 
-Docker restarts the container automatically after 3 failed `psutil` checks probing PID 1.
+The `docker-compose.yml` healthcheck uses `pgrep -f 'python bot.py'` to verify the bot process is alive. Docker restarts the container automatically after 3 consecutive failures. This checks the bot process specifically — not PID 1 and not a psutil probe.
 
 
 
