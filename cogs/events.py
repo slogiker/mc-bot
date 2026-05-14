@@ -85,13 +85,14 @@ class EventsCog(commands.Cog):
     @app_commands.describe(time="Format: YYYY-MM-DD HH:MM (24h)")
     @has_role('event_manage')
     async def create_event(self, interaction: discord.Interaction, name: str, time: str, description: str = "", mentions: str = ""):
+        await interaction.response.defer(ephemeral=True)
         try:
             event_dt = datetime.strptime(time, "%Y-%m-%d %H:%M")
             if event_dt < datetime.now():
-                await interaction.response.send_message("❌ Time must be in the future.", ephemeral=True)
+                await interaction.followup.send("❌ Time must be in the future.")
                 return
         except ValueError:
-            await interaction.response.send_message("❌ Invalid time format. Use `YYYY-MM-DD HH:MM` (e.g., 2026-05-20 18:00)", ephemeral=True)
+            await interaction.followup.send("❌ Invalid time format. Use `YYYY-MM-DD HH:MM` (e.g., 2026-05-20 18:00)")
             return
 
         bot_config = config.load_bot_config()
@@ -115,7 +116,7 @@ class EventsCog(commands.Cog):
         embed.add_field(name="Name", value=name)
         embed.add_field(name="Time", value=f"<t:{int(event_dt.timestamp())}:F>")
         
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="event_list", description="List upcoming events")
     async def list_events(self, interaction: discord.Interaction):

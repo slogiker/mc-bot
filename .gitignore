@@ -25,9 +25,7 @@ backups/
 bot_state.json
 *.json.backup
 config.json
-data/mc_links.json
-data/playit_secret.key
-data/test_*.json
+data/
 
 # Logs
 *.log

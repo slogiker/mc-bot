@@ -10,25 +10,31 @@ from src.backup_manager import backup_manager
 
 class BackupCog(commands.Cog):
     """
-    Manages world backups.
+    Manages world backups for the Minecraft server.
+
     Features:
     - Manual backups via /backup.
     - Scheduled backups (daily at configured time).
-    - Ephemeral download links via `pyonesend`.
+    - Direct download of backup files.
     """
     def __init__(self, bot):
+        """Initializes the BackupCog and starts the backup loop."""
         self.bot = bot
         self.backup_loop.start()
 
     def cog_unload(self):
+        """Cleans up when the cog is unloaded."""
         self.backup_loop.cancel()
+
+    # --- Background Tasks ---
 
     @tasks.loop(minutes=1)
     async def backup_loop(self):
         """
-        Background task that checks every minute if the current time matches 
-        the configured `backup_time` in `user_config.json`.
-        If triggered, creates a named auto-backup (e.g., auto_2026-05-20).
+        Background task that checks every minute if it's time for a scheduled backup.
+        
+        If the current time matches `backup_time` in `user_config.json`,
+        it creates a named auto-backup.
         """
         await self.bot.wait_until_ready()
         
@@ -72,9 +78,19 @@ class BackupCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error in backup schedule loop: {e}")
 
+    # --- Commands ---
+
     @app_commands.command(name="backup", description="Create a backup of the world")
     @app_commands.describe(name="Optional custom name for the backup")
+    @app_commands.checks.has_permissions(administrator=True)
     async def backup(self, interaction: discord.Interaction, name: str = None):
+        """
+        Creates a manual backup of the world.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+            name (str, optional): A custom name for the backup file. Defaults to None.
+        """
         await interaction.response.defer(ephemeral=True)
         
         await interaction.followup.send("⏳ Starting backup... This might take a moment.")
@@ -88,15 +104,34 @@ class BackupCog(commands.Cog):
             await interaction.followup.send(f"❌ Backup failed: {filename}", ephemeral=True)
 
     @app_commands.command(name="backup_list", description="List available backups")
+    @app_commands.checks.has_permissions(administrator=True)
     async def backup_list(self, interaction: discord.Interaction):
+        """
+        Lists available world backups, grouped by type (Custom/Auto).
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+        """
         await interaction.response.defer(ephemeral=True)
         
         # Helper to get files
         def get_backups(directory):
+            """
+            Lists zip files in the specified directory.
+
+            Args:
+                directory (str): The path to the directory to list.
+
+            Returns:
+                list[str]: A list of filenames.
+            """
             try:
-                if not os.path.exists(directory): return []
+                if not os.path.exists(directory):
+                    return []
                 return [f for f in os.listdir(directory) if f.endswith('.zip')]
-            except: return []
+            except Exception as e:
+                logger.error(f"Failed to list backups in {directory}: {e}")
+                return []
 
         auto_backups = await asyncio.to_thread(get_backups, backup_manager.auto_dir)
         custom_backups = await asyncio.to_thread(get_backups, backup_manager.custom_dir)
@@ -108,14 +143,16 @@ class BackupCog(commands.Cog):
         msg = "📂 **Available Backups**\n\n**Custom**:\n"
         if custom_backups:
             msg += "\n".join([f"- `{f}`" for f in custom_backups[:5]])
-            if len(custom_backups) > 5: msg += f"\n... and {len(custom_backups)-5} more"
+            if len(custom_backups) > 5:
+                msg += f"\n... and {len(custom_backups)-5} more"
         else:
             msg += "*None*"
             
         msg += "\n\n**Auto**:\n"
         if auto_backups:
             msg += "\n".join([f"- `{f}`" for f in auto_backups[:5]])
-            if len(auto_backups) > 5: msg += f"\n... and {len(auto_backups)-5} more"
+            if len(auto_backups) > 5:
+                msg += f"\n... and {len(auto_backups)-5} more"
         else:
             msg += "*None*"
             
@@ -123,7 +160,15 @@ class BackupCog(commands.Cog):
 
     @app_commands.command(name="backup_download", description="Download a specific backup directly")
     @app_commands.describe(filename="The backup file to download")
+    @app_commands.checks.has_permissions(administrator=True)
     async def backup_download(self, interaction: discord.Interaction, filename: str):
+        """
+        Sends a specific backup file to the user.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+            filename (str): The name of the backup file to download.
+        """
         await interaction.response.defer(ephemeral=True)
 
         filepath = None
@@ -145,6 +190,16 @@ class BackupCog(commands.Cog):
 
     @backup_download.autocomplete("filename")
     async def backup_download_autocomplete(self, interaction: discord.Interaction, current: str):
+        """
+        Provides autocomplete suggestions for backup filenames.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the autocomplete.
+            current (str): The current input from the user.
+
+        Returns:
+            list[app_commands.Choice]: A list of autocomplete choices.
+        """
         files = []
         for directory in (backup_manager.custom_dir, backup_manager.auto_dir):
             try:
@@ -158,14 +213,31 @@ class BackupCog(commands.Cog):
             if current.lower() in f.lower()
         ][:25]
 
+# --- Views ---
+
 class BackupDownloadView(discord.ui.View):
+    """
+    A view containing a button to download a backup file.
+
+    Attributes:
+        filepath (str): The path to the backup file.
+        uploaded (bool): Flag to track if the file has been uploaded.
+    """
     def __init__(self, filepath):
+        """Initializes the view with the specified filepath."""
         super().__init__(timeout=120)
         self.filepath = filepath
         self.uploaded = False
 
     @discord.ui.button(label="Download", style=discord.ButtonStyle.primary, emoji="⬇️")
     async def download_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """
+        Handles the download button click.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the click.
+            button (discord.ui.Button): The button that was clicked.
+        """
         await interaction.response.defer(ephemeral=True)
 
         if self.uploaded:
@@ -180,6 +252,7 @@ class BackupDownloadView(discord.ui.View):
         except Exception as e:
             logger.error(f"Failed to send backup file: {e}")
             await interaction.followup.send("❌ Failed to send the file.", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(BackupCog(bot))

@@ -50,6 +50,20 @@ class Link(commands.Cog):
             logger.error(f"Error in /link command: {e}")
             await interaction.followup.send("❌ An unexpected error occurred while linking.", ephemeral=True)
 
+    @app_commands.command(name="verify", description="Verify your identity with the code from your kick screen")
+    @app_commands.describe(code="The 6-character code shown when you were kicked")
+    async def verify_cmd(self, interaction: discord.Interaction, code: str):
+        """Verify identity via code (alternative to button click)."""
+        # No defer needed if we expect it to be fast, but good practice
+        await interaction.response.defer(ephemeral=True)
+        
+        if not hasattr(self.bot, 'join_guard') or not self.bot.join_guard:
+            await interaction.followup.send("❌ JoinGuard is not active.", ephemeral=True)
+            return
+
+        success, message = await self.bot.join_guard.verify_code(interaction.user.id, code)
+        await interaction.followup.send(message, ephemeral=True)
+
     @app_commands.command(name="unlink", description="Unlink your Minecraft account")
     async def unlink_cmd(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)

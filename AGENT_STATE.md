@@ -1,24 +1,33 @@
-# AGENT_STATE.md
-
-[PHASE] Step 4 — Complete
+[PHASE]
+Audit Complete
 
 [FINDINGS]
-(populated by Auditor sub-agents)
 
-[REVIEW_NOTES]
-12 sections reviewed. Summary of findings:
-- REWRITE (10): Sec 2 repo structure (economy.py → _economy.py, missing player_tracker.py), Sec 3.2 subscriber list (economy.py not loaded), Sec 4.5 WORLD_FOLDER (now @property, not hardcoded), Sec 8 backup.py (scheduled backups always go to auto_dir with retention), Sec 8 tasks.py (missing server.jar guard, start() unpack fix, bash -c playit wrapper, online_players cleared on crash), Sec 8 economy.py (rename to _economy.py not reflected), Sec 9 backup_manager (unnamed backups route to auto_dir), Sec 10.4 #2 (WORLD_FOLDER now fixed — still listed as open), Sec 15 healthcheck (pgrep not psutil/PID1), Sec 2 Dockerfile (git removed from apt, no COPY data/).
-- ADD (2): signal handler change (loop.add_signal_handler) not in version history; requirements.txt pinning + aio-mc-rcon PyPI replace not in version history.
+[FIXED]
+[INSTALL] Dockerfile:5 | Container running as root | Added non-root 'bot' user, created directories with correct permissions, and used USER instruction.
+[INSTALL] .gitignore:22 | data/ directory not fully ignored | Updated .gitignore to ignore entire data/ directory.
+[INSTALL] Dockerfile.test | git and COPY data/ issues | Removed git and replaced COPY data/ with mkdir.
+[INSTALL] bot.py:289 | Signal handler fallback | Updated to use loop.add_signal_handler() properly.
+[INSTALL] src/config.py:99 | DISCORD_TOKEN name | Updated config to prefer DISCORD_TOKEN env var.
+[INSTALL] requirements.txt | version typos | Corrected pytz and aiohttp versions.
+[DISCORD] cogs/link.py:1 | Missing `/verify` command | Implemented /verify command for JoinGuard.
+[DISCORD] src/join_guard.py | JoinGuard logic updates | 6-char alphanumeric, 30-min grace, 5-min challenge.
+[DISCORD] cogs/backup.py | Permission guards | Added administrator permission checks to /backup commands.
+[DISCORD] Multiple Cogs | Missing .defer() | Added .defer() to long-running commands (status, players, seed, etc.).
+[CATCHING] src/config.py:118 | bot_config.json corruption | Implemented automatic backup of corrupt config.
+[CATCHING] cogs/stats.py:50 | WORLD_FOLDER hardcoded | Replaced with config.WORLD_FOLDER.
+[CATCHING] src/config.py:393 | except Exception: pass | Added logging to WORLD_FOLDER.
+[CATCHING] cogs/management.py:95 | online_players not cleared | Added clearing to /restart command.
+[CATCHING] cogs/info.py & backup.py | Silent exceptions | Added logging to all bare except blocks.
+[ERRCODES] Full Audit | Format & Consistency | Normalized error_codes.md, split multi-file refs, assigned 5 new codes for unassigned conditions.
 
 [IN_PROGRESS]
-(none)
 
 [BLOCKED]
-(none)
 
 [DONE]
-- AGENT_STATE.md created
-- Phase 1/2/3 complete (bug fixes, refactor, production readiness)
-- Reviewer: REVIEW_NOTES.md written at /home/slogiker/Claude/mc-bot/REVIEW_NOTES.md
-- Auditor: 80 error codes written to error_codes.md (BOT×55, MC×20, PT×14, CFG×13, SYS×11, DB×10)
-- Documenter: 10 rewrites + 2 additions applied to docs/information.md (Step 4 complete)
+Auditors: All 4 finished.
+Fixer: All findings addressed and verified.
+Documenter: information.md updated and normalized.
+Orchestrator: Audit and remediation complete.
+[POLISH] Performed a deep 'Clean Code' pass across the priority files (bot.py, src/config.py, src/join_guard.py, cogs/backup.py, cogs/management.py, cogs/stats.py), adding Google-style docstrings, logical sections, and improving readability while maintaining all existing functionality and security fixes.

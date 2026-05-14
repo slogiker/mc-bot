@@ -24,7 +24,17 @@ config.set_simulation_mode(is_simulation)
 
 # --- Bot Setup ---
 class MinecraftBot(commands.Bot):
+    """
+    The main Discord bot class for managing the Minecraft server.
+
+    Attributes:
+        server (TmuxServerManager | MockServerManager): The server manager instance.
+        synced (bool): Flag to prevent duplicate command syncs.
+        join_guard (JoinGuard): Module for managing player logins and verification.
+        log_watcher (LogWatcher): Module for monitoring server logs.
+    """
     def __init__(self):
+        """Initializes the MinecraftBot with necessary intents and managers."""
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
@@ -48,11 +58,26 @@ class MinecraftBot(commands.Bot):
         # Attach event listener
         self.add_listener(self.on_minecraft_player_login, 'on_minecraft_player_login')
 
+    # --- Event Handlers ---
+
     async def on_minecraft_player_login(self, username: str, uuid: str):
-        """Dispatched custom event from LogWatcher when a user connects."""
+        """
+        Dispatched custom event from LogWatcher when a user connects.
+
+        Args:
+            username (str): The Minecraft username of the player.
+            uuid (str): The Minecraft UUID of the player.
+        """
         await self.join_guard.handle_player_login(username, uuid)
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        """
+        Global error handler for app commands.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the error.
+            error (app_commands.AppCommandError): The error that occurred.
+        """
         # Ignore cooldowns or permission errors for the debug channel, just show ephemeral to user
         if isinstance(error, app_commands.CommandOnCooldown):
             await interaction.response.send_message(f"⏳ Command is on cooldown. Try again in {error.retry_after:.2f}s.", ephemeral=True)
@@ -83,7 +108,11 @@ class MinecraftBot(commands.Bot):
                     tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))
                     
                     # Create embed
-                    embed = discord.Embed(title="🚨 Command Error", color=discord.Color.red(), timestamp=interaction.created_at)
+                    embed = discord.Embed(
+                        title="🚨 Command Error", 
+                        color=discord.Color.red(), 
+                        timestamp=interaction.created_at
+                    )
                     embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})", inline=True)
                     embed.add_field(name="Command", value=f"/{interaction.command.name if interaction.command else 'Unknown'}", inline=True)
                     embed.add_field(name="Error Type", value=type(error).__name__, inline=False)
@@ -106,12 +135,23 @@ class MinecraftBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to send error report to debug channel: {e}")
 
+    # --- Setup & Connection Hooks ---
+
     async def setup_hook(self):
-        """Called during bot startup - load extensions but DON'T sync yet"""
+        """Called during bot startup - load extensions but DON'T sync yet."""
         self.tree.on_error = self.on_tree_error
         
         # Global command channel check
         async def restrict_command_channel(interaction: discord.Interaction) -> bool:
+            """
+            Check if the interaction is allowed in the current channel.
+
+            Args:
+                interaction (discord.Interaction): The interaction to check.
+
+            Returns:
+                bool: True if allowed, False otherwise.
+            """
             # We only restrict actual slash commands
             if interaction.type != discord.InteractionType.application_command:
                 return True
@@ -152,7 +192,7 @@ class MinecraftBot(commands.Bot):
         logger.info(f"=== {loaded_count} extensions loaded successfully ===")
 
     async def on_ready(self):
-        """Called when bot is fully connected and ready"""
+        """Called when bot is fully connected and ready."""
         logger.debug(f"Logged in as {self.user} (ID: {self.user.id})")
         logger.info("=== Bot Connected to Discord ===")
         
@@ -204,8 +244,8 @@ class MinecraftBot(commands.Bot):
         logger.debug("Syncing slash commands to guild...")
         try:
             self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            logger.info(f"✅ Synced {len(synced)} commands to {guild.name}")
+            synced_commands = await self.tree.sync(guild=guild)
+            logger.info(f"✅ Synced {len(synced_commands)} commands to {guild.name}")
             self.synced = True
         except Exception as e:
             logger.error(f"Failed to sync commands: {e}", exc_info=True)
@@ -232,8 +272,15 @@ class MinecraftBot(commands.Bot):
         
         logger.info("=== Bot is now fully ready! ===")
 
+# --- Lifecycle Management ---
+
 async def shutdown_handler(bot):
-    """Graceful shutdown - stop server and close bot cleanly"""
+    """
+    Graceful shutdown - stop server and close bot cleanly.
+
+    Args:
+        bot (MinecraftBot): The bot instance to shut down.
+    """
     logger.info("Shutdown initiated...")
     
     try:
@@ -254,19 +301,20 @@ async def shutdown_handler(bot):
     
     logger.info("Shutdown complete")
 
+
 async def main():
     bot = MinecraftBot()
     token = config.TOKEN
     
-    if is_simulation and "BOT_TOKEN" in os.environ:
+    if is_simulation and ("DISCORD_TOKEN" in os.environ or "BOT_TOKEN" in os.environ):
          # In simulation, prefer the env var passed by simulate.py
-         token = os.environ["BOT_TOKEN"]
+         token = os.environ.get("DISCORD_TOKEN") or os.environ.get("BOT_TOKEN")
     
     if not token:
         if is_simulation:
-             logger.error("Simulation Error: BOT_TOKEN not provided (simulate.py should handle this)")
+             logger.error("Simulation Error: DISCORD_TOKEN not provided (simulate.py should handle this)")
         else:
-             logger.error("No token found! Check .env file for BOT_TOKEN")
+             logger.error("No token found! Check .env file for DISCORD_TOKEN")
         return
 
     if not config.RCON_PASSWORD:

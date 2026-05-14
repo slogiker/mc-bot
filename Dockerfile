@@ -18,17 +18,24 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Add non-root user for security
+RUN groupadd -r bot && useradd -r -g bot -d /app bot
+
 # Install Python dependencies first — layer is cached unless requirements.txt changes
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create runtime directories before copying source so this layer is stable
-RUN mkdir -p /app/mc-server /app/backups /app/logs
+# Create runtime directories and set permissions before copying source
+RUN mkdir -p /app/mc-server /app/backups /app/logs /app/data \
+    && chown -R bot:bot /app
 
 # Copy bot source — only these layers rebuild on code changes
-COPY bot.py .
-COPY cogs/ ./cogs/
-COPY src/ ./src/
+COPY --chown=bot:bot bot.py .
+COPY --chown=bot:bot cogs/ ./cogs/
+COPY --chown=bot:bot src/ ./src/
+
+# Switch to non-root user
+USER bot
 
 EXPOSE 25565
 

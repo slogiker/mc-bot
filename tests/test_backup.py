@@ -27,7 +27,9 @@ class TestBackupManager:
         """Auto backup creates a zip in the auto/ directory."""
         from src.config import config
         config.SERVER_DIR = temp_world_dir
-        config.WORLD_FOLDER = "world"
+        # Create server.properties to satisfy the WORLD_FOLDER property
+        with open(os.path.join(temp_world_dir, "server.properties"), "w") as f:
+            f.write("level-name=world\n")
         config.BACKUP_RETENTION_DAYS = 7
 
         mgr = self._make_manager(temp_backup_dir, temp_world_dir)
@@ -52,7 +54,9 @@ class TestBackupManager:
         """Custom backup goes into custom/ directory with the given name."""
         from src.config import config
         config.SERVER_DIR = temp_world_dir
-        config.WORLD_FOLDER = "world"
+        # Create server.properties to satisfy the WORLD_FOLDER property
+        with open(os.path.join(temp_world_dir, "server.properties"), "w") as f:
+            f.write("level-name=world\n")
         config.BACKUP_RETENTION_DAYS = 7
 
         mgr = self._make_manager(temp_backup_dir, temp_world_dir)
@@ -113,7 +117,6 @@ class TestBackupManager:
         """Backup fails gracefully when world directory doesn't exist."""
         from src.config import config
         config.SERVER_DIR = "/nonexistent/path"
-        config.WORLD_FOLDER = "world"
         config.BACKUP_RETENTION_DAYS = 7
 
         mgr = self._make_manager(temp_backup_dir, "/nonexistent/path")

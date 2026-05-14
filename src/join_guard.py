@@ -8,20 +8,39 @@ from src.config import config
 import discord
 
 class JoinGuard:
+    """
+    Manages player login verification and cracked account security.
+
+    Attributes:
+        bot (commands.Bot): The Discord bot instance.
+        link_manager (MCLinkManager): Manager for Discord-Minecraft account links.
+        recently_disconnected (dict[str, float]): Tracks timestamps of player disconnects.
+        GRACE_PERIOD (int): Time in seconds allowed for seamless reconnects.
+        active_challenges (dict[str, dict]): Stores details of pending DM challenges.
+    """
     def __init__(self, bot):
+        """Initializes the JoinGuard with necessary managers and settings."""
         self.bot = bot
         self.link_manager = MCLinkManager()
         # Dictionary tracking disconnected users: { mc_username: disconnect_timestamp }
         self.recently_disconnected: dict[str, float] = {}
-        # 5 minutes in seconds
-        self.GRACE_PERIOD = 300 
+        # 30 minutes in seconds
+        self.GRACE_PERIOD = 1800 
         
         # We need a reference to the active DM challenges
-        # { mc_username: { "discord_id": 123, "timeout_task": Task, "code": "1234" } }
+        # { mc_username: { "discord_id": 123, "timeout_task": Task, "code": "ABC123" } }
         self.active_challenges: dict[str, dict] = {}
 
+    # --- Login/Quit Handlers ---
+
     async def handle_player_login(self, mc_username: str, mc_uuid: str):
-        """Called when a 'User Authenticator' message appears in logs."""
+        """
+        Processes a player login attempt from the server logs.
+
+        Args:
+            mc_username (str): The Minecraft username of the player.
+            mc_uuid (str): The Minecraft UUID of the player.
+        """
         try:
             logger.info(f"JoinGuard examining login: {mc_username} ({mc_uuid})")
             
@@ -62,15 +81,29 @@ class JoinGuard:
             logger.error(f"JoinGuard Error handling login for {mc_username}: {e}", exc_info=True)
 
     def handle_player_quit(self, mc_username: str):
-        """Record when a player leaves to start their grace window."""
+        """
+        Records when a player leaves to start their grace period window.
+
+        Args:
+            mc_username (str): The Minecraft username of the player.
+        """
         self.recently_disconnected[mc_username.lower()] = time.time()
         logger.debug(f"JoinGuard: Started disconnect grace period for {mc_username}.")
 
+    # --- Challenge Logic ---
+
     async def _issue_challenge(self, mc_username: str, discord_id: int):
-        """Kicks the player with a code, slides into their DMs."""
+        """
+        Kicks the player with a verification code and sends a DM challenge.
+
+        Args:
+            mc_username (str): The Minecraft username to verify.
+            discord_id (int): The Discord ID of the linked user.
+        """
         import secrets
-        # Generate 4 digit code
-        code = str(secrets.randbelow(9000) + 1000)
+        import string
+        # Generate 6 char alphanumeric code
+        code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
         
         kick_reason = f"Verification Required. Check your Discord DMs or the server Discord channel. Code: {code}"
         await self._kick_player(mc_username, kick_reason)
@@ -92,7 +125,7 @@ class JoinGuard:
             title="🔒 Minecraft Login Verification",
             description=f"Someone (hopefully you) is trying to log into the Minecraft server as **{mc_username}** outside of the grace period.\n\n"
                         f"To verify your identity and allow the connection, please click the button below and enter the code: **`{code}`**\n\n"
-                        f"*(This code expires in 2 minutes)*",
+                        f"*(This code expires in 5 minutes)*",
             color=discord.Color.orange()
         )
 
@@ -128,17 +161,51 @@ class JoinGuard:
             }
 
     async def complete_challenge(self, mc_username: str):
-        """Called when a user successfully answers the interactive DM."""
+        """
+        Handles successful completion of a verification challenge.
+
+        Args:
+            mc_username (str): The Minecraft username that was verified.
+        """
         if mc_username in self.active_challenges:
             self.active_challenges[mc_username]["timeout_task"].cancel()
             del self.active_challenges[mc_username]
-            # They verified. Start a fresh 5 minute grace period so they can log right in.
+            # They verified. Start a fresh grace period so they can log right in.
             self.handle_player_quit(mc_username)
             logger.info(f"JoinGuard: Challenge completed for {mc_username}. Granted grace period.")
 
+    async def verify_code(self, discord_id: int, code: str) -> tuple[bool, str]:
+        """
+        Verifies a code submitted via /verify command.
+
+        Args:
+            discord_id (int): The Discord ID of the user submitting the code.
+            code (str): The code submitted by the user.
+
+        Returns:
+            tuple[bool, str]: A tuple containing (success_flag, result_message).
+        """
+        code = code.upper().strip()
+        for mc_username, challenge in list(self.active_challenges.items()):
+            if challenge["discord_id"] == discord_id:
+                if challenge["code"] == code:
+                    await self.complete_challenge(mc_username)
+                    return True, f"✅ **Verification successful for {mc_username}.** You may now join the server."
+                else:
+                    return False, "❌ **Incorrect verification code.**"
+        
+        return False, "❌ **No active verification challenge found for your account.**"
+
     async def _challenge_timeout(self, mc_username: str, message: discord.Message, view):
-        """Expires the challenge after 2 minutes."""
-        await asyncio.sleep(120)
+        """
+        Expires a verification challenge after a period of time.
+
+        Args:
+            mc_username (str): The Minecraft username associated with the challenge.
+            message (discord.Message): The Discord message containing the challenge.
+            view (discord.ui.View): The view associated with the challenge message.
+        """
+        await asyncio.sleep(300)
         if mc_username in self.active_challenges:
             del self.active_challenges[mc_username]
             
@@ -154,8 +221,16 @@ class JoinGuard:
                 pass
             logger.info(f"JoinGuard: Challenge expired for {mc_username}.")
 
+    # --- Utility Methods ---
+
     async def _kick_player(self, username: str, reason: str):
-        """Kicks a player via RCON."""
+        """
+        Kicks a player from the Minecraft server via RCON.
+
+        Args:
+            username (str): The Minecraft username of the player to kick.
+            reason (str): The reason for the kick.
+        """
         # Wait a brief moment to ensure they are actually connected enough to be kicked
         await asyncio.sleep(1.0) 
         
@@ -167,4 +242,5 @@ class JoinGuard:
             await rcon_cmd(cmd)
         except Exception as e:
             logger.error(f"JoinGuard failed to kick {username}: {e}")
+
 

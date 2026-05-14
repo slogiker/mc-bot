@@ -9,12 +9,12 @@ class CodeModal(discord.ui.Modal, title='Enter Verification Code'):
         self.expected_code = expected_code
         
         self.code_input = discord.ui.TextInput(
-            label='4-Digit Code',
-            placeholder='1234',
+            label='6-Character Code',
+            placeholder='ABC123',
             style=discord.TextStyle.short,
             required=True,
-            min_length=4,
-            max_length=4
+            min_length=6,
+            max_length=6
         )
         self.add_item(self.code_input)
 

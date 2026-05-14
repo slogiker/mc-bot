@@ -5,14 +5,33 @@ from src.config import config
 from src.utils import send_debug, has_role
 
 class Management(commands.Cog):
+    """
+    Handles server lifecycle management and control commands.
+
+    Includes starting, stopping, and restarting the Minecraft server,
+    as well as managing the bot itself.
+    """
     def __init__(self, bot):
+        """Initializes the Management cog with the bot instance."""
         self.bot = bot
+
+    # --- Server Control Commands ---
 
     @app_commands.command(name="control", description="Spawn the Control Panel")
     @has_role("control")
     async def control(self, interaction: discord.Interaction):
+        """
+        Sends an interactive control panel for the Minecraft server.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+        """
         from cogs.control_panel import ControlPanelView
-        embed = discord.Embed(title="🎛️ Minecraft Server Control", description="Manage the server using the buttons below.", color=0x5865F2)
+        embed = discord.Embed(
+            title="🎛️ Minecraft Server Control", 
+            description="Manage the server using the buttons below.", 
+            color=0x5865F2
+        )
         embed.add_field(name="Status", value="🟢 Online" if self.bot.server.is_running() else "🔴 Offline")
         await interaction.response.send_message(embed=embed, view=ControlPanelView(self.bot))
 
@@ -20,6 +39,12 @@ class Management(commands.Cog):
     @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
     @has_role("start")
     async def start(self, interaction: discord.Interaction):
+        """
+        Starts the Minecraft server.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+        """
         await interaction.response.defer(ephemeral=True)
         
         success, message = await self.bot.server.start()
@@ -51,6 +76,12 @@ class Management(commands.Cog):
     @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
     @has_role("stop")
     async def stop(self, interaction: discord.Interaction):
+        """
+        Stops the Minecraft server.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+        """
         await interaction.response.defer(ephemeral=True)
 
         embed = discord.Embed(description="🛑 Stopping server...", color=0xFEE75C)
@@ -95,6 +126,12 @@ class Management(commands.Cog):
     @app_commands.checks.cooldown(1, 60)  # 1 use per 60 seconds
     @has_role("restart")
     async def restart(self, interaction: discord.Interaction):
+        """
+        Restarts the Minecraft server.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+        """
         await interaction.response.defer(ephemeral=True)
         
         embed = discord.Embed(description="🔄 Restarting server...", color=0xFEE75C)
@@ -112,6 +149,11 @@ class Management(commands.Cog):
                 description=message,
                 color=0x57F287
             )
+            # Clear player list — restart doesn't fire individual "left the game" events immediately
+            bot_cfg = config.load_bot_config()
+            if bot_cfg.get('online_players'):
+                bot_cfg['online_players'] = []
+                config.save_bot_config(bot_cfg)
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
@@ -130,15 +172,24 @@ class Management(commands.Cog):
         
         await interaction.edit_original_response(embed=embed)
 
+    # --- Bot Management Commands ---
+
     @app_commands.command(name="bot_restart", description="Restart the bot")
     @has_role("bot_restart")
     async def api_bot_restart(self, interaction: discord.Interaction):
+        """
+        Restarts the Discord bot.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+        """
         import sys
         await interaction.response.send_message("Restarting bot...", ephemeral=True)
         # Use sys.exit instead of os.execv - Docker restart policy handles the actual restart
         # os.execv replaces PID 1 in Docker which can cause the container to exit uncleanly
         await self.bot.close()
         sys.exit(0)
+
 
 
 async def setup(bot):

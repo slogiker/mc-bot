@@ -94,6 +94,7 @@ class AutomationCog(commands.Cog):
     @app_commands.command(name="trigger_add", description="Add a custom chat trigger")
     @has_role("trigger_admin")
     async def trigger_add(self, interaction: discord.Interaction, phrase: str, command: str):
+        await interaction.response.defer(ephemeral=True)
         user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         triggers[phrase] = command
@@ -101,7 +102,7 @@ class AutomationCog(commands.Cog):
         
         config.save_user_config(user_config)
         
-        await interaction.response.send_message(f"Added trigger: `{phrase}` -> `{command}`")
+        await interaction.followup.send(f"Added trigger: `{phrase}` -> `{command}`")
 
     @app_commands.command(name="trigger_list", description="List custom triggers")
     @has_role("trigger_list")
@@ -122,15 +123,16 @@ class AutomationCog(commands.Cog):
     @app_commands.command(name="trigger_remove", description="Remove a trigger")
     @has_role("trigger_admin")
     async def trigger_remove(self, interaction: discord.Interaction, phrase: str):
+        await interaction.response.defer(ephemeral=True)
         user_config = config.load_user_config()
         triggers = user_config.get('triggers', {})
         
         if phrase in triggers:
             del triggers[phrase]
             config.save_user_config(user_config)
-            await interaction.response.send_message(f"Removed trigger: `{phrase}`")
+            await interaction.followup.send(f"Removed trigger: `{phrase}`")
         else:
-            await interaction.response.send_message("Trigger not found.", ephemeral=True)
+            await interaction.followup.send("Trigger not found.")
 
 async def setup(bot):
     await bot.add_cog(AutomationCog(bot))

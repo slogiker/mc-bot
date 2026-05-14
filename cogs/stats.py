@@ -11,13 +11,29 @@ from src.utils import has_role, map_key, display_key
 from src.logger import logger
 
 class StatsCog(commands.Cog):
+    """
+    Handles player statistics and profile commands.
+
+    Provides commands to view Minecraft player stats, including playtime,
+    kills, and deaths, with support for both premium and cracked accounts.
+    """
     def __init__(self, bot):
+        """Initializes the StatsCog with the bot instance."""
         self.bot = bot
+
+    # --- Data Fetching Helpers ---
 
     async def get_uuid_online(self, username: str):
         """
-        Fetches UUID from Mojang API.
+        Fetches UUID and official name from Mojang API.
+
         Used for legitimate (premium) accounts to get accurate skins and IDs.
+
+        Args:
+            username (str): The Minecraft username to look up.
+
+        Returns:
+            tuple[str | None, str | None]: A tuple containing (uuid, official_name).
         """
         timeout = aiohttp.ClientTimeout(total=10)
         try:
@@ -31,23 +47,38 @@ class StatsCog(commands.Cog):
         return None, None
 
     async def get_offline_uuid(self, username: str):
-        """Generate offline UUID (v3) based on the username."""
+        """
+        Generates an offline UUID (v3) based on the username.
+
+        Args:
+            username (str): The Minecraft username to generate a UUID for.
+
+        Returns:
+            tuple[str, str]: A tuple containing (uuid_string, username).
+        """
         import uuid
-        return str(uuid.uuid3(uuid.NAMESPACE_DNS, f"OfflinePlayer:{username}")).replace('-', ''), username
+        offline_uuid = str(uuid.uuid3(uuid.NAMESPACE_DNS, f"OfflinePlayer:{username}")).replace('-', '')
+        return offline_uuid, username
 
     def get_stats_from_nbt(self, uuid_str: str, server_path: str):
         """
         Parses player statistics from local server files.
+
         1. Reads world/stats/<uuid>.json for standard stats.
         2. Reads world/playerdata/<uuid>.dat using nbtlib for additional data.
-        Falls back gracefully if files are missing (e.g. new player).
+
+        Args:
+            uuid_str (str): The Minecraft UUID of the player.
+            server_path (str): The path to the Minecraft server directory.
+
+        Returns:
+            tuple[dict, dict]: A tuple containing (stats_json, nbt_data).
         """
         # Formatted UUID (with dashes)
         formatted_uuid = f"{uuid_str[:8]}-{uuid_str[8:12]}-{uuid_str[12:16]}-{uuid_str[16:20]}-{uuid_str[20:]}"
         
-        bot_config = config.load_bot_config()
-        # Assume world folder is 'world' or get from config if we had it. defaulting to 'world'
-        world_path = os.path.join(server_path, 'world') 
+        # Use config.WORLD_FOLDER which dynamically reads from server.properties
+        world_path = os.path.join(server_path, config.WORLD_FOLDER) 
         
         # 1. Try generic stats.json first (standard vanilla stats)
         stats_file = os.path.join(world_path, 'stats', f"{formatted_uuid}.json")
@@ -60,9 +91,7 @@ class StatsCog(commands.Cog):
              except Exception as e:
                  logger.error(f"Failed to load stats json: {e}")
 
-        # 2. Try playerdata .dat file (NBT) for other info like inventory, pos, or legacy stats?
-        # User specifically mentioned "legit/offline players -> parse .dat file".
-        # And "NBT Parse: nbtlib.load(...) -> root['bukkit']['lastPlayed']"
+        # 2. Try playerdata .dat file (NBT) for other info
         player_dat = os.path.join(world_path, 'playerdata', f"{formatted_uuid}.dat")
         nbt_data = {}
         if os.path.exists(player_dat):
@@ -74,9 +103,19 @@ class StatsCog(commands.Cog):
         
         return stats, nbt_data
 
+    # --- Commands ---
+
     @app_commands.command(name="stats", description="Get player statistics")
-    @app_commands.describe(player="Minecraft username or Discord user")
+    @app_commands.describe(player="Minecraft username", user="Discord user")
     async def stats(self, interaction: discord.Interaction, player: str = None, user: discord.Member = None):
+        """
+        Displays statistics for a Minecraft player.
+
+        Args:
+            interaction (discord.Interaction): The interaction that triggered the command.
+            player (str, optional): The Minecraft username to look up.
+            user (discord.Member, optional): The Discord user to look up.
+        """
         await interaction.response.defer()
         
         bot_config = config.load_bot_config()
@@ -97,11 +136,7 @@ class StatsCog(commands.Cog):
                 await interaction.followup.send("❌ This user is not linked to a Minecraft player.")
                 return
         elif player:
-            # Try to determine if online or offline based on existing files or config
-            # User request: "Legit players -> Mojang API... Offline players -> parse .dat"
-            
             # Check mappings first
-            # Reverse lookup?
             found_map = False
             for uid, data in bot_config.get('mappings', {}).items():
                 if data.get('name', '').lower() == player.lower():
@@ -127,8 +162,7 @@ class StatsCog(commands.Cog):
             await interaction.followup.send(f"❌ Could not find player '{player}'.")
             return
 
-        # Load data
-        # Run in executor to avoid blocking
+        # Load data in executor to avoid blocking
         stats_json, nbt_data = await asyncio.to_thread(self.get_stats_from_nbt, uuid, server_path)
         
         if not stats_json and not nbt_data:
@@ -136,9 +170,6 @@ class StatsCog(commands.Cog):
              return
 
         # Process stats
-        # Playtime: stored in 'minecraft:custom' -> 'minecraft:play_time' (ticks) in JSON
-        # Or 'bukkit' -> 'lastPlayed' in NBT (timestamp)
-        
         play_time_ticks = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:play_time', 0)
         deaths = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:deaths', 0)
         player_kills = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:player_kills', 0)
@@ -148,8 +179,6 @@ class StatsCog(commands.Cog):
         
         # Skin
         if is_cracked:
-            skin_url = "https://minecraft-heads.com/scripts/3d-head.php?hrh=00&aa=true&headOnly=true&ratio=6" # Generic steve or dynamic?
-            # User suggested: https://minecraft-heads.com/avatar/Steve/64
             skin_url = "https://minecraft-heads.com/avatar/Steve/64"
         else:
             skin_url = f"https://crafatar.com/avatars/{uuid}?overlay"
@@ -167,6 +196,7 @@ class StatsCog(commands.Cog):
             embed.set_footer(text="Account Type: Premium")
 
         await interaction.followup.send(embed=embed)
+
 
 async def setup(bot):
     await bot.add_cog(StatsCog(bot))

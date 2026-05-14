@@ -8,16 +8,19 @@ import discord
 
 load_dotenv()
 
+# --- Validation Utilities ---
+
 def validate_user_config(data: dict) -> tuple[bool, list[str]]:
     """
     Validate user config dictionary without requiring external schema packages.
+    
     Checks types, ranges, and formats for all required fields.
     
     Args:
         data (dict): The user config dictionary to validate.
         
     Returns:
-        tuple[bool, list[str]]: (IsValid, ListOfErrors)
+        tuple[bool, list[str]]: A tuple containing (is_valid, errors).
     """
     errors = []
     
@@ -43,7 +46,7 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
             
             if min_mb > max_mb:
                 errors.append("java_ram_min must be <= java_ram_max")
-        except:
+        except Exception:
             pass
     
     # Time format (HH:MM)
@@ -53,7 +56,7 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
             continue
         try:
             datetime.strptime(data[key], '%H:%M')
-        except:
+        except ValueError:
             errors.append(f"{key} must be HH:MM format (e.g., '03:00')")
     
     # Keep days range
@@ -75,15 +78,19 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
     return len(errors) == 0, errors
 
 
+# --- Configuration Management ---
+
 class Config:
     """
     Singleton configuration manager.
+
     Handles loading/saving of `bot_config.json` (system state) and `user_config.json` (preferences).
     Provides thread-safe access via `FileLock`.
     """
     _instance = None
 
     def __new__(cls):
+        """Implement singleton pattern."""
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
             cls._instance.BOT_CONFIG_FILE = os.path.join('data', 'bot_config.json')
@@ -94,9 +101,10 @@ class Config:
     def load(self):
         """
         Load all configuration variables from environment and JSON files.
+
         Validates `user_config.json` on load.
         """
-        self.TOKEN = os.getenv("BOT_TOKEN")
+        self.TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
         _dry_run = getattr(self, 'dry_run', False)
         self.dry_run = _dry_run
@@ -124,11 +132,17 @@ class Config:
         # Load bot config
         try:
             bot_cfg = self.load_bot_config()
-        except json.JSONDecodeError as e:
-            print(f"WARNING: bot_config.json is corrupt (JSON parse error: {e}) — recreating with defaults. Original file may need manual recovery.")
-            self._create_default_configs()
-            bot_cfg = self.load_bot_config()
-        except Exception as e:
+        except (json.JSONDecodeError, Exception) as e:
+            config_path = self.BOT_CONFIG_FILE
+            if os.path.exists(config_path):
+                backup_path = f"{config_path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
+                try:
+                    import shutil
+                    shutil.copy2(config_path, backup_path)
+                    print(f"⚠️ bot_config.json is corrupt — backed up to {backup_path}")
+                except Exception as backup_err:
+                    print(f"❌ Failed to backup corrupt bot_config.json: {backup_err}")
+            
             print(f"WARNING: Could not load bot_config.json ({type(e).__name__}: {e}) — recreating with defaults.")
             self._create_default_configs()
             bot_cfg = self.load_bot_config()
@@ -144,6 +158,7 @@ class Config:
         if user_tz.lower() == 'auto':
             self.TIMEZONE = 'UTC'
             def fetch_tz():
+                """Fetch timezone from IP API."""
                 try:
                     import urllib.request
                     with urllib.request.urlopen("http://ip-api.com/json/", timeout=3) as response:
@@ -158,7 +173,7 @@ class Config:
         self.ROLE_PERMISSIONS = user_cfg['permissions']
         
         # Apply bot config
-        self.SERVER_DIR = bot_cfg['server_directory']
+        self.SERVER_DIR = bot_cfg.get('server_directory', './mc-server')
         self.GUILD_ID = bot_cfg.get('guild_id')
         self.COMMAND_CHANNEL_ID = bot_cfg.get('command_channel_id')
         self.LOG_CHANNEL_ID = bot_cfg.get('log_channel_id')
@@ -186,7 +201,7 @@ class Config:
         self.ADMIN_ROLE_ID = None  # Set during setup
 
     def _migrate_old_config(self):
-        """Migrate from old config.json to new split config"""
+        """Migrate from old config.json to new split config."""
         print("🔄 Migrating old config.json to new format...")
         
         try:
@@ -228,8 +243,15 @@ class Config:
             raise
     
     def _convert_old_roles(self, old_roles: dict) -> dict:
-        """Convert old role ID-based permissions to default role names"""
-        # Owner gets every single command key known to the system
+        """
+        Convert old role ID-based permissions to default role names.
+
+        Args:
+            old_roles (dict): The old roles dictionary.
+
+        Returns:
+            dict: The new permissions dictionary.
+        """
         return {
             "Owner": [
                 "cmd", "sync", "bot_restart", "start", "stop", "restart",
@@ -257,7 +279,7 @@ class Config:
         }
     
     def _create_default_configs(self):
-        """Create default config files"""
+        """Create default config files if they don't exist."""
         user_cfg = {
             "java_ram_min": "2G",
             "java_ram_max": "4G",
@@ -292,19 +314,37 @@ class Config:
              print("👻 Simulation Mode: Skipping default config creation")
 
     def set_simulation_mode(self, enabled: bool):
-        """Enable/disable simulation/ghost mode"""
+        """
+        Enable/disable simulation/ghost mode.
+
+        Args:
+            enabled (bool): Whether simulation mode should be enabled.
+        """
         self.dry_run = enabled
         if enabled:
             from src.logger import logger
             logger.info("👻 SIMULATION MODE ENABLED - No files will be written")
 
     def override_channel_ids(self, command_id: int, log_id: int, debug_id: int):
+        """
+        Override the default channel IDs.
+
+        Args:
+            command_id (int): The ID for the command channel.
+            log_id (int): The ID for the log channel.
+            debug_id (int): The ID for the debug channel.
+        """
         self.COMMAND_CHANNEL_ID = command_id
         self.LOG_CHANNEL_ID = log_id
         self.DEBUG_CHANNEL_ID = debug_id
 
     def update_dynamic_config(self, updates: dict):
-        """Update memory config with dynamically found IDs"""
+        """
+        Update memory config with dynamically found IDs.
+
+        Args:
+            updates (dict): A dictionary of updates to apply.
+        """
         for key, value in updates.items():
             attr_name = key.upper()
             if hasattr(self, attr_name):
@@ -313,7 +353,12 @@ class Config:
                 self.INSTALLED_VERSION = value
 
     def load_bot_config(self) -> dict:
-        """Load the bot configuration with file locking."""
+        """
+        Load the bot configuration with file locking.
+
+        Returns:
+            dict: The loaded bot configuration.
+        """
         lock = FileLock(self.BOT_CONFIG_FILE + ".lock")
         with lock:
             if not os.path.exists(self.BOT_CONFIG_FILE):
@@ -322,7 +367,12 @@ class Config:
                 return json.load(f)
 
     def save_bot_config(self, data: dict):
-        """Save the bot configuration with file locking."""
+        """
+        Save the bot configuration with file locking.
+
+        Args:
+            data (dict): The configuration data to save.
+        """
         lock = FileLock(self.BOT_CONFIG_FILE + ".lock")
         os.makedirs(os.path.dirname(self.BOT_CONFIG_FILE), exist_ok=True)
         with lock:
@@ -330,7 +380,12 @@ class Config:
                 json.dump(data, f, indent='\t')
 
     def load_user_config(self) -> dict:
-        """Load user preferences with file locking."""
+        """
+        Load user preferences with file locking.
+
+        Returns:
+            dict: The loaded user configuration.
+        """
         lock = FileLock(self.USER_CONFIG_FILE + ".lock")
         with lock:
             if not os.path.exists(self.USER_CONFIG_FILE):
@@ -339,15 +394,25 @@ class Config:
                 return json.load(f)
 
     def save_user_config(self, data: dict):
-        """Save user preferences with file locking."""
+        """
+        Save user preferences with file locking.
+
+        Args:
+            data (dict): The user preferences to save.
+        """
         lock = FileLock(self.USER_CONFIG_FILE + ".lock")
         os.makedirs(os.path.dirname(self.USER_CONFIG_FILE), exist_ok=True)
         with lock:
             with open(self.USER_CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent='\t')
     
-    def resolve_role_permissions(self, guild):
-        """Resolve role names to IDs for permission checking"""
+    def resolve_role_permissions(self, guild: discord.Guild):
+        """
+        Resolve role names to IDs for permission checking.
+
+        Args:
+            guild (discord.Guild): The guild to resolve roles for.
+        """
         self.ROLES = {}
         
         for role_name, commands in self.ROLE_PERMISSIONS.items():
@@ -370,6 +435,9 @@ class Config:
         Args:
             key (str): The config key to look up (e.g., "RCON_PORT").
             default (Any): Value to return if key is not found.
+
+        Returns:
+            Any: The configuration value or the default if not found.
         """
         # Try to find attribute directly
         if hasattr(self, key.upper()):
@@ -382,7 +450,12 @@ class Config:
 
     @property
     def WORLD_FOLDER(self) -> str:
-        """Read level-name from server.properties; fall back to 'world'."""
+        """
+        Read level-name from server.properties; fall back to 'world'.
+
+        Returns:
+            str: The name of the world folder.
+        """
         props_path = os.path.join(self.SERVER_DIR, "server.properties")
         try:
             with open(props_path, "r") as f:
@@ -393,8 +466,13 @@ class Config:
                         return value if value else "world"
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            try:
+                from src.logger import logger
+                logger.error(f"Error reading server.properties: {e}")
+            except ImportError:
+                print(f"Error reading server.properties: {e}")
         return "world"
+
 
 config = Config()

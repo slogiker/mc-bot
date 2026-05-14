@@ -20,6 +20,7 @@ class Info(commands.Cog):
     @app_commands.command(name="status", description="Show Minecraft server status")
     @has_role("status")
     async def status(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         try:
             embed = discord.Embed(title="Minecraft Server Status")
             if self.bot.server.is_running():
@@ -39,40 +40,41 @@ class Info(commands.Cog):
             
             from datetime import datetime
             embed.set_footer(text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed)
         except Exception as e:
             from src.logger import logger
             logger.error(f"Error in status command: {e}", exc_info=True)
             try:
-                await interaction.response.send_message("❌ Failed to get server status.", ephemeral=True)
-            except:
-                pass
+                await interaction.followup.send("❌ Failed to get server status.")
+            except Exception as send_error:
+                logger.debug(f"Failed to send status error message: {send_error}")
 
     @app_commands.command(name="players", description="List online players")
     @has_role("players")
     async def players(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         try:
             if not self.bot.server.is_running():
                 embed = discord.Embed(description="🔴 Server is offline.", color=0xED4245)
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed)
                 return
             
             try:
                 res = await rcon_cmd("list")
                 embed = discord.Embed(title="Online Players", description=f"```{res}```", color=0x5865F2)
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed)
             except Exception as e:
                 from src.logger import logger
                 logger.error(f"Failed to get player list: {e}")
                 embed = discord.Embed(description="❌ Failed to get player list.", color=0xED4245)
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed)
         except Exception as e:
             from src.logger import logger
             logger.error(f"Error in players command: {e}", exc_info=True)
             try:
-                await interaction.response.send_message("❌ Failed to get players.", ephemeral=True)
-            except:
-                pass
+                await interaction.followup.send("❌ Failed to get players.")
+            except Exception as send_error:
+                logger.debug(f"Failed to send players error message: {send_error}")
 
     @app_commands.command(name="version", description="Show server version")
     @has_role("version")
@@ -86,33 +88,34 @@ class Info(commands.Cog):
             logger.error(f"Error in version command: {e}", exc_info=True)
             try:
                 await interaction.response.send_message("❌ Failed to get server version.", ephemeral=True)
-            except:
-                pass
+            except Exception as send_error:
+                logger.debug(f"Failed to send version error message: {send_error}")
 
     @app_commands.command(name="seed", description="Displays the server seed")
     @has_role("seed")
     async def seed(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         try:
             # Try to read from server.properties first (works offline)
             seed = self.info_manager._get_seed()
             
             if seed and seed != 'Random/Hidden':
-                await interaction.response.send_message(f"🌱 Seed: {seed}", ephemeral=True)
+                await interaction.followup.send(f"🌱 Seed: {seed}")
                 return
             
             # Fallback to RCON if server is running
             if self.bot.server.is_running():
                 try:
                     seed_val = await rcon_cmd("seed")
-                    await interaction.response.send_message(f"🌱 {seed_val}", ephemeral=True)
+                    await interaction.followup.send(f"🌱 {seed_val}")
                     return
-                except:
-                    pass
+                except Exception as rcon_error:
+                    logger.debug(f"Seed RCON fallback failed: {rcon_error}")
             
-            await interaction.response.send_message("🌱 Seed: Random/Hidden (not set in server.properties)", ephemeral=True)
+            await interaction.followup.send("🌱 Seed: Random/Hidden (not set in server.properties)")
 
         except Exception as e:
-            await interaction.response.send_message(f"❌ Failed to get seed: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to get seed: {e}")
 
     @app_commands.command(name="mods", description="Lists installed mods")
     @has_role("mods")
@@ -138,8 +141,8 @@ class Info(commands.Cog):
             logger.error(f"Error in mods command: {e}", exc_info=True)
             try:
                 await interaction.response.send_message("❌ Failed to get mods list.", ephemeral=True)
-            except:
-                pass
+            except Exception as send_error:
+                logger.debug(f"Failed to send mods error message: {send_error}")
 
     @app_commands.command(name="info", description="Displays server information (updated)")
     @has_role("server_info")
@@ -184,8 +187,8 @@ class Info(commands.Cog):
             try:
                 disk = psutil.disk_usage(server_path)
                 embed.add_field(name="Disk Usage", value=f"{disk.percent}% ({disk.free // 1024**3}GB free)", inline=True)
-            except:
-                pass
+            except Exception as disk_error:
+                logger.debug(f"Failed to get disk usage: {disk_error}")
 
             if self.bot.server.is_running():
                 embed.add_field(name="Status", value="🟢 Online", inline=True)
