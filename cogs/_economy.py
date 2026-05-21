@@ -64,13 +64,13 @@ class EconomyCog(commands.Cog):
         
         # Announce
         msg = f"Word Hunt! First to type '{self.current_word}' wins 100 coins!"
-        await rcon_cmd(f'tellraw @a {{"text":"[Bot] {msg}","color":"gold","bold":true}}')
+        _, _ = await rcon_cmd(f'tellraw @a {{"text":"[Bot] {msg}","color":"gold","bold":true}}')
         
         # Monitor chat logs for winner
         try:
             await asyncio.wait_for(self.monitor_chat_for_word(), timeout=60)
         except asyncio.TimeoutError:
-            await rcon_cmd('tellraw @a {"text":"[Bot] Word Hunt ended! No one typed it in time.","color":"red"}')
+            _, _ = await rcon_cmd('tellraw @a {"text":"[Bot] Word Hunt ended! No one typed it in time.","color":"red"}')
         finally:
             self.word_hunt_active = False
             self.current_word = None
@@ -127,13 +127,17 @@ class EconomyCog(commands.Cog):
                 break
         
         if user_id:
-            async with self.economy_lock:
-                economy[user_id] = economy.get(user_id, 0) + reward
-                bot_config['economy'] = economy
-                config.save_bot_config(bot_config)
-            await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won the Word Hunt and got {reward} coins!","color":"green"}}')
+            try:
+                with config.update_bot_config() as bot_cfg:
+                    economy = bot_cfg.get('economy', {})
+                    economy[user_id] = economy.get(user_id, 0) + reward
+                    bot_cfg['economy'] = economy
+            except Exception as e:
+                logger.error(f"Failed to update economy: {e}")
+
+            _, _ = await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won the Word Hunt and got {reward} coins!","color":"green"}}')
         else:
-            await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won, but is not linked to Discord! No coins awarded.","color":"yellow"}}')
+            _, _ = await rcon_cmd(f'tellraw @a {{"text":"[Bot] {player_name} won, but is not linked to Discord! No coins awarded.","color":"yellow"}}')
             logger.warning(f"Word Hunt winner {player_name} has no Discord mapping.")
 
     # --- ECONOMY DISABLED ---

@@ -74,7 +74,7 @@ class AutomationCog(commands.Cog):
                         for trigger_phrase, response_cmd in triggers.items():
                             if trigger_phrase.lower() in lower_line:
                                 logger.info(f"Trigger fired: '{trigger_phrase}' -> '{response_cmd}'")
-                                await rcon_cmd(response_cmd)
+                                _, _ = await rcon_cmd(response_cmd)
                                 
                     except asyncio.TimeoutError:
                         continue
@@ -95,14 +95,15 @@ class AutomationCog(commands.Cog):
     @has_role("trigger_admin")
     async def trigger_add(self, interaction: discord.Interaction, phrase: str, command: str):
         await interaction.response.defer(ephemeral=True)
-        user_config = config.load_user_config()
-        triggers = user_config.get('triggers', {})
-        triggers[phrase] = command
-        user_config['triggers'] = triggers
-        
-        config.save_user_config(user_config)
-        
-        await interaction.followup.send(f"Added trigger: `{phrase}` -> `{command}`")
+        try:
+            with config.update_user_config() as user_config:
+                triggers = user_config.get('triggers', {})
+                triggers[phrase] = command
+                user_config['triggers'] = triggers
+            
+            await interaction.followup.send(f"Added trigger: `{phrase}` -> `{command}`")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to add trigger: {e}")
 
     @app_commands.command(name="trigger_list", description="List custom triggers")
     @has_role("trigger_list")
@@ -124,15 +125,21 @@ class AutomationCog(commands.Cog):
     @has_role("trigger_admin")
     async def trigger_remove(self, interaction: discord.Interaction, phrase: str):
         await interaction.response.defer(ephemeral=True)
-        user_config = config.load_user_config()
-        triggers = user_config.get('triggers', {})
-        
-        if phrase in triggers:
-            del triggers[phrase]
-            config.save_user_config(user_config)
-            await interaction.followup.send(f"Removed trigger: `{phrase}`")
-        else:
-            await interaction.followup.send("Trigger not found.")
+        try:
+            with config.update_user_config() as user_config:
+                triggers = user_config.get('triggers', {})
+                if phrase in triggers:
+                    del triggers[phrase]
+                    success = True
+                else:
+                    success = False
+            
+            if success:
+                await interaction.followup.send(f"Removed trigger: `{phrase}`")
+            else:
+                await interaction.followup.send("Trigger not found.")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to remove trigger: {e}")
 
 async def setup(bot):
     await bot.add_cog(AutomationCog(bot))

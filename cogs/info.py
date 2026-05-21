@@ -26,7 +26,7 @@ class Info(commands.Cog):
             if self.bot.server.is_running():
                 embed.color = 0x57F287 # Green
                 try:
-                    players_response = await rcon_cmd("list")
+                    success, players_response = await rcon_cmd("list")
                     embed.add_field(name="Status", value="🟢 **Online**", inline=False)
                     embed.add_field(name="Players", value=f"```{players_response}```", inline=False)
                 except Exception as e:
@@ -60,7 +60,7 @@ class Info(commands.Cog):
                 return
             
             try:
-                res = await rcon_cmd("list")
+                success, res = await rcon_cmd("list")
                 embed = discord.Embed(title="Online Players", description=f"```{res}```", color=0x5865F2)
                 await interaction.followup.send(embed=embed)
             except Exception as e:
@@ -106,7 +106,7 @@ class Info(commands.Cog):
             # Fallback to RCON if server is running
             if self.bot.server.is_running():
                 try:
-                    seed_val = await rcon_cmd("seed")
+                    success, seed_val = await rcon_cmd("seed")
                     await interaction.followup.send(f"🌱 {seed_val}")
                     return
                 except Exception as rcon_error:
@@ -207,19 +207,19 @@ class Info(commands.Cog):
                 try:
                     # Attempt Paper/Forge direct TPS fetch
                     try:
-                         tps_raw = await rcon_cmd("tps")
+                         success_tps, tps_raw = await rcon_cmd("tps")
                          # Usually returns "TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0"
-                         if "TPS from last" in tps_raw:
+                         if success_tps and "TPS from last" in tps_raw:
                              tps = tps_raw.split(":")[-1].strip().split(",")[0].strip()
                          else:
                              raise ValueError("Not a valid TPS string")
                     except Exception:
                          # Vanilla Fallback: Use debug start/stop to infer TPS
-                         await rcon_cmd("debug start")
+                         _, _ = await rcon_cmd("debug start")
                          await asyncio.sleep(1.0) # wait exactly 1 second
-                         debug_raw = await rcon_cmd("debug stop")
+                         success_debug, debug_raw = await rcon_cmd("debug stop")
                          
-                         if "Stopped tick profiling after" in debug_raw:
+                         if success_debug and "Stopped tick profiling after" in debug_raw:
                              # Sample: "Stopped tick profiling after 1 seconds and 20 ticks (20.00 ticks per second)"
                              match = re.search(r'\(([\d.]+)\s+ticks per second\)', debug_raw)
                              if match:
@@ -235,9 +235,9 @@ class Info(commands.Cog):
                 embed.add_field(name="TPS", value=tps, inline=True)
 
                 try:
-                    players_raw = await rcon_cmd("list")
+                    success_list, players_raw = await rcon_cmd("list")
                     
-                    if "players online:" in players_raw:
+                    if success_list and "players online:" in players_raw:
                         parts = players_raw.split("players online:")
                         counts_str = parts[0]
                         

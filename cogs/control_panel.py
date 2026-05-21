@@ -71,7 +71,7 @@ class ControlPanelView(ui.View):
             if self.bot.server.is_running():
                 embed.color = 0x57F287
                 try:
-                    players_response = await rcon_cmd("list")
+                    success, players_response = await rcon_cmd("list")
                     embed.add_field(name="Status", value="🟢 **Online**", inline=False)
                     embed.add_field(name="Players", value=f"```{players_response}```", inline=False)
                 except Exception as e:

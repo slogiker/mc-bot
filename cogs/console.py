@@ -75,7 +75,7 @@ class ConsoleCog(commands.Cog):
         if player_tracker:
             await player_tracker.send_event_notification("command", interaction.user.name, f"executed RCON command: `{command}`")
 
-        response = await rcon_cmd(command)
+        success, response = await rcon_cmd(command)
 
         if len(response) > 1900:
             chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]

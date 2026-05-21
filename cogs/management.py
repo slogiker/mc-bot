@@ -100,10 +100,14 @@ class Management(commands.Cog):
                 color=0xED4245
             )
             # Clear player list — stop doesn't fire individual "left the game" events
-            bot_cfg = config.load_bot_config()
-            if bot_cfg.get('online_players'):
-                bot_cfg['online_players'] = []
-                config.save_bot_config(bot_cfg)
+            try:
+                with config.update_bot_config() as bot_cfg:
+                    if bot_cfg.get('online_players'):
+                        bot_cfg['online_players'] = []
+            except Exception as e:
+                from src.logger import logger
+                logger.error(f"Failed to clear online players in stop: {e}")
+
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
@@ -150,10 +154,14 @@ class Management(commands.Cog):
                 color=0x57F287
             )
             # Clear player list — restart doesn't fire individual "left the game" events immediately
-            bot_cfg = config.load_bot_config()
-            if bot_cfg.get('online_players'):
-                bot_cfg['online_players'] = []
-                config.save_bot_config(bot_cfg)
+            try:
+                with config.update_bot_config() as bot_cfg:
+                    if bot_cfg.get('online_players'):
+                        bot_cfg['online_players'] = []
+            except Exception as e:
+                from src.logger import logger
+                logger.error(f"Failed to clear online players in restart: {e}")
+
             # Update info channel
             from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)

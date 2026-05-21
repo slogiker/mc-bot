@@ -406,6 +406,55 @@ class Config:
             with open(self.USER_CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent='\t')
     
+    from contextlib import contextmanager
+
+    @contextmanager
+    def update_bot_config(self):
+        """
+        Context manager for atomic updates to bot_config.json.
+        Holds a file lock throughout the modification process.
+        """
+        lock = FileLock(self.BOT_CONFIG_FILE + ".lock")
+        with lock:
+            if not os.path.exists(self.BOT_CONFIG_FILE):
+                data = {}
+            else:
+                with open(self.BOT_CONFIG_FILE, 'r') as f:
+                    data = json.load(f)
+            
+            yield data
+            
+            with open(self.BOT_CONFIG_FILE, 'w') as f:
+                json.dump(data, f, indent='\t')
+
+    @contextmanager
+    def update_user_config(self):
+        """
+        Context manager for atomic updates to user_config.json.
+        Holds a file lock throughout the modification process.
+        """
+        lock = FileLock(self.USER_CONFIG_FILE + ".lock")
+        with lock:
+            if not os.path.exists(self.USER_CONFIG_FILE):
+                data = {}
+            else:
+                with open(self.USER_CONFIG_FILE, 'r') as f:
+                    data = json.load(f)
+            
+            yield data
+            
+            # Re-validate before saving
+            valid, errors = validate_user_config(data)
+            if not valid:
+                error_msg = "❌ Invalid user_config.json modification:\n" + "\n".join(f"  - {e}" for e in errors)
+                raise ValueError(error_msg)
+
+            with open(self.USER_CONFIG_FILE, 'w') as f:
+                json.dump(data, f, indent='\t')
+            
+            # Refresh memory config
+            self.load()
+
     def resolve_role_permissions(self, guild: discord.Guild):
         """
         Resolve role names to IDs for permission checking.

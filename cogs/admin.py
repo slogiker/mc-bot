@@ -49,8 +49,8 @@ class Admin(commands.Cog):
         try:
             await interaction.response.defer(ephemeral=True)
             try:
-                res = await rcon_cmd(f"whitelist add {username}")
-                await rcon_cmd("whitelist reload")
+                success, res = await rcon_cmd(f"whitelist add {username}")
+                _, _ = await rcon_cmd("whitelist reload")
                 await interaction.followup.send(f"➕ {res}", ephemeral=True)
             except Exception as rcon_error:
                 logger.error(f"RCON error in whitelist_add: {rcon_error}")
@@ -61,6 +61,19 @@ class Admin(commands.Cog):
                 await interaction.followup.send(f"❌ Command failed: {e}", ephemeral=True)
             except discord.HTTPException:
                 pass
+
+    @app_commands.command(name="reload_config", description="Reload configuration from disk")
+    @has_role("reload_config")
+    async def reload_config(self, interaction: discord.Interaction):
+        try:
+            await interaction.response.defer(ephemeral=True)
+            config.load()
+            if interaction.guild:
+                config.resolve_role_permissions(interaction.guild)
+            await interaction.followup.send("✅ Configuration reloaded from disk!", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to reload config: {e}")
+            await interaction.followup.send(f"❌ Failed to reload config: {e}", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Admin(bot))

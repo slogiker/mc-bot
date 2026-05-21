@@ -34,6 +34,8 @@
 - `/backup_download <filename>` - Send a backup as a direct Discord file attachment. Supports autocomplete — type to filter backup names.
 - `/logs [lines]` - Retrieve the last N lines of the server log.
 - `/whitelist_add <player>` - Add a player to the whitelist.
+- `/players_manage` - Interactive GUI to manage Bans, Whitelists, and Ops. Admin only.
+- `/reload_config` - Hot-reload configuration from disk to memory. Admin only.
 
 ### Events
 
@@ -43,7 +45,6 @@
 
 ### Automation
 
-- `/motd <text>` - Set the server MOTD via RCON (requires Essentials plugin).
 - `/trigger_add <phrase> <command>` - Add a keyword→RCON command trigger.
 - `/trigger_list` - Show all configured triggers.
 - `/trigger_remove <phrase>` - Remove a trigger.

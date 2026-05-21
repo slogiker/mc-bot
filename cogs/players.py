@@ -48,14 +48,14 @@ class PlayerManageSelect(discord.ui.Select):
             success_msg = f"🔻 Deopped `{target}`"
 
         await interaction.response.defer(ephemeral=True)
-        resp = await rcon_cmd(cmd)
+        success, resp = await rcon_cmd(cmd)
         
-        if "Unknown command" in resp or "Error" in resp:
+        if not success or "Unknown command" in resp or "Error" in resp:
              await interaction.followup.send(f"⚠️ RCON responded with an error:\n`{resp}`", ephemeral=True)
         else:
              # Reload whitelist/ops if needed
              if "whitelist" in cmd:
-                 await rcon_cmd("whitelist reload")
+                 _, _ = await rcon_cmd("whitelist reload")
              await interaction.followup.send(f"{success_msg}\n*RCON:* `{resp}`", ephemeral=True)
              await send_debug(interaction.client, f"Player Manager: {interaction.user} executed '{cmd}'")
 
@@ -124,10 +124,10 @@ class ManualEntryModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         cmd = self.cmd_template.replace("{target}", self.target_name.value)
         await interaction.response.defer(ephemeral=True)
-        resp = await rcon_cmd(cmd)
+        success, resp = await rcon_cmd(cmd)
         
         if "whitelist" in cmd:
-             await rcon_cmd("whitelist reload")
+             _, _ = await rcon_cmd("whitelist reload")
              
         await interaction.followup.send(f"Executed: `{cmd}`\n*RCON:* `{resp}`", ephemeral=True)
         await send_debug(interaction.client, f"Player Manager: {interaction.user} executed '{cmd}'")

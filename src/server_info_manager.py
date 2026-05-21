@@ -133,7 +133,7 @@ class ServerInfoManager:
         try:
             if self.bot.server.is_running():
                 from src.utils import rcon_cmd
-                response = await rcon_cmd("seed")
+                success, response = await rcon_cmd("seed")
                 match = re.search(r'Seed: \[(-?\d+)\]', response)
                 if match:
                     _cached_seed = match.group(1)
@@ -203,10 +203,8 @@ class ServerInfoManager:
         config.update_dynamic_config(updates)
         
         try:
-            # Update config synchronously to avoid async race condition when threading
-            c = config.load_bot_config()
-            c.update(updates)
-            config.save_bot_config(c)
+            with config.update_bot_config() as data:
+                data.update(updates)
             
             # Trigger update
             await self.update_info()

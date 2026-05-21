@@ -65,8 +65,11 @@ class BackupCog(commands.Cog):
                     
                     if success:
                         # Update last run
-                        bot_config['last_auto_backup'] = today_str
-                        config.save_bot_config(bot_config)
+                        try:
+                            with config.update_bot_config() as bot_cfg:
+                                bot_cfg['last_auto_backup'] = today_str
+                        except Exception as cfg_error:
+                            logger.error(f"Failed to update last_auto_backup: {cfg_error}")
                         
                         if cmd_channel:
                             await cmd_channel.send(f"✅ Scheduled backup created: `{filename}`")

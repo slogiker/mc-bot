@@ -3,14 +3,18 @@
 
 FROM python:3.11-slim
 
+LABEL maintainer="Marjan Ceh"
+LABEL description="Minecraft Discord Bot with Java 21 and Playit.gg"
+
 # Create directory for man pages (required for openjdk in slim images)
 RUN mkdir -p /usr/share/man/man1
 
 # Install Java 21, tmux, and curl
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-21-jre-headless \
     tmux \
     curl \
+    ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

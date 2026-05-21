@@ -60,18 +60,16 @@ class RamModal(discord.ui.Modal, title='Java RAM Configuration'):
         self.add_item(self.max_ram)
 
     async def on_submit(self, interaction: discord.Interaction):
-        user_config = config.load_user_config()
-        user_config['java_ram_min'] = self.min_ram.value
-        user_config['java_ram_max'] = self.max_ram.value
-        
-        # Save to disk
-        config.save_user_config(user_config)
-        # Apply to running memory
-        config.JAVA_XMS = self.min_ram.value
-        config.JAVA_XMX = self.max_ram.value
-        
-        await interaction.response.send_message(f"✅ RAM settings updated. Min: `{self.min_ram.value}`, Max: `{self.max_ram.value}`.\n*These changes will apply the next time the Minecraft server starts.*", ephemeral=True)
-        await send_debug(interaction.client, f"Settings updated by {interaction.user}: RAM Min={self.min_ram.value}, Max={self.max_ram.value}")
+        try:
+            with config.update_user_config() as user_config:
+                user_config['java_ram_min'] = self.min_ram.value
+                user_config['java_ram_max'] = self.max_ram.value
+            
+            await interaction.response.send_message(f"✅ RAM settings updated. Min: `{self.min_ram.value}`, Max: `{self.max_ram.value}`.\n*These changes will apply the next time the Minecraft server starts.*", ephemeral=True)
+            await send_debug(interaction.client, f"Settings updated by {interaction.user}: RAM Min={self.min_ram.value}, Max={self.max_ram.value}")
+        except Exception as e:
+            logger.error(f"Failed to update RAM settings: {e}")
+            await interaction.response.send_message(f"❌ Failed to update settings: {e}", ephemeral=True)
 
 class ScheduleModal(discord.ui.Modal, title='Schedule Configuration'):
     def __init__(self):
@@ -119,22 +117,19 @@ class ScheduleModal(discord.ui.Modal, title='Schedule Configuration'):
             await interaction.response.send_message("❌ Retention days must be a number.", ephemeral=True)
             return
 
-        user_config = config.load_user_config()
-        user_config['backup_time'] = self.backup_time.value
-        user_config['restart_time'] = self.restart_time.value
-        user_config['backup_keep_days'] = retention_days
-        
-        # Save to disk
-        config.save_user_config(user_config)
-        # Apply to running memory
-        config.BACKUP_TIME = self.backup_time.value
-        config.RESTART_TIME = self.restart_time.value
-        config.BACKUP_RETENTION_DAYS = retention_days
-        
-        await interaction.response.send_message(
-            f"✅ Schedules updated.\nBackup: `{self.backup_time.value}`\nRestart: `{self.restart_time.value}`\nRetention: `{retention_days} days`.\n"
-            f"*Restart the bot to apply the new schedule times.*", ephemeral=True)
-        await send_debug(interaction.client, f"Settings updated by {interaction.user}: Backup={self.backup_time.value}, Restart={self.restart_time.value}")
+        try:
+            with config.update_user_config() as user_config:
+                user_config['backup_time'] = self.backup_time.value
+                user_config['restart_time'] = self.restart_time.value
+                user_config['backup_keep_days'] = retention_days
+            
+            await interaction.response.send_message(
+                f"✅ Schedules updated.\nBackup: `{self.backup_time.value}`\nRestart: `{self.restart_time.value}`\nRetention: `{retention_days} days`.\n"
+                f"*Restart the bot to apply the new schedule times.*", ephemeral=True)
+            await send_debug(interaction.client, f"Settings updated by {interaction.user}: Backup={self.backup_time.value}, Restart={self.restart_time.value}")
+        except Exception as e:
+            logger.error(f"Failed to update schedules: {e}")
+            await interaction.response.send_message(f"❌ Failed to update settings: {e}", ephemeral=True)
 
 class TimezoneModal(discord.ui.Modal, title='Timezone Configuration'):
     def __init__(self):
@@ -159,25 +154,15 @@ class TimezoneModal(discord.ui.Modal, title='Timezone Configuration'):
              await interaction.response.send_message(f"❌ Invalid timezone: `{tz_val}`. Must be a valid IANA timezone name or 'auto'.", ephemeral=True)
              return
 
-        user_config = config.load_user_config()
-        user_config['timezone'] = tz_val
-        
-        # Save to disk
-        config.save_user_config(user_config)
-        
-        # Apply to running memory (if auto, config.py resolves it on load, but we'll re-resolve it here)
-        if tz_val.lower() == 'auto':
-            try:
-                import urllib.request
-                with urllib.request.urlopen("http://ip-api.com/json/", timeout=3) as response:
-                    config.TIMEZONE = json.loads(response.read().decode()).get('timezone', 'UTC')
-            except:
-                config.TIMEZONE = 'UTC'
-        else:
-            config.TIMEZONE = tz_val
+        try:
+            with config.update_user_config() as user_config:
+                user_config['timezone'] = tz_val
             
-        await interaction.response.send_message(f"✅ Timezone updated to: `{config.TIMEZONE}` (Input: `{tz_val}`).", ephemeral=True)
-        await send_debug(interaction.client, f"Settings updated by {interaction.user}: Timezone={tz_val}")
+            await interaction.response.send_message(f"✅ Timezone updated to: `{config.TIMEZONE}` (Input: `{tz_val}`).", ephemeral=True)
+            await send_debug(interaction.client, f"Settings updated by {interaction.user}: Timezone={tz_val}")
+        except Exception as e:
+            logger.error(f"Failed to update timezone: {e}")
+            await interaction.response.send_message(f"❌ Failed to update settings: {e}", ephemeral=True)
 
 class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
     def __init__(self):
@@ -222,8 +207,6 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
         self.add_item(self.everyone_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        user_config = config.load_user_config()
-        
         # Clean up the comma separated lists back into python lists
         def parse_cmds(raw_str):
             return [c.strip() for c in raw_str.split(',') if c.strip()]
@@ -235,18 +218,22 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
             "@everyone": parse_cmds(self.everyone_input.value)
         }
         
-        user_config['permissions'] = new_perms
-        config.save_user_config(user_config)
-        
-        # Apply to live memory
-        config.ROLE_PERMISSIONS = new_perms
-        
-        # We need to re-resolve the guild roles to IDs
-        if interaction.guild:
-            config.resolve_role_permissions(interaction.guild)
+        try:
+            with config.update_user_config() as user_config:
+                user_config['permissions'] = new_perms
             
-        await interaction.response.send_message(f"✅ Permissions mapped and updated in memory.", ephemeral=True)
-        await send_debug(interaction.client, f"Settings updated by {interaction.user}: Role Permissions adjusted")
+            # Apply to live memory
+            config.ROLE_PERMISSIONS = new_perms
+            
+            # We need to re-resolve the guild roles to IDs
+            if interaction.guild:
+                config.resolve_role_permissions(interaction.guild)
+                
+            await interaction.response.send_message(f"✅ Permissions mapped and updated in memory.", ephemeral=True)
+            await send_debug(interaction.client, f"Settings updated by {interaction.user}: Role Permissions adjusted")
+        except Exception as e:
+            logger.error(f"Failed to update permissions: {e}")
+            await interaction.response.send_message(f"❌ Failed to update settings: {e}", ephemeral=True)
 
 class SettingsCog(commands.Cog):
     def __init__(self, bot):

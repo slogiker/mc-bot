@@ -832,8 +832,8 @@ class SetupView(ui.View):
                 from src.utils import rcon_cmd
                 for attempt in range(30):  # Up to 60 seconds (30 * 2s)
                     try:
-                        response = await rcon_cmd("list")
-                        if response and "players" in response.lower():
+                        success, response = await rcon_cmd("list")
+                        if success and "players" in response.lower():
                             server_ready = True
                             break
                     except Exception:
@@ -900,7 +900,10 @@ class SetupView(ui.View):
     async def _save_config_to_file(self, updates: dict):
         """Save configuration updates to bot_config.json file"""
         try:
-            await asyncio.to_thread(config.save_bot_config, config.load_bot_config() | updates)
+            def update():
+                with config.update_bot_config() as data:
+                    data.update(updates)
+            await asyncio.to_thread(update)
             logger.info("data/bot_config.json updated successfully")
         except Exception as e:
             logger.error(f"Failed to update data/bot_config.json: {e}")

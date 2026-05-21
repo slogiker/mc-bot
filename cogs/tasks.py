@@ -1,18 +1,23 @@
 import discord
 from discord.ext import commands, tasks
 import asyncio
+import asyncio.subprocess
 import os
-import re
-import subprocess
 from src.config import config
 from src.logger import logger
 from src.utils import send_debug, rcon_cmd
 
 class Tasks(commands.Cog):
     def __init__(self, bot):
+        """
+        Initializes the Tasks cog.
+
+        Args:
+            bot: The bot instance.
+        """
         self.bot = bot
-        self.restart_attempts = 0
-        self.playit_restart_attempts = 0
+        self.restart_attempts = 0 # Counter for Minecraft server restart failures
+        self.playit_restart_attempts = 0 # Counter for Playit tunnel restart failures
         # DON'T start tasks here - wait for bot to be ready
 
     @commands.Cog.listener()
@@ -36,14 +41,80 @@ class Tasks(commands.Cog):
             logger.info("Starting crash_check task...")
             self.crash_check.start()
         
-        # daily_backup is handled by backup.py cog scheduling
-        # Uncomment when ready:
-        # if not self.daily_backup.is_running():
-        #     self.daily_backup.start()
+        
 
     def cog_unload(self):
         """Cancel tasks when cog is unloaded"""
         self.crash_check.cancel()
+
+    async def _handle_server_crash(self):
+        """Handles logic for detecting and recovering from Minecraft server crashes."""
+        # Guard: no server.jar means /setup hasn't been run yet — nothing to restart
+        if not os.path.exists(os.path.join(config.SERVER_DIR, config.SERVER_JAR)):
+            logger.debug("Server not running and no server.jar found — setup not complete, skipping crash recovery.")
+            return
+
+        # Clear stale player list — crash means no "left the game" messages were fired
+        bot_config = config.load_bot_config()
+        if bot_config.get('online_players'):
+            bot_config['online_players'] = []
+            config.save_bot_config(bot_config)
+
+        # specific check to ensure we update status if it crashed
+        if self.bot.status != discord.Status.dnd:
+            await self.bot.change_presence(
+                activity=discord.Activity(type=discord.ActivityType.playing, name="Server Offline"),
+                status=discord.Status.dnd
+            )
+        
+        if self.restart_attempts == 2:
+            logger.error("Server failed to restart twice. Stopping crash loop.")
+            cmd_channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID) if config.COMMAND_CHANNEL_ID else None
+            owner_id = config.OWNER_ID
+            if cmd_channel and owner_id:
+                # Fetch recent logs to determine crash reason
+                from src.log_dispatcher import log_dispatcher
+                recent_logs = log_dispatcher.get_recent_logs()
+                
+                crash_reason = ""
+                # Scan backwards for the first identifiable crash reason
+                for line in reversed(recent_logs):
+                    if "OutOfMemoryError" in line:
+                        crash_reason = "🚨 **Reason:** The server ran out of RAM (`OutOfMemoryError`). Please increase your maximum RAM via `/settings`."
+                        break
+                    elif "Killed" in line or "killed by signal" in line:
+                        crash_reason = "🚨 **Reason:** The server process was forcefully killed by the host OS (likely OOM killer)."
+                        break
+                        
+                if not crash_reason and recent_logs:
+                    # If no specific error, provide the last 5 lines for context
+                    last_few = "\n".join(recent_logs[-5:])
+                    crash_reason = f"**Last 5 Log Lines:**\n```\n{last_few}\n```"
+                    
+                msg = f"<@{owner_id}> 🚨 The server has crashed and failed to auto-restart completely. The crash loop has been aborted. Check `/logs`.\n\n{crash_reason}"
+                await cmd_channel.send(msg)
+                        
+            # Stop checking
+            self.bot.server._intentional_stop = True
+            if hasattr(self.bot.server, '_save_state'):
+                await self.bot.server._save_state()
+                        
+            self.restart_attempts += 1
+            return
+        elif self.restart_attempts > 2:
+            self.bot.server._intentional_stop = True
+            return
+        
+        logger.warning("Server process not found and not intentionally stopped. Attempting restart...")
+        await send_debug(self.bot, "Server process not found -- attempting restart...")
+        self.restart_attempts += 1
+        
+        success, _ = await self.bot.server.start()
+        if success:
+            await send_debug(self.bot, "Auto-restarted after failure.")
+            self.restart_attempts = 0
+        else:
+            await send_debug(self.bot, f"Restart attempt {self.restart_attempts} failed.")
 
     @tasks.loop(seconds=config.CRASH_CHECK_INTERVAL)
     async def crash_check(self):

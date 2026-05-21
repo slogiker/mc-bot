@@ -42,9 +42,15 @@ class BackupManager:
         if server and server.is_running():
             from src.utils import rcon_cmd
             logger.info("Server is running, disabling auto-save for backup...")
-            await rcon_cmd("save-off")
-            await rcon_cmd("save-all")
-            save_disabled = True
+            
+            success_off, _ = await rcon_cmd("save-off")
+            success_all, _ = await rcon_cmd("save-all")
+            
+            if not success_off or not success_all:
+                logger.warning("RCON save-off or save-all failed. Backup might be inconsistent.")
+            else:
+                save_disabled = True
+            
             await asyncio.sleep(2) # Brief wait for flush
 
         try:
@@ -63,7 +69,7 @@ class BackupManager:
             if save_disabled:
                 from src.utils import rcon_cmd
                 logger.info("Re-enabling auto-save after backup.")
-                await rcon_cmd("save-on")
+                _, _ = await rcon_cmd("save-on")
 
     def _zip_world(self, dest_path):
         """Zips the world folder directly without creating a temp copy."""

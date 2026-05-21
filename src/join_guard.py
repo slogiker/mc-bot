@@ -239,7 +239,7 @@ class JoinGuard:
         clean_reason = reason.replace('\n', ' ').replace('\r', '').replace('"', '\\"')
         cmd = f'kick {clean_username} "{clean_reason}"'
         try:
-            await rcon_cmd(cmd)
+            _, _ = await rcon_cmd(cmd)
         except Exception as e:
             logger.error(f"JoinGuard failed to kick {username}: {e}")
 

@@ -2,8 +2,8 @@
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v2.8.3`  
-**Last Updated:** 2026-05-14  
+**Version:** `v2.9.0`  
+**Last Updated:** 2026-05-21  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
 
@@ -71,6 +71,7 @@ MC-Bot is a self-hosted Discord bot that manages a Minecraft Java server running
 
 - Everything runs in one Docker container (bot + MC process via `tmux` + playit via `tmux`) to keep networking simple — RCON connects to `127.0.0.1` and is never exposed to the host.
 - Config is split: `bot_config.json` is machine state (channel IDs, player lists), `user_config.json` is human preferences (RAM, schedules, role permissions).
+- **Atomic Config System:** Uses `FileLock` + Context Managers for race-condition-free Read-Modify-Write cycles.
 - Log streaming is centralized through `LogDispatcher` — one `docker logs -f` subprocess fans out to all subscribers via `asyncio.Queue`.
 - **Command Isolation:** The bot enforces slash commands to only be run in the designated `#command` channel (with ephemeral warnings for violations) to keep the main chat clean.
 - **Dynamic Presence:** The Bot's status natively reflects the Docker process (Online, Idle/Starting, Offline/DND).
@@ -95,25 +96,25 @@ mc-bot/
 │
 ├── cogs/                       # Discord command modules (loaded dynamically)
 │   ├── __init__.py
-│   ├── admin.py                # /sync, /backup_now, /logs, /whitelist_add
-│   ├── automation.py           # /motd, /trigger_* — MOTD + chat triggers
+│   ├── admin.py                # /sync, /backup_now, /reload_config, /whitelist_add
+│   ├── automation.py           # /trigger_* — chat triggers
 │   ├── backup.py               # /backup, /backup_list, /backup_download + scheduled
 │   ├── console.py              # Live log tailing → Discord, /cmd
 │   ├── control_panel.py        # Sticky interactive control panel embed
-│   ├── _economy.py             # [DISABLED] /balance, /pay, /economy_set + Word Hunt (leading underscore excludes from auto-loader)
+│   ├── _economy.py             # [DISABLED] Economy module
 │   ├── events.py               # /event_create, /event_list, /event_delete
 │   ├── help.py                 # /help — dynamic, permission-filtered
-│   ├── info.py                 # /status, /version, /seed, /info (+ uptime, TPS fallback)
-│   ├── link.py                 # /link, /unlink, /unlink_admin — offline-mode account protection
+│   ├── info.py                 # /status, /version, /seed, /info
+│   ├── link.py                 # /link, /unlink, /unlink_admin
 │   ├── management.py           # /start, /stop, /restart, /control, /bot_restart
 │   ├── mods.py                 # /mods
 │   ├── players.py              # /players
-│   ├── player_tracker.py       # Background: tracks online player list via log events
-│   ├── playit.py               # /ip — Playit.gg address fetcher via REST API
-│   ├── settings.py             # Server settings
-│   ├── setup.py                # /setup — triggers the install wizard
-│   ├── stats.py                # /stats — NBT + Mojang API player statistics
-│   └── tasks.py                # Background: crash check, log monitor, daily backup
+│   ├── player_tracker.py       # Background player tracking
+│   ├── playit.py               # /ip — Playit.gg address fetcher
+│   ├── settings.py             # Interactive /settings
+│   ├── setup.py                # /setup — install wizard
+│   ├── stats.py                # /stats — player statistics
+│   └── tasks.py                # Background tasks
 │
 ├── src/                        # Core logic (non-Discord)
 │   ├── __init__.py
@@ -141,32 +142,31 @@ mc-bot/
 │   └── views.py                # Shared generic UI views
 │
 ├── data/                       # Persistent config (mounted as volume)
-│   ├── bot_config.json         # Machine state (channel IDs, guild ID, economy, events)
-│   ├── user_config.json        # User preferences (RAM, schedule, role permissions)
-│   ├── mc_links.json           # [gitignored] Discord↔MC account linkage DB (auto-created)
-│   └── playit_secret.key       # [gitignored] Auto-generated Playit agent authentication key
+│   ├── bot_config.json         # Machine state
+│   ├── user_config.json        # User preferences
+│   ├── mc_links.json           # [gitignored] Discord↔MC account linkage DB
+│   └── playit_secret.key       # [gitignored] Playit agent authentication key
 │
 ├── docs/                       # Documentation
-│   ├── information.md          # (this file — comprehensive version + roadmap + commands)
-│   └── i18n-implementation.md  # Deferred i18n plan (JSON locale approach)
+│   ├── information.md          # (this file)
+│   ├── commands.md             # Complete command cheatsheet
+│   ├── error_codes.md          # Error lookup table (MOVED from root)
+│   ├── implementations/        # Internal design specs
+│   └── internal/               # Internal state and audit logs
+│       ├── AGENT_STATE.md
+│       └── REVIEW_NOTES.md
 │
-├── implementations/            # In-depth technical implementation specs
-│   └── offline-protection.md   # Full spec for Mascan-proof offline mode join guard
-│
-├── tests/                      # Docker-based pytest suite
-│   ├── conftest.py             # Shared fixtures (world dirs, config, mock logs)
-│   ├── test_backup.py          # BackupManager unit tests
-│   ├── test_config.py          # Config validation tests
-│   ├── test_mc_link_manager.py # MCLinkManager CRUD tests
-│   ├── test_utils.py           # Utility function tests
-│   └── test_version_fetcher.py # VersionFetcher API + fallback tests
+├── tests/                      # Unit & Integration Tests
+│   ├── infra/                  # Test infrastructure (MOVED from root)
+│   ├── conftest.py             # Shared fixtures
+│   └── test_*.py               # Pytest test files
 │
 ├── install/                    # Installation helpers
-│   ├── install.sh              # Linux/WSL installer (Docker + .env + compose up)
-│   ├── install.bat             # Windows installer (WSL2 + Docker Engine, resumable)
-│   ├── wsl_docker_setup.sh     # Called by install.bat — installs Docker Engine inside WSL
-│   ├── simulate.py             # Launches bot with --simulate flag for local testing
-│   └── update.py               # Dev rebuild script: updates from git checks and rebuilds docker
+│   ├── install.sh              # Linux/WSL installer (fixed for Playit v0.17.1)
+│   ├── install.bat             # Windows setup guide
+│   ├── .env.example            # Environment template (MOVED from root)
+│   ├── simulate.py             # Launches bot with --simulate flag
+│   └── update.py               # update script
 │
 ├── mc-server/                  # Minecraft server files (gitignored, Docker volume)
 │   ├── server.jar
@@ -180,9 +180,11 @@ mc-bot/
 │   ├── auto/                   # Scheduled backups (7-day retention)
 │   └── custom/                 # Manual backups (never auto-deleted)
 │
-└── logs/                       # Bot logs (gitignored, Docker volume)
-    ├── bot.log                 # Current log file
-    └── YYYY-MM/                # Rotated logs (auto-zipped monthly)
+└── logs/                       # Application logs (gitignored, Docker volume)
+    ├── bot.log                 # Current bot log
+    ├── playit.log              # Agent tunnel logs (NEW v2.9.0)
+    ├── install-log.txt         # Installer history (MOVED from root)
+    └── YYYY-MM/                # Rotated logs
 ```
 
 ---
@@ -257,7 +259,29 @@ ServerInterface (ABC)           src/server_interface.py
 
 `MockServerManager` mimics all operations with fake delays and no file I/O. Useful for testing Discord commands without running a real server.
 
-### 3.4 Permission System
+### 3.4 Config System & Atomicity (NEW v2.9.0)
+
+Config management now uses atomic context managers to prevent race conditions during concurrent Discord interactions:
+
+```python
+# Atomic update to user_config.json
+with config.update_user_config() as data:
+    data['some_setting'] = 'new_value'
+    # File is locked, data is re-read from disk, then written back.
+    # Memory cache is refreshed automatically after 'with' block.
+```
+
+Methods available:
+- `config.update_bot_config()`
+- `config.update_user_config()`
+
+### 3.5 RCON Communication (NEW v2.9.0)
+
+`rcon_cmd(cmd)` now returns a `tuple[bool, str]` instead of just a string.
+- `bool`: Success flag (`True` if server responded, `False` if RCON failed/timed out).
+- `str`: The server's response or an error message.
+
+### 3.6 Permission System
 
 Permissions are role-name based in `user_config.json`:
 
@@ -274,11 +298,11 @@ Permissions are role-name based in `user_config.json`:
 
 At runtime, `config.resolve_role_permissions(guild)` maps role names → IDs into `config.ROLES`. The `has_role(cmd_name)` decorator in `utils.py` checks this map first (by ID), then falls back to checking role names directly against `user_config.permissions`.
 
-### 3.5 Control Panel
+### 3.7 Control Panel
 
 `cogs/control_panel.py` maintains a single sticky embed in the `#command` channel. A `tasks.loop(minutes=2)` task refreshes it. The embed has a persistent `ControlPanelView` with buttons: Start, Stop, Restart, Status. The view is re-registered on every bot start so buttons survive restarts (`bot.add_view(ControlPanelView(bot))` in `on_ready`).
 
-### 3.6 Setup Wizard Flow
+### 3.8 Setup Wizard Flow
 
 `/setup` → `cogs/setup.py` → `src/setup_views.py (SetupView)`:
 
@@ -445,7 +469,8 @@ config.get(key, default=None)                  → safe attribute getter
 | `/setup`                    | server admin    | Full interactive multi-step install wizard. Creates channels, downloads server, fetches plugins, configures everything. |
 | `/sync`                     | `sync`          | Re-syncs slash commands to guild.                                                                                       |
 | `/settings`                 | `cmd`           | Interactive GUI to modify Bot and Server configurations (RAM, Schedules, Timezone, Permissions)                         |
-| `/backup_now [name]`        | `backup_now`    | Triggers immediate backup. Cooldown: 5min.                                                                              |
+| `/reload_config`            | `reload_config` | (NEW v2.9.0) Hot-reload configuration from disk to memory.                                                              |
+| `/backup_now [name]`        | `backup_now`    | Triggers immediate backup. Cooldown: 5min. Now uses RCON save-off/on management.                                        |
 | `/logs [lines]`             | `logs`          | Shows last N lines from `docker logs`. Sent to log channel.                                                             |
 | `/whitelist_add <username>` | `whitelist_add` | RCON `whitelist add` + `whitelist reload`.                                                                              |
 
@@ -487,7 +512,6 @@ config.get(key, default=None)                  → safe attribute getter
 
 | Command                           | Permission      | Description                                                       |
 | --------------------------------- | --------------- | ----------------------------------------------------------------- |
-| `/motd <text>`                    | open            | Sets server MOTD via RCON `setmotd` (requires Essentials plugin). |
 | `/trigger_add <phrase> <command>` | `trigger_admin` | Add a keyword→RCON command trigger.                               |
 | `/trigger_list`                   | `trigger_list`  | Show all configured triggers.                                     |
 | `/trigger_remove <phrase>`        | `trigger_admin` | Remove a trigger.                                                 |
@@ -1025,6 +1049,10 @@ Login decision tree:
 | 4   | `config.py` Silently Overwriting Simulation State | `load()` and `save_bot_config()` were locked together, overwriting `--simulate` flags. Now state resets are preserved correctly.               |
 | 5   | JSON Economy Race Condition                       | Wrapped JSON reads/writes with `asyncio.Lock` since all bot reads/writes happen sequentially in the same Thread.                               |
 | 6   | missing `OWNER_ID` population                     | Defined logic in `setup_helper.py` to identify Guild owner.                                                                                    |
+| 7   | Playit systemd dependency in Docker               | Replaced PPA installer with direct binary download of v0.17.1 in `Dockerfile` (NEW v2.9.0).                                                    |
+| 8   | Playit agent crash on startup                     | Removed conflicting `-s` and `-l` flags. Agent now correctly logs to `/app/logs/playit.log` (NEW v2.9.0).                                      |
+| 9   | World corruption during backup                    | Implemented RCON save-off / save-all / save-on sequence in `BackupManager` (NEW v2.9.0).                                                       |
+| 10  | Config race conditions                            | Implemented atomic context managers for all JSON Read-Modify-Write operations (NEW v2.9.0).                                                    |
 
 ### 10.2 Logic Bugs — Fixed / Pending
 
@@ -1090,6 +1118,21 @@ Login decision tree:
 ---
 
 ## 11. Version History & Recent Changes
+
+### v2.9.0 — Infrastructure & Architectural Hardening (2026-05-21)
+
+**Major Changes:**
+- **Atomic Config:** Replaced loose JSON R/W with context-managed atomic operations (`update_bot_config`, `update_user_config`). This prevents data loss during concurrent settings changes.
+- **Robust RCON:** `rcon_cmd` now returns a `(success, response)` tuple. All call sites updated to handle RCON failures gracefully.
+- **Root Cleanup:** Reorganized root folder; moved internal docs to `docs/internal/`, test infra to `tests/infra/`, and templates to `install/`.
+- **Playit Fix:** Pinned Playit to v0.17.1 (direct binary) to bypass systemd dependency in v1.0.0+. Resolved agent startup crash loop and fixed log persistence.
+- **Safe Backups:** Added RCON-based auto-save management (`/save-off`, `/save-all`) during backups to ensure data integrity.
+- **Dynamic UID/GID:** Added `${PUID}` and `${PGID}` support to `docker-compose.yml` for seamless host permission matching.
+
+**New Commands:**
+- `/reload_config`: Hot-reloads configuration files from disk to memory without restarting the bot.
+
+---
 
 ### v2.8.3 — Permission & Installer Hardening (2026-05-14)
 
