@@ -129,10 +129,14 @@ if ! groups $TARGET_USER | grep -q '\bdocker\b'; then
     fi
 
     echo -e "${GREEN}[OK] Added. Applying docker group permissions and continuing setup...${NC}"
-    # Restart the script with the new group applied
+    # The 'docker' group membership takes effect only after a new session.
+    # To avoid requiring a manual log out/log in, the script re-executes itself
+    # with the new group permissions applied.
     if [ "$USER" = "root" ]; then
+        # If run as root, execute as the target user to apply docker group.
         exec su -c "$SCRIPT_DIR/$(basename "$0") $ORIG_ARGS" "$TARGET_USER"
     else
+        # If run as non-root, execute within the docker group.
         exec sg docker -c "$SCRIPT_DIR/$(basename "$0") $ORIG_ARGS"
     fi
 fi
@@ -206,6 +210,7 @@ BOT_TOKEN=$BOT_TOKEN
 RCON_PASSWORD=$RCON_PASSWORD
 PLAYIT_SECRET_KEY=$PLAYIT_KEY
 EOF
+    chmod 600 .env
     echo -e "${GREEN}[OK] Configuration saved.${NC}"
 fi
 
@@ -289,7 +294,6 @@ else
                     echo "$SECRET_KEY" > data/playit_secret.key
                     echo -e "${GREEN}[OK] Agent claimed. Secret key saved.${NC}"
                 fi
-            fi
         fi
 
         if [ -n "$SECRET_KEY" ]; then
@@ -328,7 +332,7 @@ else
                     if echo "$TUNNEL_RESULT" | grep -q '"status":"success"'; then
                         echo -e "${GREEN}[OK] Minecraft Java tunnel created automatically.${NC}"
                     elif echo "$TUNNEL_RESULT" | grep -q '"status":"fail"'; then
-                        FAIL_REASON=$(echo "$TUNNEL_RESULT" | grep -o '"data":"[^"]*"' | cut -d'"' -f4)
+                        FAIL_REASON=$(echo "$TUNNEL_RESULT" | jq -r '.data // "Unknown reason"') # Extract failure data using jq
                         echo -e "${YELLOW}[WARN] Tunnel creation returned: ${FAIL_REASON}. Create it manually at https://playit.gg${NC}"
                     else
                         echo -e "${YELLOW}[WARN] Tunnel creation gave unexpected response. Create it manually at https://playit.gg${NC}"

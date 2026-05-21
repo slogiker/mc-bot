@@ -3,5 +3,6 @@
 	"guild_id": null,
 	"command_channel_id": null,
 	"log_channel_id": null,
-	"debug_channel_id": null
+	"debug_channel_id": null,
+	"control_panel_message_id": 1506984519792722030
 }

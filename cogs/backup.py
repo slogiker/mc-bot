@@ -61,7 +61,7 @@ class BackupCog(commands.Cog):
                     if cmd_channel:
                         await cmd_channel.send("⏳ Starting scheduled backup...")
 
-                    success, filename, _ = await backup_manager.create_backup()
+                    success, filename, _ = await backup_manager.create_backup(server=self.bot.server)
                     
                     if success:
                         # Update last run
@@ -95,7 +95,7 @@ class BackupCog(commands.Cog):
         
         await interaction.followup.send("⏳ Starting backup... This might take a moment.")
         
-        success, filename, filepath = await backup_manager.create_backup(custom_name=name)
+        success, filename, filepath = await backup_manager.create_backup(custom_name=name, server=self.bot.server)
         
         if success:
             view = BackupDownloadView(filepath)

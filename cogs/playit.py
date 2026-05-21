@@ -24,7 +24,7 @@ class PlayitCog(commands.Cog):
 
     def get_secret_key(self):
         """Get Playit secret key from data file or env."""
-        key_path = "/app/data/playit_secret.key"
+        key_path = os.path.join("data", "playit_secret.key")
         try:
             if os.path.exists(key_path):
                 with open(key_path, "r") as f:

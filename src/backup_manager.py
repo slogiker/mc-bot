@@ -18,7 +18,7 @@ class BackupManager:
         os.makedirs(self.auto_dir, exist_ok=True)
         os.makedirs(self.custom_dir, exist_ok=True)
 
-    async def create_backup(self, custom_name=None):
+    async def create_backup(self, custom_name=None, server=None):
         """
         Creates a backup asynchronously.
         - **Custom**: If a name is provided, it is stored in 'backups/custom/' and never auto-deleted.
@@ -37,6 +37,16 @@ class BackupManager:
         
         logger.info(f"Starting backup: {filename}")
         
+        # Disable auto-save and flush to disk if server is running to prevent corruption
+        save_disabled = False
+        if server and server.is_running():
+            from src.utils import rcon_cmd
+            logger.info("Server is running, disabling auto-save for backup...")
+            await rcon_cmd("save-off")
+            await rcon_cmd("save-all")
+            save_disabled = True
+            await asyncio.sleep(2) # Brief wait for flush
+
         try:
             # Run blocking zip operation in a separate thread
             await asyncio.to_thread(self._zip_world, dest_path)
@@ -49,6 +59,11 @@ class BackupManager:
         except Exception as e:
             logger.error(f"Backup failed: {e}")
             return False, str(e), None
+        finally:
+            if save_disabled:
+                from src.utils import rcon_cmd
+                logger.info("Re-enabling auto-save after backup.")
+                await rcon_cmd("save-on")
 
     def _zip_world(self, dest_path):
         """Zips the world folder directly without creating a temp copy."""

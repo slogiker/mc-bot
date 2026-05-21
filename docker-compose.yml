@@ -1,6 +1,6 @@
 # Shared config reused by both services via YAML anchors
 x-base: &base
-  user: "1000:1000"
+  user: "${PUID:-1000}:${PGID:-1000}"
   build:
     context: .
     dockerfile: Dockerfile
