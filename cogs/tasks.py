@@ -152,7 +152,7 @@ class Tasks(commands.Cog):
                     
                     start_proc = await asyncio.create_subprocess_exec(
                         "tmux", "new-session", "-d", "-s", "playit",
-                        "bash", "-c", "playit --platform_docker --secret_path /app/data/playit_secret.key -s"
+                        "bash", "-c", "playit --platform_docker --secret_path /app/data/playit_secret.key -l /app/logs/playit.log"
                     )
                     await start_proc.wait()
 
