@@ -245,18 +245,31 @@ else
             SECRET_KEY=$(cat data/playit_secret.key)
         else
             # Give the container a moment to initialize before calling playit
-            echo -e "Waiting for container to initialize..."
-            sleep 5
+            echo -e "Waiting for container to be ready..."
+            for i in $(seq 1 30); do
+                STATUS=$(docker inspect --format='{{.State.Status}}' mc-bot 2>/dev/null)
+                if [ "$STATUS" = "running" ]; then
+                    sleep 3
+                    break
+                fi
+                sleep 2
+            done
+            if [ "$STATUS" != "running" ]; then
+                echo -e "${RED}[ERROR] Container failed to start. Check: docker compose logs mc-bot${NC}"
+                exit 1
+            fi
 
             # Generate a claim code inside the container and build the URL
             echo -e "Generating claim code..."
             CLAIM_CODE=$(docker exec mc-bot playit -s claim generate 2>&1 | tail -1 | awk '{print $NF}') || true
-            echo -e "  [debug] playit output: ${CLAIM_CODE}"
+            
+            if [[ -z "$CLAIM_CODE" || "$CLAIM_CODE" =~ [[:space:]] || ${#CLAIM_CODE} -gt 20 ]]; then
+                echo -e "${RED}[ERROR] Invalid claim code from Playit. Got: '${CLAIM_CODE}'${NC}"
+                echo "        Make sure the container is running and playit binary is installed."
+                exit 1
+            fi
 
-            if [ -z "$CLAIM_CODE" ]; then
-                echo -e "${RED}[ERROR] Failed to generate Playit claim code.${NC}"
-            else
-                CLAIM_URL="https://playit.gg/claim/${CLAIM_CODE}"
+            CLAIM_URL="https://playit.gg/claim/${CLAIM_CODE}"
 
                 echo -e ""
                 echo -e "${YELLOW}======================================================================${NC}"

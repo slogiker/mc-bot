@@ -3,18 +3,21 @@
 
 FROM python:3.11-slim
 
-# Install Java 21, tmux, and Playit
+# Create directory for man pages (required for openjdk in slim images)
+RUN mkdir -p /usr/share/man/man1
+
+# Install Java 21, tmux, and curl
 RUN apt-get update && apt-get install -y \
     openjdk-21-jre-headless \
     tmux \
     curl \
-    gnupg \
-    && curl -SsL https://playit-cloud.github.io/ppa/key.gpg | gpg --dearmor > /etc/apt/trusted.gpg.d/playit.gpg \
-    && echo "deb [signed-by=/etc/apt/trusted.gpg.d/playit.gpg] https://playit-cloud.github.io/ppa/data ./" > /etc/apt/sources.list.d/playit-cloud.list \
-    && apt-get update \
-    && apt-get install -y playit \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Playit.gg binary directly (avoiding PPA systemd issues)
+# v0.17.1 is used for compatibility with the bot's CLI arguments
+RUN curl -Lo /usr/local/bin/playit https://github.com/playit-cloud/playit-agent/releases/download/v0.17.1/playit-linux-amd64 \
+    && chmod +x /usr/local/bin/playit
 
 WORKDIR /app
 
