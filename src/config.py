@@ -182,6 +182,8 @@ class Config:
         self.SPAWN_Y = bot_cfg.get('spawn_y')
         self.SPAWN_Z = bot_cfg.get('spawn_z')
         self.OWNER_ID = bot_cfg.get('owner_id')
+        self.INSTALLED_VERSION = bot_cfg.get('installed_version')
+        self.INSTALLED_PLATFORM = bot_cfg.get('installed_platform')
         
         # Hardcoded/default values (not user-configurable)
         self.RCON_HOST = os.getenv("RCON_HOST", "127.0.0.1")
@@ -351,6 +353,8 @@ class Config:
                 setattr(self, attr_name, value)
             elif key == 'installed_version':
                 self.INSTALLED_VERSION = value
+            elif key == 'installed_platform':
+                self.INSTALLED_PLATFORM = value
 
     def load_bot_config(self) -> dict:
         """
@@ -426,6 +430,9 @@ class Config:
             
             with open(self.BOT_CONFIG_FILE, 'w') as f:
                 json.dump(data, f, indent='\t')
+            
+            # Refresh memory config
+            self.load()
 
     @contextmanager
     def update_user_config(self):

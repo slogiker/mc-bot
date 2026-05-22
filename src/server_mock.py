@@ -43,6 +43,13 @@ class MockServerManager(ServerInterface):
         logger.info("👻 GHOST MODE: Server 'stopped' successfully")
         return True, "Server stopped successfully (Simulation)"
 
+    async def emergency_stop(self) -> tuple[bool, str]:
+        logger.info("👻 GHOST MODE: 'Emergency Stopping' server (Mock)...")
+        await asyncio.sleep(0.5)
+        self._running = False
+        self._intentional_stop = True
+        return True, "Server forcefully stopped (Simulation)"
+
     async def restart(self) -> tuple[bool, str]:
         logger.info("👻 GHOST MODE: 'Restarting' server (Mock)...")
         await self.stop()

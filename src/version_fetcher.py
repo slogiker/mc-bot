@@ -20,14 +20,14 @@ class VersionFetcher:
         self._cache_duration = timedelta(hours=1)  # Cache for 1 hour
         self._lock = asyncio.Lock()  # Prevent concurrent fetches
     
-    async def get_versions(self, platform: str, limit: int = 5) -> List[str]:
+    async def get_versions(self, platform: str, limit: int = 5, force_fresh: bool = False) -> List[str]:
         """
         Get available versions for a platform
         Returns: List of version strings, latest first
         """
         async with self._lock:
             # Check cache
-            if platform in self._cache:
+            if platform in self._cache and not force_fresh:
                 cache_data = self._cache[platform]
                 if datetime.now() - cache_data['timestamp'] < self._cache_duration:
                     versions = cache_data['versions']
@@ -50,19 +50,19 @@ class VersionFetcher:
             except Exception as e:
                 logger.error(f"Failed to fetch versions for {platform}: {e}")
                 
-                # Try to return cached data even if expired
+                # Try to return cached data even if expired (unless we forced fresh and it failed)
                 if platform in self._cache:
-                    logger.warning(f"Using expired cache for {platform}")
+                    logger.warning(f"Using cached data for {platform} after fetch failure")
                     return self._cache[platform]['versions'][:limit] if limit else self._cache[platform]['versions']
                 
                 # Fallback to hardcoded recent versions
                 return self._get_fallback_versions(platform, limit)
     
-    async def get_all_versions(self, platform: str) -> List[str]:
+    async def get_all_versions(self, platform: str, force_fresh: bool = False) -> List[str]:
         """Get all available versions (for "More" button)"""
         async with self._lock:
             # Check cache first
-            if platform in self._cache:
+            if platform in self._cache and not force_fresh:
                 cache_data = self._cache[platform]
                 if datetime.now() - cache_data['timestamp'] < self._cache_duration:
                     return cache_data['versions']
@@ -118,7 +118,6 @@ class VersionFetcher:
                 if resp.status != 200:
                     raise Exception(f"Vanilla API returned {resp.status}")
                 data = await resp.json()
-                versions = [v['id'] for v in data.get('versions', [])]
                 # Filter to release versions only, reverse order
                 release_versions = [
                     v['id'] for v in data.get('versions', [])
@@ -149,20 +148,20 @@ class VersionFetcher:
     def _get_fallback_versions(self, platform: str, limit: Optional[int]) -> List[str]:
         """Fallback versions if API fails"""
         fallback = {
-            "paper": ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"],
-            "vanilla": ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"],
-            "fabric": ["1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.20.4"]
+            "paper": ["1.21.4", "1.21.3", "1.21.1", "1.20.4", "1.19.4"],
+            "vanilla": ["1.21.4", "1.21.3", "1.21.1", "1.20.4", "1.19.4"],
+            "fabric": ["1.21.4", "1.21.3", "1.21.1", "1.20.4", "1.19.4"]
         }
-        versions = fallback.get(platform, ["1.21.11"])
+        versions = fallback.get(platform, ["1.21.4"])
         return versions[:limit] if limit else versions
     
-    async def get_latest_version(self, platform: str) -> str:
+    async def get_latest_version(self, platform: str, force_fresh: bool = False) -> str:
         """Get the latest version for a platform"""
-        versions = await self.get_versions(platform, limit=1)
+        versions = await self.get_versions(platform, limit=1, force_fresh=force_fresh)
         if versions:
             return versions[0]
         # Fallback
-        return "1.21.11"
+        return "1.21.4"
 
 # Singleton instance
 version_fetcher = VersionFetcher()

@@ -17,11 +17,19 @@ class MCLinkManager:
     }
     """
     def __init__(self, data_file="data/mc_links.json"):
+        """
+        Initializes the MCLinkManager, sets the data file path, and creates an asyncio lock.
+        Ensures the data directory and file exist.
+        """
         self.data_file = data_file
         self.lock = asyncio.Lock()
         self._ensure_file()
 
     def _ensure_file(self):
+        """
+        Ensures that the 'data' directory and the mc_links.json file exist.
+        Creates them if they don't.
+        """
         if not os.path.exists("data"):
             os.makedirs("data")
         if not os.path.exists(self.data_file):
@@ -29,6 +37,10 @@ class MCLinkManager:
                 json.dump({}, f)
 
     async def _read_data(self) -> dict:
+        """
+        Asynchronously reads data from the JSON file, protected by an asyncio lock.
+        Offloads the blocking file read to a separate thread.
+        """
         async with self.lock:
             try:
                 # To prevent blocking the main thread entirely, use to_thread
@@ -37,6 +49,9 @@ class MCLinkManager:
                 return {}
 
     def _read_sync(self) -> dict:
+        """
+        Synchronously reads data from the JSON file. Intended to be run in a separate thread.
+        """
         try:
             with open(self.data_file, 'r') as f:
                 content = f.read().strip()
@@ -47,10 +62,17 @@ class MCLinkManager:
             return {}
 
     async def _write_data(self, data: dict):
+        """
+        Asynchronously writes data to the JSON file, protected by an asyncio lock.
+        Offloads the blocking file write to a separate thread.
+        """
         async with self.lock:
             await asyncio.to_thread(self._write_sync, data)
 
     def _write_sync(self, data: dict):
+        """
+        Synchronously writes data to the JSON file. Intended to be run in a separate thread.
+        """
         with open(self.data_file, 'w') as f:
             json.dump(data, f, indent=4)
 

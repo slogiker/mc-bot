@@ -5,6 +5,7 @@ import asyncio
 import aiofiles
 from src.config import config
 from src.logger import logger
+from src.version_fetcher import version_fetcher
 
 class MinecraftInstaller:
     """Handles downloading and installing Minecraft servers"""
@@ -24,53 +25,22 @@ class MinecraftInstaller:
     async def get_latest_version(self, platform: str) -> str:
         """
         Fetch the latest Minecraft version for the specified platform.
-        
-        Supported Platforms:
-        - paper: Fetches from PaperMC API (v2).
-        - vanilla: Fetches from Mojang Launcher Meta.
-        - fabric: Fetches via Fabric Meta (resolves to latest generic version).
-        - forge: currently defaults to 1.20.1 (API complexity).
+        Uses VersionFetcher to get fresh results.
         
         Args:
             platform (str): 'paper', 'vanilla', 'fabric', or 'forge'.
             
         Returns:
-            str: The version string (e.g. "1.21.1"). Defaults to "1.20.1" on error.
+            str: The version string (e.g. "1.21.4"). Defaults to "1.21.4" on error.
         """
+        if platform == "forge":
+            return "1.20.1" # Forge still manual
+            
         try:
-            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
-                if platform == "paper":
-                    async with session.get(self.PAPER_API) as resp:
-                        data = await resp.json()
-                        return data['versions'][-1]  # Latest version
-                        
-                elif platform == "vanilla":
-                    async with session.get(self.VANILLA_API) as resp:
-                        data = await resp.json()
-                        return data['latest']['release']
-                        
-                elif platform == "fabric":
-                    async with session.get(f"{self.FABRIC_API}") as resp:
-                        data = await resp.json()
-                        # Get latest game version
-                        async with session.get(self.VANILLA_API) as resp2:
-                            vanilla_data = await resp2.json()
-                            return vanilla_data['latest']['release']
-                            
-                # Forge is not supported via automatic download yet.
-                # For Forge mods/installer, use:
-                #   - Modrinth API: https://api.modrinth.com/v2/
-                #   - Forge Maven: https://maven.minecraftforge.net/
-                # These APIs can fetch Forge installer JARs and mod dependencies.
-                elif platform == "forge":
-                    return "1.20.1"  # Placeholder - Forge requires manual setup
-                    
-        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
-            logger.error(f"API timeout/error getting latest version for {platform}: {e}")
-            return "1.20.1"  # Fallback
+            return await version_fetcher.get_latest_version(platform, force_fresh=True)
         except Exception as e:
-            logger.error(f"Failed to get latest version for {platform}: {e}")
-            return "1.20.1"  # Fallback
+            logger.error(f"Failed to fetch latest version for {platform}: {e}")
+            return "1.21.4" # Safe current default
     
     async def download_server(self, platform: str, version: str, progress_callback=None) -> tuple[bool, str]:
         """

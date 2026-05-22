@@ -13,6 +13,7 @@ class BackupManager:
         self.backup_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backups'))
         self.auto_dir = os.path.join(self.backup_dir, 'auto')
         self.custom_dir = os.path.join(self.backup_dir, 'custom')
+        self._lock = asyncio.Lock()  # Lock to prevent concurrent backups
         
         # Sync initialization is OK here (happens once at startup)
         os.makedirs(self.auto_dir, exist_ok=True)
@@ -24,52 +25,53 @@ class BackupManager:
         - **Custom**: If a name is provided, it is stored in 'backups/custom/' and never auto-deleted.
         - **Auto**: If no name, it is stored in 'backups/auto/' and subject to 7-day retention policy.
         """
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
-        
-        if custom_name:
-            filename = f"backup_custom_{timestamp}_{custom_name}.zip"
-            dest_dir = self.custom_dir
-        else:
-            filename = f"backup_auto_{timestamp}.zip"
-            dest_dir = self.auto_dir
+        async with self._lock:
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
             
-        dest_path = os.path.join(dest_dir, filename)
-        
-        logger.info(f"Starting backup: {filename}")
-        
-        # Disable auto-save and flush to disk if server is running to prevent corruption
-        save_disabled = False
-        if server and server.is_running():
-            from src.utils import rcon_cmd
-            logger.info("Server is running, disabling auto-save for backup...")
-            
-            success_off, _ = await rcon_cmd("save-off")
-            success_all, _ = await rcon_cmd("save-all")
-            
-            if not success_off or not success_all:
-                logger.warning("RCON save-off or save-all failed. Backup might be inconsistent.")
+            if custom_name:
+                filename = f"backup_custom_{timestamp}_{custom_name}.zip"
+                dest_dir = self.custom_dir
             else:
-                save_disabled = True
-            
-            await asyncio.sleep(2) # Brief wait for flush
-
-        try:
-            # Run blocking zip operation in a separate thread
-            await asyncio.to_thread(self._zip_world, dest_path)
-            logger.info(f"Backup created successfully: {dest_path}")
-            
-            if not custom_name:
-                await self._cleanup_auto_backups()
+                filename = f"backup_auto_{timestamp}.zip"
+                dest_dir = self.auto_dir
                 
-            return True, filename, dest_path
-        except Exception as e:
-            logger.error(f"Backup failed: {e}")
-            return False, str(e), None
-        finally:
-            if save_disabled:
+            dest_path = os.path.join(dest_dir, filename)
+            
+            logger.info(f"Starting backup: {filename}")
+            
+            # Disable auto-save and flush to disk if server is running to prevent corruption
+            save_disabled = False
+            if server and server.is_running():
                 from src.utils import rcon_cmd
-                logger.info("Re-enabling auto-save after backup.")
-                _, _ = await rcon_cmd("save-on")
+                logger.info("Server is running, disabling auto-save for backup...")
+                
+                success_off, _ = await rcon_cmd("save-off")
+                success_all, _ = await rcon_cmd("save-all")
+                
+                if not success_off or not success_all:
+                    logger.warning("RCON save-off or save-all failed. Backup might be inconsistent.")
+                else:
+                    save_disabled = True
+                
+                await asyncio.sleep(2) # Brief wait for flush
+
+            try:
+                # Run blocking zip operation in a separate thread
+                await asyncio.to_thread(self._zip_world, dest_path)
+                logger.info(f"Backup created successfully: {dest_path}")
+                
+                if not custom_name:
+                    await self._cleanup_auto_backups()
+                    
+                return True, filename, dest_path
+            except Exception as e:
+                logger.error(f"Backup failed: {e}")
+                return False, str(e), None
+            finally:
+                if save_disabled:
+                    from src.utils import rcon_cmd
+                    logger.info("Re-enabling auto-save after backup.")
+                    _, _ = await rcon_cmd("save-on")
 
     def _zip_world(self, dest_path):
         """Zips the world folder directly without creating a temp copy."""
@@ -112,27 +114,5 @@ class BackupManager:
                     logger.info(f"Deleted old backup: {fname}")
             except Exception as e:
                 logger.error(f"Failed to delete old backup {fname}: {e}")
-
-    async def upload_backup(self, filepath):
-        """Uploads a backup file using transfer.sh and returns the link."""
-        try:
-            filename = os.path.basename(filepath)
-            url = f"https://transfer.sh/{filename}"
-            
-            # Using a custom timeout as backups can be large
-            timeout = aiohttp.ClientTimeout(total=3600)  # 1 hour max upload time
-            
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                with open(filepath, 'rb') as f:
-                    async with session.post(url, data=f) as resp:
-                        if resp.status == 200:
-                            link = await resp.text()
-                            return link.strip()
-                        else:
-                            logger.error(f"Upload failed with status {resp.status}: {await resp.text()}")
-                            return None
-        except Exception as e:
-            logger.error(f"Failed to upload backup: {e}")
-            return None
 
 backup_manager = BackupManager()

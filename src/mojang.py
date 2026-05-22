@@ -11,7 +11,7 @@ async def verify_premium_mc_account(username: str) -> bool:
     GET https://api.mojang.com/users/profiles/minecraft/<username>
     If 200 OK -> Premium
     If 404 Not Found -> Cracked / Available
-    If other block -> Fail-open (return True to avoid blocking during Mojang outages)
+    If other status or error -> Fail-closed (return False to prevent unauthorized access)
     """
     url = f"https://api.mojang.com/users/profiles/minecraft/{username}"
     
@@ -31,11 +31,11 @@ async def verify_premium_mc_account(username: str) -> bool:
                      return False
                 else:
                     # Rate limit (429) or Mojang server error (500+).
-                    # Fail-open: treat as premium so we don't accidentally enforce cracked checks on real players
-                    logger.warning(f"Mojang API returned unexpected status {response.status} for {username}. Failing open.")
-                    return True
+                    # Fail-closed: treat as NOT premium so we don't allow unlinked users in
+                    logger.warning(f"Mojang API returned unexpected status {response.status} for {username}. Failing closed.")
+                    return False
     except Exception as e:
-        logger.warning(f"Failed to reach Mojang API for {username}: {e}. Failing open.")
-        return True # Fail open on network errors too
+        logger.warning(f"Failed to reach Mojang API for {username}: {e}. Failing closed.")
+        return False # Fail closed on network errors too
 
     return False

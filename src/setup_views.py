@@ -12,6 +12,10 @@ from src.mc_installer import mc_installer
 from src.logger import logger
 from src.config import config
 import aiohttp
+from src.setup_helper import SetupHelper
+from src.mod_updater import ModUpdater
+from src.utils import rcon_cmd
+from src.server_info_manager import ServerInfoManager
 
 GLOBAL_VERSIONS = []
 
@@ -531,6 +535,18 @@ class SetupView(ui.View):
             return embed, [self._back_button(), self._configure_advanced_button(), self._next_button()]
             
         elif step == 6:  # Plugins/Mods
+            if self.state.platform == "vanilla":
+                embed = discord.Embed(
+                    title="Minecraft Server Setup",
+                    description=(
+                        f"**{progress}** - Plugins & Mods\n"
+                        "Vanilla servers do not support mods or plugins.\n"
+                        "Click **Next** to proceed to confirmation."
+                    ),
+                    color=discord.Color.blue()
+                )
+                return embed, [self._back_button(), self._next_button()]
+            
             embed = discord.Embed(
                 title="Minecraft Server Setup",
                 description=(
@@ -676,8 +692,6 @@ class SetupView(ui.View):
         config.JAVA_XMS = f"{max(1, self.state.ram // 2)}G"
         
         try:
-            # STEP 1: Discord Structure Setup
-            from src.setup_helper import SetupHelper
             
             embed.description = "**Step 1/5:** Creating Discord channels and roles..."
             await message.edit(embed=embed)
@@ -752,66 +766,68 @@ class SetupView(ui.View):
             await self._save_config_to_file(version_update)
             
             # STEP 4.5: Update Mods/Plugins to match new Version
-            embed.description = "**Step 4.5/5:** Processing Mods/Plugins..."
-            await message.edit(embed=embed)
-            
-            from src.mod_updater import ModUpdater
-            
-            async def updater_callback(status_text):
-                try:
-                    embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
-                    await message.edit(embed=embed)
-                except Exception:
-                    pass
-                    
-            updater = ModUpdater(callback=updater_callback)
-            loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
-            
-            # Install specific plugins if provided
-            failed_slugs = []
-            if setup_config.get('plugins'):
-                plugin_slugs = [slug.strip() for slug in setup_config['plugins'].split(',') if slug.strip()]
-                if plugin_slugs:
-                    await updater_callback(f"Fetching {len(plugin_slugs)} user-specified plugins...")
-                    for slug in plugin_slugs:
-                        try:
-                            # Fetch project and versions directly via Modrinth API
-                            await updater_callback(f"Downloading '{slug}'...")
-                            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-                                async with session.get(f"https://api.modrinth.com/v2/project/{slug}") as p_resp:
-                                    if p_resp.status != 200:
-                                        raise Exception(f"Project not found (HTTP {p_resp.status})")
-                                    project = await p_resp.json()
-                                    params = {
-                                        "loaders": f'["{loader_override}"]',
-                                        "game_versions": f'["{setup_config["version"]}"]'
-                                    }
-                                    async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
-                                        if v_resp.status == 200:
-                                            versions = await v_resp.json()
-                                            if not versions:
-                                                raise Exception("No compatible version found")
-                                            version = versions[0]
-                                            primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
+            if setup_config['platform'] != 'vanilla':
+                embed.description = "**Step 4.5/5:** Processing Mods/Plugins..."
+                await message.edit(embed=embed)
+                
+                async def updater_callback(status_text):
+                    try:
+                        embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
+                        await message.edit(embed=embed)
+                    except Exception:
+                        pass
+                        
+                updater = ModUpdater(callback=updater_callback)
+                loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
+                
+                # Install specific plugins if provided
+                failed_slugs = []
+                if setup_config.get('plugins'):
+                    plugin_slugs = [slug.strip() for slug in setup_config['plugins'].split(',') if slug.strip()]
+                    if plugin_slugs:
+                        await updater_callback(f"Fetching {len(plugin_slugs)} user-specified plugins...")
+                        for slug in plugin_slugs:
+                            try:
+                                # Fetch project and versions directly via Modrinth API
+                                await updater_callback(f"Downloading '{slug}'...")
+                                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                                    async with session.get(f"https://api.modrinth.com/v2/project/{slug}") as p_resp:
+                                        if p_resp.status != 200:
+                                            raise Exception(f"Project not found (HTTP {p_resp.status})")
+                                        project = await p_resp.json()
+                                        params = {
+                                            "loaders": f'["{loader_override}"]',
+                                            "game_versions": f'["{setup_config["version"]}"]'
+                                        }
+                                        async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
+                                            if v_resp.status == 200:
+                                                versions = await v_resp.json()
+                                                if not versions:
+                                                    raise Exception("No compatible version found")
+                                                version = versions[0]
+                                                primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
 
-                                            mods_dir = os.path.join(config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
-                                            os.makedirs(mods_dir, exist_ok=True)
+                                                mods_dir = os.path.join(config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
+                                                os.makedirs(mods_dir, exist_ok=True)
 
-                                            filepath = os.path.join(mods_dir, primary_file["filename"])
-                                            async with session.get(primary_file["url"]) as d_resp:
-                                                if d_resp.status == 200:
-                                                    with open(filepath, 'wb') as f:
-                                                        f.write(await d_resp.read())
-                                            logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
-                                        else:
-                                            raise Exception(f"Version fetch failed (HTTP {v_resp.status})")
+                                                filepath = os.path.join(mods_dir, primary_file["filename"])
+                                                async with session.get(primary_file["url"]) as d_resp:
+                                                    if d_resp.status == 200:
+                                                        async with aiofiles.open(filepath, 'wb') as f:
+                                                            await f.write(await d_resp.read())
+                                                logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
+                                            else:
+                                                raise Exception(f"Version fetch failed (HTTP {v_resp.status})")
 
-                        except Exception as e:
-                            logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
-                            failed_slugs.append(slug)
-            
-            # Then run the standard update_all to catch any existing
-            await updater.update_all(game_version=setup_config['version'], loader=loader_override, is_setup=True)
+                            except Exception as e:
+                                logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
+                                failed_slugs.append(slug)
+                
+                # Then run the standard update_all to catch any existing
+                await updater.update_all(game_version=setup_config['version'], loader=loader_override, is_setup=True)
+            else:
+                embed.description = "**Step 4.5/5:** Skipping Mods/Plugins (Vanilla)..."
+                await message.edit(embed=embed)
             
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
@@ -829,7 +845,6 @@ class SetupView(ui.View):
                 embed.description = "**Step 5/5:** Server started, waiting for it to be fully ready..."
                 await message.edit(embed=embed)
                 
-                from src.utils import rcon_cmd
                 for attempt in range(30):  # Up to 60 seconds (30 * 2s)
                     try:
                         success, response = await rcon_cmd("list")

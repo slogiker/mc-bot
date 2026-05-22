@@ -20,13 +20,14 @@ class LogWatcher:
         
         # Regex to capture Username and UUID from Vanilla/Paper/Fabric logs
         self.auth_pattern = re.compile(
-            r'\[(?:[0-9:]+)\] \[User Authenticator #\d+/INFO\].*?: UUID of player (?P<username>[A-Za-z0-9_]+) is (?P<uuid>[0-9a-fA-F-]+)'
+            r'^\[(?:[0-9:]+)\] \[User Authenticator #\d+/INFO\].*?: UUID of player (?P<username>[A-Za-z0-9_]+) is (?P<uuid>[0-9a-fA-F-]+)'
         )
         
         # Fallback regex for Forge/NeoForge which sometimes formats differently
         self.auth_pattern_forge = re.compile(
-            r'\[(?:[0-9:]+)\] \[Netty(?:[a-zA-Z0-9 _-]+)?/INFO\].*?: UUID of player (?P<username>[A-Za-z0-9_]+) is (?P<uuid>[0-9a-fA-F-]+)'
+            r'\[(?:[0-9:]+)\] \[Netty(?:[a-zA-Z0-9 _#-]+)?/INFO\].*?: UUID of player (?P<username>[A-Za-z0-9_]+) is (?P<uuid>[0-9a-fA-F-]+)'
         )
+
 
     def start(self):
         if self._task is None or self._task.done():

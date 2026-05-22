@@ -6,7 +6,7 @@ import aiohttp
 import os
 import aiofiles
 from src.config import config
-from src.utils import has_role, send_debug
+from src.utils import has_role, send_debug, get_server_mod_folder
 
 logger = logging.getLogger('mc_bot')
 
@@ -47,9 +47,11 @@ class ModrinthSearchView(discord.ui.View):
             mc_version = "1.20.1" # Last resort fallback
         
         # 2. Auto-detect loader from server directory structure
-        loader = "fabric"
-        if os.path.exists(os.path.join(config.SERVER_DIR, "plugins")):
-             loader = "paper"
+        dest_folder = await get_server_mod_folder()
+        if dest_folder is None:
+            await msg.edit(content="❌ Mods and plugins are not supported on Vanilla servers.")
+            return
+        loader = "fabric" if dest_folder == "mods" else "paper"
              
         api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
         params = {
@@ -75,7 +77,6 @@ class ModrinthSearchView(discord.ui.View):
                      filename = latest_file['filename']
                      
                      # 3. Download it
-                     dest_folder = "mods" if loader == "fabric" else "plugins"
                      dest_path = os.path.join(config.SERVER_DIR, dest_folder, filename)
                      
                      await msg.edit(content=f"📥 Downloading `{filename}`...")
@@ -210,10 +211,11 @@ class ModsCog(commands.Cog):
         from src.mc_installer import mc_installer
         
         # We need to guess the platform based on folder structure
+        dest_folder = await get_server_mod_folder()
         platform = "vanilla"
-        if os.path.exists(os.path.join(config.SERVER_DIR, "plugins")):
+        if dest_folder == "plugins":
             platform = "paper"
-        elif getattr(config, 'INSTALLED_VERSION', '').lower().find('fabric') != -1 or os.path.exists(os.path.join(config.SERVER_DIR, "mods")):
+        elif getattr(config, 'INSTALLED_VERSION', '').lower().find('fabric') != -1 or dest_folder == "mods":
             platform = "fabric"
             
         await updater_callback(f"🛠️ Detected platform `{platform}`. Fetching core server JAR...")
@@ -227,12 +229,15 @@ class ModsCog(commands.Cog):
         config.update_dynamic_config({"installed_version": f"{platform}-{version}"})
         
         # 2. Mod Updater Phase
-        await updater_callback("✅ Server Core updated. Initializing Mod/Plugin Upgrader...")
-        from src.mod_updater import ModUpdater
-        updater = ModUpdater(callback=updater_callback)
-        await updater.update_all(game_version=version)
+        if platform != "vanilla":
+            await updater_callback("✅ Server Core updated. Initializing Mod/Plugin Upgrader...")
+            from src.mod_updater import ModUpdater
+            updater = ModUpdater(callback=updater_callback)
+            await updater.update_all(game_version=version)
+        else:
+            await updater_callback("✅ Server Core updated. Skipping Mod/Plugin Upgrader (Vanilla platform).")
         
-        await msg_obj.reply(f"✅ **Update Complete!** The server core and all compatible mods/plugins have been updated to `{version}`.\nYou can now `/start` the server.")
+        await msg_obj.reply(f"✅ **Update Complete!** The server core has been updated to `{version}`.\nYou can now `/start` the server.")
 
 
 async def setup(bot):

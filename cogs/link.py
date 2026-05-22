@@ -7,7 +7,13 @@ from src.logger import logger
 from src.utils import has_role
 
 class Link(commands.Cog):
+    """
+    Handles Discord-Minecraft account linking and verification commands.
+    """
     def __init__(self, bot):
+        """
+        Initializes the Link cog with the bot instance and MCLinkManager.
+        """
         self.bot = bot
         self.link_manager = MCLinkManager()
 
@@ -38,10 +44,10 @@ class Link(commands.Cog):
             # Link it
             await self.link_manager.link_account(interaction.user.id, username, is_premium)
             
-            status_text = "🟢 **Premium Account Detected**. You do not need to do DM Verifications." if is_premium else "🟡 **Offline-Mode Account Detected**. You will receive Discord DMs to verify your identity if you re-connect after 5 minutes of being offline."
+            status_text = "🟢 **Premium Account Detected**. You do not need to do verifications." if is_premium else "🟡 **Offline-Mode Account Detected**. You will receive a Discord DM/notification to verify your identity if you re-connect after 30 minutes of being offline."
             
             await interaction.followup.send(
-                f"✅ Successfully linked Discord to MC Username: **{username}**\n\n{status_text}{replacement_notice}", 
+                f"✅ Successfully linked Discord to MC Username: **{username}**\n\n{status_text}\n\nUse the **`/verify`** command with the code from your kick screen when prompted.{replacement_notice}", 
                 ephemeral=True
             )
             logger.info(f"User {interaction.user.name} linked MC account {username} (Premium: {is_premium})")
@@ -53,7 +59,6 @@ class Link(commands.Cog):
     @app_commands.command(name="verify", description="Verify your identity with the code from your kick screen")
     @app_commands.describe(code="The 6-character code shown when you were kicked")
     async def verify_cmd(self, interaction: discord.Interaction, code: str):
-        """Verify identity via code (alternative to button click)."""
         # No defer needed if we expect it to be fast, but good practice
         await interaction.response.defer(ephemeral=True)
         

@@ -139,6 +139,31 @@ async def get_uuid(username: str) -> str | None:
         logger.error(f"Error in get_uuid: {e}")
         return None
 
+async def get_server_mod_folder() -> str | None:
+    """
+    Detect whether to use 'mods' or 'plugins' folder based on server structure and platform.
+    Returns 'plugins', 'mods', or None (for Vanilla).
+    """
+    platform = getattr(config, 'INSTALLED_PLATFORM', None)
+    if platform == 'vanilla':
+        return None
+        
+    plugins_path = os.path.join(config.SERVER_DIR, "plugins")
+    if await asyncio.to_thread(os.path.exists, plugins_path):
+        return "plugins"
+        
+    mods_path = os.path.join(config.SERVER_DIR, "mods")
+    if await asyncio.to_thread(os.path.exists, mods_path):
+        return "mods"
+        
+    # Guess based on platform if folders don't exist yet (e.g. during first setup)
+    if platform == 'paper':
+        return 'plugins'
+    elif platform == 'fabric':
+        return 'mods'
+        
+    return None
+
 def map_key(key):
     """Map user input to Minecraft stat key format."""
     return f"minecraft:{key.lower()}"

@@ -14,10 +14,13 @@ class TestBackupManager:
     def _make_manager(self, backup_dir, server_dir):
         """Create a BackupManager with patched directories."""
         from src.backup_manager import BackupManager
-        mgr = BackupManager.__new__(BackupManager)
+        # We need to patch config.SERVER_DIR before init if we want it to use it
+        # but here we just want to override the instance attributes
+        mgr = BackupManager()
         mgr.backup_dir = backup_dir
         mgr.auto_dir = os.path.join(backup_dir, "auto")
         mgr.custom_dir = os.path.join(backup_dir, "custom")
+        # Re-create directories in the new temp location
         os.makedirs(mgr.auto_dir, exist_ok=True)
         os.makedirs(mgr.custom_dir, exist_ok=True)
         return mgr

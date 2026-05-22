@@ -27,6 +27,11 @@ class ServerInterface(ABC):
         pass
 
     @abstractmethod
+    async def emergency_stop(self) -> tuple[bool, str]:
+        """Forcefully stop the server process if graceful stop fails"""
+        pass
+
+    @abstractmethod
     async def restart(self) -> tuple[bool, str]:
         """Restart the server. Returns (success, message)"""
         pass

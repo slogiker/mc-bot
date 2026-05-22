@@ -6,12 +6,14 @@ import asyncio
 import sys
 import os
 import signal
+import time
 from src.config import config
 from src.logger import logger
 from src.server_tmux import TmuxServerManager
 from src.log_dispatcher import log_dispatcher
 from src.log_watcher import LogWatcher
 from src.join_guard import JoinGuard
+from src.utils import rcon_cmd
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
@@ -54,9 +56,46 @@ class MinecraftBot(commands.Bot):
         # Initialize Security modules
         self.join_guard = JoinGuard(self)
         self.log_watcher = LogWatcher(self)
+        self.presence_task = None
         
         # Attach event listener
         self.add_listener(self.on_minecraft_player_login, 'on_minecraft_player_login')
+
+    async def update_presence_loop(self):
+        """Background task to update bot presence based on server and RCON status."""
+        await self.wait_until_ready()
+        while not self.is_closed():
+            try:
+                if self.server.is_running():
+                    # Try RCON handshake
+                    success, _ = await rcon_cmd("list")
+                    
+                    if success:
+                        await self.change_presence(
+                            activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"),
+                            status=discord.Status.online
+                        )
+                    else:
+                        # Check if it's been starting for a while
+                        status_text = "Minecraft Server: Starting..."
+                        if hasattr(self.server, 'get_start_time'):
+                            start_time = self.server.get_start_time()
+                            if start_time and (time.time() - start_time) > 120: # 2 minutes timeout
+                                status_text = "Minecraft Server: ⚠️ RCON unavailable"
+                        
+                        await self.change_presence(
+                            activity=discord.Activity(type=discord.ActivityType.playing, name=status_text),
+                            status=discord.Status.idle
+                        )
+                else:
+                    await self.change_presence(
+                        activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
+                        status=discord.Status.dnd
+                    )
+            except Exception as e:
+                logger.error(f"Error in presence update loop: {e}")
+            
+            await asyncio.sleep(30)
 
     # --- Event Handlers ---
 
@@ -251,24 +290,17 @@ class MinecraftBot(commands.Bot):
             logger.error(f"Failed to sync commands: {e}", exc_info=True)
             return
 
-        # Update presence based on initial state
-        logger.debug("Setting bot presence...")
+        # Start presence updater task
+        if self.presence_task is None:
+            self.presence_task = asyncio.create_task(self.update_presence_loop())
+
+        # Ensure background tasks are running if the server is online
         try:
             if self.server.is_running():
-                await self.change_presence(
-                    activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"),
-                    status=discord.Status.online
-                )
-                # Ensure the background tasks are running if the server is online
                 await log_dispatcher.start()
                 self.log_watcher.start()
-            else:
-                await self.change_presence(
-                    activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
-                    status=discord.Status.dnd
-                )
         except Exception as e:
-            logger.error(f"Failed to set presence: {e}")
+            logger.error(f"Failed to start background tasks: {e}")
         
         logger.info("=== Bot is now fully ready! ===")
 

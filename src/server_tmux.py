@@ -164,13 +164,26 @@ class TmuxServerManager(ServerInterface):
         # If still running, kill the session
         if self.is_running():
             logger.warning("Server didn't stop gracefully, killing tmux session")
-            await asyncio.to_thread(
-                self._run_tmux_cmd,
-                ["kill-session", "-t", self.session_name]
-            )
+            await self.emergency_stop()
         
         logger.info("Server stopped successfully")
         return True, "Server stopped successfully"
+
+    async def emergency_stop(self) -> tuple[bool, str]:
+        """Forcefully stop the server by killing the tmux session"""
+        logger.warning("Forcefully killing tmux session")
+        self._intentional_stop = True
+        self._start_time = None
+        await self._save_state()
+        
+        res = await asyncio.to_thread(
+            self._run_tmux_cmd,
+            ["kill-session", "-t", self.session_name]
+        )
+        if res.returncode == 0:
+            return True, "Server forcefully stopped"
+        else:
+            return False, f"Failed to kill tmux session: {res.stderr}"
 
     async def restart(self) -> tuple[bool, str]:
         """Restart the Minecraft server"""
@@ -191,7 +204,7 @@ class TmuxServerManager(ServerInterface):
         """Send command to tmux session (non-blocking)"""
         try:
             # This is a quick operation, so it's OK to be synchronous
-            self._run_tmux_cmd(["send-keys", "-t", self.session_name, cmd, "C-m"])
+            self._run_tmux_cmd(["send-keys", "-t", self.session_name, "--", cmd, "C-m"])
             logger.info(f"Sent command to server: {cmd}")
         except Exception as e:
             logger.error(f"Failed to send command: {e}")

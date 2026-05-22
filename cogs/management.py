@@ -182,6 +182,49 @@ class Management(commands.Cog):
 
     # --- Bot Management Commands ---
 
+    @app_commands.command(name="kill", description="Emergency stop: Forcefully kill the server process")
+    @has_role("stop")
+    async def kill(self, interaction: discord.Interaction):
+        """Forcefully kills the Minecraft server process."""
+        await interaction.response.defer(ephemeral=True)
+        
+        embed = discord.Embed(description="⚠️ Attempting emergency stop...", color=0xFEE75C)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+        success, message = await self.bot.server.emergency_stop()
+        
+        if success:
+            embed = discord.Embed(
+                title="💀 Server Force-Stopped",
+                description="The server process was forcefully terminated.",
+                color=0xED4245
+            )
+            # Clear player list
+            try:
+                with config.update_bot_config() as bot_cfg:
+                    if bot_cfg.get('online_players'):
+                        bot_cfg['online_players'] = []
+            except Exception:
+                pass
+                
+            # Update info channel
+            from src.server_info_manager import ServerInfoManager
+            await ServerInfoManager(self.bot).update_info(interaction.guild)
+            
+            # Update presence
+            await self.bot.change_presence(
+                activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
+                status=discord.Status.dnd
+            )
+        else:
+            embed = discord.Embed(
+                title="❌ Failed to Force-Stop",
+                description=f"**Error:** {message}",
+                color=0xED4245
+            )
+            
+        await interaction.edit_original_response(embed=embed)
+
     @app_commands.command(name="bot_restart", description="Restart the bot")
     @has_role("bot_restart")
     async def api_bot_restart(self, interaction: discord.Interaction):

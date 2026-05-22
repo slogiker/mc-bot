@@ -174,11 +174,12 @@ class BackupCog(commands.Cog):
         """
         await interaction.response.defer(ephemeral=True)
 
+        safe_filename = os.path.basename(filename)
         filepath = None
-        if os.path.exists(os.path.join(backup_manager.custom_dir, filename)):
-            filepath = os.path.join(backup_manager.custom_dir, filename)
-        elif os.path.exists(os.path.join(backup_manager.auto_dir, filename)):
-            filepath = os.path.join(backup_manager.auto_dir, filename)
+        if os.path.exists(os.path.join(backup_manager.custom_dir, safe_filename)):
+            filepath = os.path.join(backup_manager.custom_dir, safe_filename)
+        elif os.path.exists(os.path.join(backup_manager.auto_dir, safe_filename)):
+            filepath = os.path.join(backup_manager.auto_dir, safe_filename)
 
         if not filepath:
             await interaction.followup.send(f"❌ Backup `{filename}` not found.", ephemeral=True)
