@@ -2,7 +2,7 @@
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v3.0.0-dev`  
+**Version:** `v3.0.0`  
 **Last Updated:** 2026-05-22  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
@@ -1121,7 +1121,7 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 
 ## 11. Version History & Recent Changes
 
-### v3.0.0-dev — Security & Reliability Overhaul (2026-05-22)
+### v3.0.0 — Security & Reliability Overhaul (2026-05-22)
 
 **Major Changes:**
 - **UUID Verification:** Overhauled JoinGuard to use UUID-based session tracking, preventing impersonation via name-spoofing in offline mode.
@@ -1416,12 +1416,12 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 
 - [ ] **SQLite via `aiosqlite`** — replace `bot_config.json` economy and events storage arrays outright. JSON has minor race conditions under rapid concurrent loads, even with limits.
 - [ ] **Minecraft→Discord chat bridge** — pipe in-game chat to a Discord channel directly, scanning logs.
-- ~~[ ] **Mascan-proof the offline whitelist** — add a secondary verification layer for proxied connections implying BungeeCord/Velocity setups where standard MD5 hashes are bypassed for premium connections. _(Plan documented in `implementations/offline-protection.md`)_~~ ✅ Done v3.0.0-dev (UUID Sessions)
+- ~~[ ] **Mascan-proof the offline whitelist** — add a secondary verification layer for proxied connections implying BungeeCord/Velocity setups where standard MD5 hashes are bypassed for premium connections. _(Plan documented in `implementations/offline-protection.md`)_~~ ✅ Done v3.0.0 (UUID Sessions)
 - [ ] **Full Translation Support (i18n)** — Extract English responses to a JSON/YAML locale file so the bot logic works transparently anywhere globally. _(Plan documented in `implementations/i18n-implementation.md`)_
 
 ### 🟡 Medium Priority
 
-- ~~[ ] **Windows Native Installer (install.ps1)** — Full PowerShell script utilizing `dism.exe` for WSL/VirtualMachinePlatform enabling, Ubuntu installation natively, and colorized UI blocks.~~ ✅ Done v3.0.0-dev
+- ~~[ ] **Windows Native Installer (install.ps1)** — Full PowerShell script utilizing `dism.exe` for WSL/VirtualMachinePlatform enabling, Ubuntu installation natively, and colorized UI blocks.~~ ✅ Done v3.0.0
 - [ ] **Cloud Storage Synchronization** — Background async uploading of generated backups to Google Drive using standard Python API integration.
 - ~~[ ] **Server uptime statistics** — track uptime start time, display in `/info`.~~ ✅ Done v2.8.0-dev
 - [ ] **Performance metrics dashboard** — periodic embed showing TPS trend, player count over time, RAM usage history.

@@ -1,4 +1,4 @@
-# 🎮 MC-Bot
+# 🎮 MC-Bot `v3.0.0`
 
 > **A Discord-powered Minecraft server manager that runs entirely inside Docker.**
 
