@@ -18,10 +18,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playit.gg binary directly (avoiding PPA systemd issues)
-# v0.17.1 is used for compatibility with the bot's CLI arguments
-RUN curl -Lo /usr/local/bin/playit https://github.com/playit-cloud/playit-agent/releases/download/v0.17.1/playit-linux-amd64 \
-    && chmod +x /usr/local/bin/playit
+# Install Playit.gg binaries directly (avoiding PPA systemd issues)
+# v1.0.4 is used for compatibility with the latest API
+RUN curl -Lo /usr/local/bin/playit https://github.com/playit-cloud/playit-agent/releases/download/v1.0.4/playit-linux-amd64 \
+    && curl -Lo /usr/local/bin/playit-cli https://github.com/playit-cloud/playit-agent/releases/download/v1.0.4/playit-cli-linux-amd64 \
+    && chmod +x /usr/local/bin/playit /usr/local/bin/playit-cli
 
 WORKDIR /app
 

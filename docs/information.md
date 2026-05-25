@@ -781,23 +781,22 @@ Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`)
 - No address on tunnel → tunnel still initializing
 - Network error → internet connectivity issue
 
-#### Playit CLI Reference (v0.17.1)
+#### Playit CLI Reference (v1.0.4)
 
-The `playit` binary is installed via apt from `playit-cloud.github.io/ppa` inside the Docker container. Full CLI reference:
+The bot uses the `playit` (daemon) and `playit-cli` (management) binaries. Logs are written to `/app/logs/playit.log`. It uses a custom socket path at `/app/data/playit.sock` to avoid permission issues.
 
 ```
-Usage: playit [OPTIONS] [COMMAND]
+Usage: playit-cli [OPTIONS] [COMMAND]
 
 Commands:
-  version      Print version
-  account      Account operations
-  claim        Setting up a new playit agent (first-time)
-  start        Start the playit agent
-  tunnels      Manage tunnels
-  reset        Remove the secret key so the agent can be re-claimed
-  secret-path  Show file path where the playit secret is stored
-  setup        Interactive setup wizard (Linux)
-  help         Print help for a subcommand
+  version      Print version information
+  status       Show the status of the installed playitd service
+  reset        Removes the secret key on your system so the playit agent can be re-claimed
+  setup        Setup playit by provisioning a new secret to playitd
+  account      Account management commands
+  claim        Setting up a new playit agent
+  help         Print this message or the help of the given subcommand(s)
+```
 
 Options:
   --secret <SECRET>     Secret code for the agent (pass directly)

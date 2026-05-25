@@ -273,11 +273,11 @@ else
 
             # Generate a claim code inside the container and build the URL
             echo -e "Generating claim code..."
-            CLAIM_CODE=$(docker exec mc-bot playit -s claim generate 2>&1 | tail -1 | awk '{print $NF}') || true
+            CLAIM_CODE=$(docker exec mc-bot playit-cli claim generate 2>&1 | tail -1 | awk '{print $NF}') || true
             
             if [[ -z "$CLAIM_CODE" || "$CLAIM_CODE" =~ [[:space:]] || ${#CLAIM_CODE} -gt 20 ]]; then
                 echo -e "${RED}[ERROR] Invalid claim code from Playit. Got: '${CLAIM_CODE}'${NC}"
-                echo "        Make sure the container is running and playit binary is installed."
+                echo "        Make sure the container is running and playit-cli binary is installed."
                 exit 1
             fi
 
@@ -293,7 +293,7 @@ else
                 echo -e ""
 
                 # Exchange the claim code for a secret key (waits until browser claim is done)
-                SECRET_KEY=$(docker exec mc-bot playit -s claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | awk '{print $NF}') || true
+                SECRET_KEY=$(docker exec mc-bot playit-cli claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | awk '{print $NF}') || true
 
                 if [ -z "$SECRET_KEY" ]; then
                     echo -e "${RED}[ERROR] Did not receive a secret key from Playit. Try running the installer again.${NC}"
@@ -307,36 +307,56 @@ else
             # Start the agent first so it registers with the Playit API
             echo -e "Starting Playit agent..."
             docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
-            docker exec mc-bot tmux new-session -d -s playit "bash -c 'playit --platform_docker --secret_path /app/data/playit_secret.key -l /app/logs/playit.log'"
+            docker exec mc-bot tmux new-session -d -s playit "bash -c 'playit --platform-docker --secret ${SECRET_KEY} --socket-path /app/data/playit.sock -l /app/logs/playit.log'"
             sleep 8
 
-            # Auto-create Minecraft Java tunnel via REST API
+            # Auto-create Minecraft Java tunnel via REST API v1
             echo -e "Creating Minecraft Java tunnel (port 25565)..."
-            AGENT_ID=$(docker exec mc-bot curl -s -X POST \
+            AGENT_DATA=$(docker exec mc-bot curl -s -X POST \
                 -H "authorization: Agent-Key ${SECRET_KEY}" \
                 -H "content-type: application/json" \
                 -d '{}' \
-                https://api.playit.gg/v1/agents/rundata \
-                | docker exec -i mc-bot python3 -c "import json,sys; print(json.load(sys.stdin)['data']['agent_id'])" 2>/dev/null) || true
+                https://api.playit.gg/v1/agents/rundata) || true
 
-            if [ -z "$AGENT_ID" ]; then
+            AGENT_ID=$(echo "$AGENT_DATA" | docker exec -i mc-bot jq -r '.data.agent_id' 2>/dev/null) || true
+
+            if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "null" ]; then
                 echo -e "${YELLOW}[WARN] Could not fetch agent ID. Tunnel creation skipped — create it manually at https://playit.gg${NC}"
+                echo "DEBUG: API response: $AGENT_DATA"
             else
                 TUNNEL_RESULT=$(docker exec mc-bot curl -s -X POST \
                     -H "authorization: Agent-Key ${SECRET_KEY}" \
                     -H "content-type: application/json" \
-                    -d "{\"name\":\"minecraft\",\"tunnel_type\":\"minecraft-java\",\"port_type\":\"tcp\",\"port_count\":1,\
-\"origin\":{\"type\":\"agent\",\"data\":{\"agent_id\":\"${AGENT_ID}\",\"local_ip\":\"127.0.0.1\",\"local_port\":25565}},\
-\"enabled\":true,\"alloc\":null,\"firewall_id\":null,\"proxy_protocol\":null}" \
-                    https://api.playit.gg/tunnels/create 2>/dev/null) || true
+                    -d "{
+  \"name\": \"minecraft\",
+  \"agent_id\": \"${AGENT_ID}\",
+  \"config\": {
+    \"fields\": [
+      { \"name\": \"local_ip\", \"value\": \"127.0.0.1\" },
+      { \"name\": \"local_port\", \"value\": 25565 }
+    ]
+  },
+  \"endpoint\": {
+    \"type\": \"region\",
+    \"details\": {
+      \"region\": \"global\",
+      \"port\": 0
+    }
+  },
+  \"protocol\": {
+    \"type\": \"tunnel-type\",
+    \"details\": \"minecraft-java\"
+  }
+}" https://api.playit.gg/v1/tunnels/create 2>/dev/null) || true
 
                 if echo "$TUNNEL_RESULT" | grep -q '"status":"success"'; then
                     echo -e "${GREEN}[OK] Minecraft Java tunnel created automatically.${NC}"
-                elif echo "$TUNNEL_RESULT" | grep -q '"status":"fail"'; then
-                    FAIL_REASON=$(echo "$TUNNEL_RESULT" | jq -r '.data // "Unknown reason"') # Extract failure data using jq
+                elif echo "$TUNNEL_RESULT" | grep -q '"status":"error"'; then
+                    FAIL_REASON=$(echo "$TUNNEL_RESULT" | docker exec -i mc-bot jq -r '.data.message // "Unknown error"')
                     echo -e "${YELLOW}[WARN] Tunnel creation returned: ${FAIL_REASON}. Create it manually at https://playit.gg${NC}"
                 else
                     echo -e "${YELLOW}[WARN] Tunnel creation gave unexpected response. Create it manually at https://playit.gg${NC}"
+                    echo "DEBUG: API response: $TUNNEL_RESULT"
                 fi
             fi
         fi
@@ -344,7 +364,9 @@ else
     elif [ -s "data/playit_secret.key" ]; then
         # Already have a key from .env or previous install — just start the agent
         echo -e "Starting Playit agent with existing secret key..."
-        docker exec mc-bot tmux new-session -d -s playit "bash -c 'playit --platform_docker --secret_path /app/data/playit_secret.key -l /app/logs/playit.log'"
+        SECRET_KEY=$(cat data/playit_secret.key)
+        docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
+        docker exec mc-bot tmux new-session -d -s playit "bash -c 'playit --platform-docker --secret ${SECRET_KEY} --socket-path /app/data/playit.sock -l /app/logs/playit.log'"
     fi
 fi
 

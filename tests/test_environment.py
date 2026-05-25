@@ -3,27 +3,21 @@ import subprocess
 import pytest
 import getpass
 
-def test_playit_binary_exists():
-    """Verify that the playit binary is installed in the expected location."""
-    playit_path = "/usr/local/bin/playit"
-    assert os.path.exists(playit_path), f"Playit binary not found at {playit_path}"
-    assert os.access(playit_path, os.X_OK), f"Playit binary at {playit_path} is not executable"
+def test_playit_binaries_exist():
+    """Verify that playit and playit-cli binaries are installed."""
+    for binary in ["playit", "playit-cli"]:
+        path = f"/usr/local/bin/{binary}"
+        assert os.path.exists(path), f"Binary {binary} not found at {path}"
+        assert os.access(path, os.X_OK), f"Binary {binary} at {path} is not executable"
 
 def test_playit_version():
-    """Verify that the playit binary is the correct version (v0.17.1)."""
+    """Verify that the playit binary is the correct version (v1.0.4)."""
     try:
-        result = subprocess.run(["/usr/local/bin/playit", "--version"], 
+        result = subprocess.run(["/usr/local/bin/playit-cli", "version"], 
                                capture_output=True, text=True, check=True)
-        # Playit v0.17.1 might output version in a specific format
-        # Let's check if 0.17.1 is in the output
-        assert "0.17.1" in result.stdout or "0.17.1" in result.stderr
-    except subprocess.CalledProcessError as e:
-        # Some versions might return non-zero for --version or use different flags
-        # If --version fails, we can try to just run it and check help output
-        result = subprocess.run(["/usr/local/bin/playit", "--help"], 
-                               capture_output=True, text=True, check=True)
-        # If it's the right binary, it should at least run
-        assert "playit" in result.stdout.lower()
+        assert "1.0.4" in result.stdout
+    except subprocess.CalledProcessError:
+        pytest.fail("Failed to get playit-cli version")
 
 def test_running_as_non_root():
     """Verify that the tests are running as the 'bot' user, not root."""
