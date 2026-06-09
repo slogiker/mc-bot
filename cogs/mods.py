@@ -86,8 +86,21 @@ class ModrinthSearchView(discord.ui.View):
                              os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                              async with aiofiles.open(dest_path, mode='wb') as f:
                                  await f.write(await file_resp.read())
-                             await msg.edit(content=f"✅ Successfully installed `{filename}` into `{dest_folder}/`.\n*Please restart the server to apply changes.*")
+                             
+                             await msg.edit(content=f"✅ Successfully installed `{filename}` into `{dest_folder}/`.")
+                             await send_debug(interaction.client, f"📥 **Mod installed!** `{filename}` has been added. Server will restart in 10 seconds. Take a quick water break! 💧")
                              await send_debug(interaction.client, f"Installed {slug} ({filename}) via Modrinth UI")
+                             
+                             # Automatic restart
+                             if self.bot.server.is_running():
+                                 await asyncio.sleep(10)
+                                 success, restart_msg = await self.bot.server.restart()
+                                 if success:
+                                     await send_debug(interaction.client, "🚀 **Server Restarted!** Mod changes are now active.")
+                                 else:
+                                     await send_debug(interaction.client, f"⚠️ **Automatic restart failed:** {restart_msg}. Please restart manually.")
+                             else:
+                                 await interaction.followup.send("💡 Server is currently offline. Start it to apply changes.", ephemeral=True)
                          else:
                              await msg.edit(content=f"❌ Failed to download `{filename}`.")
         except Exception as e:

@@ -137,6 +137,10 @@ class ModUpdater:
         Main execution flow.
         Runs through the mods folder, identifies all jars, backs them up, and replaces them with updated dependencies.
         """
+        # Cleanup old backups first
+        if not is_setup:
+            await asyncio.to_thread(self._cleanup_old_backups)
+
         if not os.path.exists(self.target_dir):
             await self._send_status("❌ Target directory not found. Is the server fully setup?")
             return False
@@ -235,6 +239,23 @@ class ModUpdater:
                             
         if is_setup:
             await self._send_status(f"✨ Installation complete! Downloaded **{updated_count}** `.jar` files.")
+        else:
+            await self._send_status(f"✨ Update complete! Successfully downloaded **{updated_count}** new `.jar` files.")
+        
+        # Format the summary for discord (truncate if too long)
+        final_msg = "```\nUpdate Summary:\n"
+        for item in summary.values():
+            status = item["status"]
+            name = item["title"][:30]
+            ver = item["version"][:15]
+            final_msg += f"{name:<32} | {status:<12} | {ver}\n"
+        final_msg += "```"
+        
+        if len(final_msg) <= 2000:
+             await self._send_status(final_msg)
+             
+        return True
+send_status(f"✨ Installation complete! Downloaded **{updated_count}** `.jar` files.")
         else:
             await self._send_status(f"✨ Update complete! Successfully downloaded **{updated_count}** new `.jar` files.")
         

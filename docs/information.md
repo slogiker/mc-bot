@@ -1400,6 +1400,7 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - ✅ **Setup Wizard Timeout Message** — `SetupView.on_timeout()` replaces dead buttons with a helpful "run /setup again" message after 10 minutes of inactivity
 - ✅ **Emergency Stop (/kill)** — Force-kill tmux session for emergency hard-stops
 - ✅ **Interactive /logs** — Categorized filtering (Chat, Errors, Joins, etc.) with noise reduction
+- ✅ **System Online Notification** — "✅ System Online" embed sent to command channel after startup (v3.1)
 - ✅ **UUID Sessions** — Secure offline-mode protection via production-ready /verify command
 - ✅ **Vanilla Detection** — Automated mods/plugins skipping and folder detection
 - ✅ **Fresh Setup** — "Latest" version always queries API at install time
@@ -1500,6 +1501,23 @@ Host machine
        ├─ Python bot process
        ├─ tmux session "minecraft"
        │    └─ java server.jar (MC server, port 25565)
+       └─ RCON listener 127.0.0.1:25575
+```
+
+25575/tcp remains internal only and is highly protected.
+
+### Healthcheck
+
+The `docker-compose.yml` healthcheck uses `pgrep -f 'python bot.py'` to verify the bot process is alive. Docker restarts the container automatically after 3 consecutive failures. This checks the bot process specifically — not PID 1 and not a psutil probe.
+
+
+
+---
+
+## AI Agent Prompt Instructions
+
+> **System Instruction for all AIs:** At each change, add recent architectural or functional changes to this file (`docs/information.md`),and keep track of versions, update to and if broadly applicable, append new features to `README.md`. This `information.md` file can always be longer (or same size), never shorter. It must remain the comprehensive canonical source of truth for the codebase history and technical roadmap. Maintain this documented style, structure, and depth explicitly going forward.
+)
        └─ RCON listener 127.0.0.1:25575
 ```
 

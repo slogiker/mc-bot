@@ -52,6 +52,8 @@ class MinecraftBot(commands.Bot):
         
         self.synced = False  # Prevent duplicate syncs
         self._sync_lock = asyncio.Lock()  # Prevent race conditions
+        self.start_time = time.time()  # Track bot uptime
+        self._startup_complete = False  # Track if initial setup is done
         
         # Initialize Security modules
         self.join_guard = JoinGuard(self)
@@ -302,6 +304,43 @@ class MinecraftBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to start background tasks: {e}")
         
+        # Send 'System Online' notification
+        if not self._startup_complete:
+            self._startup_complete = True
+            cmd_channel_id = config.COMMAND_CHANNEL_ID
+            if cmd_channel_id:
+                channel = self.get_channel(int(cmd_channel_id))
+                if channel:
+                    embed = discord.Embed(
+                        title="✅ System Online",
+                        description="The MC-Bot has finished starting up and is ready to receive commands.",
+                        color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    server_status = "Online" if self.server.is_running() else "Offline"
+                    embed.add_field(name="Minecraft Server", value=f"**{server_status}**", inline=True)
+                    embed.add_field(name="Simulation Mode", value="Active 👻" if is_simulation else "Inactive", inline=True)
+                    
+                    await channel.send(embed=embed)
+                    logger.info("Sent 'System Online' notification to command channel.")
+
+        # Check for pending bot restart message
+        try:
+            bot_cfg = config.load_bot_config()
+            restart_channel_id = bot_cfg.get('restart_channel_id')
+            restart_message_id = bot_cfg.get('restart_message_id')
+            if restart_channel_id and restart_message_id:
+                channel = self.get_channel(int(restart_channel_id))
+                if channel:
+                    msg = await channel.fetch_message(int(restart_message_id))
+                    await msg.edit(content="✅ Bot restarted successfully!")
+                
+                with config.update_bot_config() as data:
+                    data.pop('restart_channel_id', None)
+                    data.pop('restart_message_id', None)
+        except Exception as e:
+            logger.error(f"Failed to update restart message: {e}")
+
         logger.info("=== Bot is now fully ready! ===")
 
 # --- Lifecycle Management ---

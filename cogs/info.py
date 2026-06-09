@@ -127,6 +127,32 @@ class Info(commands.Cog):
             except Exception as send_error:
                 logger.debug(f"Failed to send status error message: {send_error}")
 
+    @app_commands.command(name="uptime", description="Check how long the bot and server have been running")
+    @has_role("status")
+    async def uptime(self, interaction: discord.Interaction):
+        """Displays uptime for both the bot and the Minecraft server."""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Bot Uptime
+        bot_uptime_sec = int(time.time() - self.bot.start_time)
+        bot_uptime = str(timedelta(seconds=bot_uptime_sec))
+        
+        # Server Uptime
+        server_uptime = "Offline 🔴"
+        if self.bot.server.is_running():
+            start_time = self.bot.server.get_start_time()
+            if start_time:
+                server_uptime_sec = int(time.time() - start_time)
+                server_uptime = f"**{str(timedelta(seconds=server_uptime_sec))}** 🟢"
+            else:
+                server_uptime = "Online (Unknown duration) 🟢"
+        
+        embed = discord.Embed(title="⏲️ System Uptime", color=0x5865F2)
+        embed.add_field(name="Discord Bot", value=f"**{bot_uptime}**", inline=False)
+        embed.add_field(name="Minecraft Server", value=server_uptime, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="players", description="List online players")
     @has_role("players")
     async def players(self, interaction: discord.Interaction):

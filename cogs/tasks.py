@@ -197,7 +197,10 @@ class Tasks(commands.Cog):
                      ) 
 
             # Check Playit tunnel (same pattern as MC server crash recovery)
-            if os.path.exists("/app/data/playit_secret.key"):
+            secret_key_path = os.path.join(os.getcwd(), "data", "playit_secret.key")
+            playit_secret = os.environ.get("PLAYIT_SECRET_KEY") or (open(secret_key_path).read().strip() if os.path.exists(secret_key_path) else None)
+
+            if playit_secret:
                 proc = await asyncio.create_subprocess_exec("tmux", "has-session", "-t", "playit", stderr=subprocess.DEVNULL)
                 await proc.wait()
                 playit_running = (proc.returncode == 0)
@@ -210,7 +213,7 @@ class Tasks(commands.Cog):
                         if cmd_channel and owner_id:
                             await cmd_channel.send(
                                 f"<@{owner_id}> 🚨 The Playit tunnel has crashed and failed to auto-restart after 2 attempts. "
-                                f"Check your Playit configuration or restart manually with `tmux new-session -d -s playit 'playit --platform_docker --secret_path /app/data/playit_secret.key -s'`."
+                                f"Check your Playit configuration or restart manually with `tmux new-session -d -s playit 'playit --platform-docker --secret-path data/playit_secret.key'`."
                             )
                         self.playit_restart_attempts += 1
                         return
@@ -221,9 +224,17 @@ class Tasks(commands.Cog):
                     logger.warning(f"Playit tunnel not running. Restart attempt {self.playit_restart_attempts}/2...")
                     await send_debug(self.bot, f"Playit tunnel not running — restart attempt {self.playit_restart_attempts}/2...")
                     
+                    # Ensure secret file exists for --secret-path if using ENV
+                    if os.environ.get("PLAYIT_SECRET_KEY") and not os.path.exists(secret_key_path):
+                        with open(secret_key_path, "w") as f:
+                            f.write(os.environ.get("PLAYIT_SECRET_KEY"))
+
+                    socket_path = os.path.join(os.getcwd(), "data", "playit.sock")
+                    log_path = os.path.join(os.getcwd(), "logs", "playit.log")
+
                     start_proc = await asyncio.create_subprocess_exec(
                         "tmux", "new-session", "-d", "-s", "playit",
-                        "bash", "-c", "playit --platform-docker --secret $(cat /app/data/playit_secret.key) --socket-path /app/data/playit.sock -l /app/logs/playit.log"
+                        "playit", "--platform-docker", "--secret-path", secret_key_path, "--socket-path", socket_path, "-l", log_path
                     )
                     await start_proc.wait()
 

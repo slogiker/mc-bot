@@ -765,70 +765,6 @@ class SetupView(ui.View):
             config.update_dynamic_config(version_update)
             await self._save_config_to_file(version_update)
             
-            # STEP 4.5: Update Mods/Plugins to match new Version
-            if setup_config['platform'] != 'vanilla':
-                embed.description = "**Step 4.5/5:** Processing Mods/Plugins..."
-                await message.edit(embed=embed)
-                
-                async def updater_callback(status_text):
-                    try:
-                        embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
-                        await message.edit(embed=embed)
-                    except Exception:
-                        pass
-                        
-                updater = ModUpdater(callback=updater_callback)
-                loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
-                
-                # Install specific plugins if provided
-                failed_slugs = []
-                if setup_config.get('plugins'):
-                    plugin_slugs = [slug.strip() for slug in setup_config['plugins'].split(',') if slug.strip()]
-                    if plugin_slugs:
-                        await updater_callback(f"Fetching {len(plugin_slugs)} user-specified plugins...")
-                        for slug in plugin_slugs:
-                            try:
-                                # Fetch project and versions directly via Modrinth API
-                                await updater_callback(f"Downloading '{slug}'...")
-                                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-                                    async with session.get(f"https://api.modrinth.com/v2/project/{slug}") as p_resp:
-                                        if p_resp.status != 200:
-                                            raise Exception(f"Project not found (HTTP {p_resp.status})")
-                                        project = await p_resp.json()
-                                        params = {
-                                            "loaders": f'["{loader_override}"]',
-                                            "game_versions": f'["{setup_config["version"]}"]'
-                                        }
-                                        async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
-                                            if v_resp.status == 200:
-                                                versions = await v_resp.json()
-                                                if not versions:
-                                                    raise Exception("No compatible version found")
-                                                version = versions[0]
-                                                primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
-
-                                                mods_dir = os.path.join(config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
-                                                os.makedirs(mods_dir, exist_ok=True)
-
-                                                filepath = os.path.join(mods_dir, primary_file["filename"])
-                                                async with session.get(primary_file["url"]) as d_resp:
-                                                    if d_resp.status == 200:
-                                                        async with aiofiles.open(filepath, 'wb') as f:
-                                                            await f.write(await d_resp.read())
-                                                logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
-                                            else:
-                                                raise Exception(f"Version fetch failed (HTTP {v_resp.status})")
-
-                            except Exception as e:
-                                logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
-                                failed_slugs.append(slug)
-                
-                # Then run the standard update_all to catch any existing
-                await updater.update_all(game_version=setup_config['version'], loader=loader_override, is_setup=True)
-            else:
-                embed.description = "**Step 4.5/5:** Skipping Mods/Plugins (Vanilla)..."
-                await message.edit(embed=embed)
-            
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
             await message.edit(embed=embed)
@@ -987,3 +923,117 @@ class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
             await interaction.response.defer()
         except Exception as e:
             await interaction.response.send_message(f"Error: {e}", ephemeral=True)
+l panel\n"
+                    f"4. Check {command_channel.mention if command_channel else '#command'} for commands"
+                ),
+                inline=False
+            )
+            
+            if failed_slugs:
+                embed.add_field(
+                    name="⚠️ Plugin Install Failures",
+                    value=f"The following could not be installed: `{'`, `'.join(failed_slugs)}`\nCheck the slug spelling at modrinth.com and use `/mod_search` to find the correct slug.",
+                    inline=False
+                )
+
+            embed.set_footer(text="Use /help to see all available commands")
+
+            await message.edit(embed=embed)
+            
+            # Trigger control panel update immediately so it shows correct status
+            try:
+                control_cog = interaction.client.get_cog("ControlPanelCog")
+                if control_cog:
+                    await control_cog.update_panel()
+            except Exception as e:
+                logger.error(f"Failed to update control panel: {e}")
+            
+            # Initialize server info channel
+            try:
+                from src.server_info_manager import ServerInfoManager
+                await ServerInfoManager(interaction.client).update_info(interaction.guild)
+            except Exception as e:
+                logger.error(f"Failed to init server info channel: {e}")
+            
+        except Exception as e:
+            logger.error(f"Installation failed: {e}", exc_info=True)
+            embed.color = discord.Color.red()
+            embed.description = f"Installation failed: {str(e)}"
+            await message.edit(embed=embed)
+    
+    async def _save_config_to_file(self, updates: dict):
+        """Save configuration updates to bot_config.json file"""
+        try:
+            def update():
+                with config.update_bot_config() as data:
+                    data.update(updates)
+            await asyncio.to_thread(update)
+            logger.info("data/bot_config.json updated successfully")
+        except Exception as e:
+            logger.error(f"Failed to update data/bot_config.json: {e}")
+
+
+
+class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
+    """Modal for advanced server settings"""
+    
+    def __init__(self, state: SetupState):
+        super().__init__()
+        self.state = state
+        
+        self.ram = ui.TextInput(
+            label="RAM Allocation in GB",
+            placeholder="4",
+            default=str(state.ram),
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.ram)
+        
+        self.view_distance = ui.TextInput(
+            label="View Distance (chunks)",
+            placeholder="16",
+            default=str(state.view_distance),
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.view_distance)
+        
+        self.whitelist = ui.TextInput(
+            label="Enable Whitelist? (yes/no)",
+            placeholder="no",
+            default="yes" if state.whitelist else "no",
+            max_length=3,
+            required=False
+        )
+        self.add_item(self.whitelist)
+        
+        self.online_mode = ui.TextInput(
+            label="Enable Online Mode? (yes/no)",
+            placeholder="yes",
+            default="yes" if state.online_mode else "no",
+            max_length=3,
+            required=False
+        )
+        self.add_item(self.online_mode)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Parse RAM
+            ram_clean = ''.join(filter(str.isdigit, self.ram.value or "4"))
+            self.state.ram = int(ram_clean) if ram_clean else 4
+            
+            # Parse view distance
+            vd_clean = ''.join(filter(str.isdigit, self.view_distance.value or "16"))
+            self.state.view_distance = int(vd_clean) if vd_clean else 16
+            
+            # Parse whitelist
+            self.state.whitelist = self.whitelist.value.lower().strip() in ["yes", "y", "true", "1"]
+            
+            # Parse online mode
+            self.state.online_mode = self.online_mode.value.lower().strip() in ["yes", "y", "true", "1"]
+            
+            await interaction.response.defer()
+        except Exception as e:
+            await interaction.response.send_message(f"Error: {e}", ephemeral=True)
+l=True)

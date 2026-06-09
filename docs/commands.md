@@ -58,6 +58,7 @@
 ### Account Linking
 
 - `/link <username>` - Link your Discord account to a Minecraft username. **Premium (paid) accounts only.**
+- `/verify <code>` - Complete the 6-character alphanumeric challenge for account linking.
 - `/unlink` - Unlink your own Minecraft account.
 - `/unlink_admin [user] [username]` - Force-unlink a user by Discord mention or MC username. Admin only.
 

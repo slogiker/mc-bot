@@ -1,0 +1,50 @@
+# Shared config reused by both services via YAML anchors
+x-base: &base
+  user: "${PUID:-1000}:${PGID:-1000}"
+  build:
+    context: .
+    dockerfile: Dockerfile
+  container_name: mc-bot-test
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "pgrep -f 'python bot.py' > /dev/null || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+  dns:
+    - 8.8.8.8
+    - 1.1.1.1
+  ports:
+    - "25565:25565"
+  env_file:
+    - .env
+  mem_limit: 8g
+  tty: true
+  stdin_open: true
+
+services:
+  # Production — source files baked into the image
+  mc-bot:
+    <<: *base
+    volumes:
+      - ./mc-server:/app/mc-server
+      - ./backups:/app/backups
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./.env:/app/.env
+
+  # Dev — source files mounted live, no rebuild needed for code changes
+  # Usage: docker compose --profile dev up --build
+  mc-bot-dev:
+    <<: *base
+    profiles:
+      - dev
+    volumes:
+      - ./mc-server:/app/mc-server
+      - ./backups:/app/backups
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./.env:/app/.env
+      - ./bot.py:/app/bot.py
+      - ./cogs:/app/cogs
+      - ./src:/app/src
