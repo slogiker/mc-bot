@@ -224,7 +224,7 @@ class MinecraftBot(commands.Bot):
             
         self.tree.interaction_check = restrict_command_channel
             
-        logger.info("=== Bot Startup: Loading Extensions ===")
+        logger.debug("=== Bot Startup: Loading Extensions ===")
         # Load cogs - wrap os.listdir for async
         loaded_count = 0
         try:
@@ -240,12 +240,12 @@ class MinecraftBot(commands.Bot):
         except FileNotFoundError:
             logger.warning("No cogs directory found!")
         
-        logger.info(f"=== {loaded_count} extensions loaded successfully ===")
+        logger.debug(f"=== {loaded_count} extensions loaded successfully ===")
 
     async def on_ready(self):
         """Called when bot is fully connected and ready."""
         logger.debug(f"Logged in as {self.user} (ID: {self.user.id})")
-        logger.info("=== Bot Connected to Discord ===")
+        logger.debug("=== Bot Connected to Discord ===")
         
         if is_simulation:
             logger.info("👻 GHOST MODE ACTIVE: No files will be modified. Server is mocked.")
@@ -323,7 +323,7 @@ class MinecraftBot(commands.Bot):
                 if channel:
                     embed = discord.Embed(
                         title="✅ System Online",
-                        description="The MC-Bot has finished starting up and is ready to receive commands.",
+                        description="Bot is ready! Start with **/setup**",
                         color=discord.Color.green(),
                         timestamp=discord.utils.utcnow()
                     )
@@ -332,7 +332,7 @@ class MinecraftBot(commands.Bot):
                     embed.add_field(name="Simulation Mode", value="Active 👻" if is_simulation else "Inactive", inline=True)
                     
                     await channel.send(embed=embed)
-                    logger.info("Sent 'System Online' notification to command channel.")
+                    logger.debug("Sent 'System Online' notification to command channel.")
 
         # Check for pending bot restart message
         try:
@@ -351,7 +351,7 @@ class MinecraftBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to update restart message: {e}")
 
-        logger.info("=== Bot is now fully ready! ===")
+        logger.debug("=== Bot is now fully ready! ===")
 
 # --- Lifecycle Management ---
 
@@ -421,7 +421,7 @@ async def main():
     """)
     # ----------------------
 
-    logger.info("Starting bot client...")
+    logger.debug("Starting bot client...")
     
     loop = asyncio.get_running_loop()
 
