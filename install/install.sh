@@ -129,6 +129,15 @@ if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names
         1)
             echo -e "\n  ${BLUE}${ICON_GEAR} Stopping services for reconfiguration...${NC}"
             docker stop mc-bot &>/dev/null || true
+            
+            if [ -f "data/playit_secret.key" ]; then
+                read -p "  ${ICON_WARN} ${YELLOW}Existing Playit key found. Reset it? (y/N) " reset_playit
+                if [[ $reset_playit =~ ^[Yy]$ ]]; then
+                    rm -f data/playit_secret.key
+                    echo -e "  ${ICON_CHECK} Playit key removed. A new claim link will be generated."
+                fi
+            fi
+            
             echo -e "  ${ICON_CHECK} Services stopped. Proceeding with setup..."
             ;;
         2)
