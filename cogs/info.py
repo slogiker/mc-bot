@@ -266,14 +266,18 @@ class Info(commands.Cog):
             # Show ephemeral info
             ver = await parse_server_version()
             
-            # Get IP from playit.gg cache if available
+            # Get IP from playit.gg cache or config
             ip = "Unknown (Check /ip)"
             try:
                 playit_cog = self.bot.get_cog("PlayitCog")
-                if playit_cog and playit_cog.tunnels:
-                    ip = playit_cog.tunnels[0]
+                if playit_cog and playit_cog.cached_address:
+                    ip = playit_cog.cached_address
+                else:
+                    # Fallback to persistent config
+                    bot_cfg = config.load_bot_config()
+                    ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
             except Exception as e:
-                logger.error(f"Failed to fetch IP from PlayitCog: {e}")
+                logger.error(f"Failed to fetch IP for info command: {e}")
             
             # Get spawn
             spawn = self.info_manager._get_spawn() or "Not set"

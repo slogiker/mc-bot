@@ -271,27 +271,12 @@ class MinecraftInstaller:
                 
                 size_mb = os.path.getsize(jar_path) / (1024 * 1024)
                 
-                # Fetch default fabric mods (performance optimization)
-                if callback:
-                    await callback(f"📥 Downloading recommended Fabric optimization mods...")
-                await self._download_default_fabric_mods(version, callback)
-                
-                return True, f"Downloaded Fabric {version} ({size_mb:.1f}MB) + Optimization Mods"
+                return True, f"Downloaded Fabric {version} ({size_mb:.1f}MB)"
                 
         except Exception as e:
             logger.error(f"Fabric download failed: {e}")
             return False, str(e)
             
-    async def _download_default_fabric_mods(self, version: str, callback) -> None:
-        """Download recommended Fabric optimization mods via Modrinth"""
-        # Fabric API (Base), Lithium, FerriteCore, Krypton, Chunky, Spark
-        mod_slugs = ["fabric-api", "lithium", "ferrite-core", "krypton", "chunky", "spark"]
-        
-        logger.info(f"Downloading default Fabric mods for version {version}...")
-        
-        for slug in mod_slugs:
-            await self.install_mod_with_dependencies(slug, version, "fabric", callback)
-    
     async def _download_forge(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """
         Forge automatic installation is not yet supported.
