@@ -31,7 +31,7 @@ class MinecraftInstaller:
             platform (str): 'paper', 'vanilla', 'fabric', or 'forge'.
             
         Returns:
-            str: The version string (e.g. "1.21.4"). Defaults to "1.21.4" on error.
+            str: The version string (e.g. "26.1.2"). Defaults to "26.1.2" on error.
         """
         if platform == "forge":
             return "1.20.1" # Forge still manual
@@ -40,7 +40,7 @@ class MinecraftInstaller:
             return await version_fetcher.get_latest_version(platform, force_fresh=True)
         except Exception as e:
             logger.error(f"Failed to fetch latest version for {platform}: {e}")
-            return "1.21.4" # Safe current default
+            return "26.1.2" # Safe current default
     
     async def download_server(self, platform: str, version: str, progress_callback=None) -> tuple[bool, str]:
         """

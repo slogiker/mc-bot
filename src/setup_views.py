@@ -31,7 +31,7 @@ async def fetch_versions():
                 return GLOBAL_VERSIONS
     except Exception as e:
         logger.error(f"Failed to fetch Modrinth versions: {e}")
-        GLOBAL_VERSIONS = ["1.21.4", "1.21.3", "1.21.1", "1.20.4", "1.19.4"] # Fallback
+        GLOBAL_VERSIONS = ["26.1.2", "26.1.1", "26.1", "25.4.1", "25.3"] # Fallback
         return GLOBAL_VERSIONS
 
 class SetupState:
@@ -107,7 +107,7 @@ class PlatformSelect(ui.Select):
 class VersionSelect(ui.Select):
     """Dropdown for selecting Minecraft version"""
     def __init__(self, platform: str = "paper", current_value: str = "latest"):
-        versions = GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["1.21.4", "1.20.4"]
+        versions = GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["26.1.2", "26.1.1"]
         
         options = []
         for i, version in enumerate(versions[:24]):  # Discord limit is 25
