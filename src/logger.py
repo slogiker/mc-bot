@@ -213,6 +213,9 @@ def setup_logging():
     # Redirect stderr to logger
     sys.stderr = StreamToLogger(logger, logging.ERROR)
     
+    # Suppress discord.py voice client warnings (PyNaCl/davey not installed)
+    logging.getLogger('discord.voice_client').setLevel(logging.ERROR)
+    
     return logger
 
 logger = setup_logging()
