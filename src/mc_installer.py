@@ -203,10 +203,12 @@ class MinecraftInstaller:
             
     async def _download_default_fabric_mods(self, version: str, callback) -> None:
         """Download recommended Fabric optimization mods via Modrinth"""
-        # Fabric API (Base), Lithium, FerriteCore, Krypton, Starlight, Chunky, Spark
-        mod_slugs = ["fabric-api", "lithium", "ferrite-core", "krypton", "starlight", "chunky", "spark"]
+        # Fabric API (Base), Lithium, FerriteCore, Krypton, Chunky, Spark
+        mod_slugs = ["fabric-api", "lithium", "ferrite-core", "krypton", "chunky", "spark"]
         mods_dir = os.path.join(self.server_dir, "mods")
         os.makedirs(mods_dir, exist_ok=True)
+        
+        logger.info(f"Downloading default Fabric mods for version {version}...")
         
         try:
             async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
@@ -238,8 +240,15 @@ class MinecraftInstaller:
                                                 async with aiofiles.open(file_path, 'wb') as f:
                                                     async for chunk in mod_resp.content.iter_chunked(8192):
                                                         await f.write(chunk)
+                                                logger.info(f"Successfully downloaded mod: {filename}")
                                                 if callback:
                                                     await callback(f"✅ Added {filename}")
+                                            else:
+                                                logger.warning(f"Failed to download mod {slug} file: HTTP {mod_resp.status}")
+                                else:
+                                    logger.warning(f"No compatible versions found for mod {slug} on {version}")
+                            else:
+                                logger.warning(f"Failed to fetch version list for mod {slug}: HTTP {resp.status}")
                     except Exception as e:
                         logger.warning(f"Failed to download mod {slug}: {e}")
                         continue

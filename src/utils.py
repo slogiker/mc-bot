@@ -93,7 +93,7 @@ async def rcon_cmd(cmd: str) -> tuple[bool, str]:
     except Exception as e:
         error_msg = f"RCON failed ({cmd}): {e}"
         logger.error(error_msg)
-        return False, f"❌ Server is not running or RCON is unavailable: {e}"
+        return False, "❌ Server is not running or RCON is unavailable."
 
 async def get_uuid(username: str) -> str | None:
     """
