@@ -470,10 +470,14 @@ else
                 https://api.playit.gg/v1/agents/rundata) || true
 
             AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.data.agent_id' 2>/dev/null) || true
+            TUNNEL_COUNT=$(echo "$AGENT_DATA" | jq '.data.tunnels | length' 2>/dev/null) || echo 0
 
             if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "null" ]; then
                 echo -e "    ${ICON_WARN} ${YELLOW}Could not fetch agent ID. Tunnel creation skipped.${NC}"
+            elif [ "$TUNNEL_COUNT" -gt 0 ]; then
+                echo -e "    ${ICON_CHECK} ${GREEN}Agent already has $TUNNEL_COUNT tunnel(s). Using existing setup.${NC}"
             else
+                echo -e "    Creating Minecraft Java tunnel (port 25565)..."
                 TUNNEL_RESULT=$(docker exec mc-bot curl -s -X POST \
                     -H "authorization: Agent-Key ${SECRET_KEY}" \
                     -H "content-type: application/json" \
