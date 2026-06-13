@@ -15,7 +15,13 @@ class CustomFormatter(logging.Formatter):
         except (ImportError, TypeError, NameError):
             # Fallback during Python shutdown when modules are cleared
             timestamp = "SHUTDOWN"
-        return f"[{timestamp}] {record.levelname:<8} {record.msg}"
+            
+        # Add file and line number for errors to make debugging easier
+        location = ""
+        if record.levelno >= logging.ERROR:
+            location = f" [{record.filename}:{record.lineno}]"
+            
+        return f"[{timestamp}] {record.levelname:<8} {record.msg}{location}"
 
 # --- Redirect Terminal Output to Logger ---
 class StreamToLogger:

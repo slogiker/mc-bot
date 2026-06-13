@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import asyncio
 import asyncio.subprocess
+import subprocess
 import os
 from src.config import config
 from src.logger import logger

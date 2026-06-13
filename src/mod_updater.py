@@ -255,20 +255,3 @@ class ModUpdater:
              await self._send_status(final_msg)
              
         return True
-send_status(f"✨ Installation complete! Downloaded **{updated_count}** `.jar` files.")
-        else:
-            await self._send_status(f"✨ Update complete! Successfully downloaded **{updated_count}** new `.jar` files.")
-        
-        # Format the summary for discord (truncate if too long)
-        final_msg = "```\nUpdate Summary:\n"
-        for item in summary.values():
-            status = item["status"]
-            name = item["title"][:30]
-            ver = item["version"][:15]
-            final_msg += f"{name:<32} | {status:<12} | {ver}\n"
-        final_msg += "```"
-        
-        if len(final_msg) <= 2000:
-             await self._send_status(final_msg)
-             
-        return True
