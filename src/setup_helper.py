@@ -12,7 +12,7 @@ class SetupHelper:
         Ensures the guild has the necessary Category, Channels, and Roles.
         Returns a dict of found/created IDs to update the Config.
         """
-        logger.info(f"--- Starting Dynamic Setup for Guild: {guild.name} ({guild.id}) ---")
+        logger.debug(f"--- Starting Dynamic Setup for Guild: {guild.name} ({guild.id}) ---")
         
         updates = {}
         
@@ -32,7 +32,7 @@ class SetupHelper:
                     logger.error(f"Failed to create role {role_name}: {e}")
                     continue
             else:
-                logger.info(f"Found Role: {role_name}")
+                logger.debug(f"Found Role: {role_name}")
             
             # Special Case: Assign 'Owner' to Guild Owner
             if role_name == "Owner":
@@ -58,7 +58,7 @@ class SetupHelper:
             except Exception as e:
                 logger.error(f"Failed to create category {cat_name}: {e}")
         else:
-            logger.info(f"Found Category: {cat_name}")
+            logger.debug(f"Found Category: {cat_name}")
 
         # 3. CHANNELS
         # Defined as name -> key in config
@@ -85,7 +85,7 @@ class SetupHelper:
                     logger.error(f"Failed to create channel {ch_name}: {e}")
                     continue
             else:
-                logger.info(f"Found Channel: {ch_name}")
+                logger.debug(f"Found Channel: {ch_name}")
                 # Optional: Ensure it's in the correct category
                 if category and channel.category != category:
                     try:
@@ -96,7 +96,7 @@ class SetupHelper:
 
             updates[config_key] = channel.id
 
-        logger.info("--- Dynamic Setup Completed ---")
+        logger.debug("--- Dynamic Setup Completed ---")
         return updates
 
     async def _assign_owner_role(self, guild, owner_role):
