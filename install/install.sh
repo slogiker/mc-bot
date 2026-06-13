@@ -454,7 +454,7 @@ else
                 -d '{}' \
                 https://api.playit.gg/v1/agents/rundata) || true
 
-            AGENT_ID=$(echo "$AGENT_DATA" | docker exec -i mc-bot jq -r '.data.agent_id' 2>/dev/null) || true
+            AGENT_ID=$(echo "$AGENT_DATA" | jq -r '.data.agent_id' 2>/dev/null) || true
 
             if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "null" ]; then
                 echo -e "    ${ICON_WARN} ${YELLOW}Could not fetch agent ID. Tunnel creation skipped.${NC}"
