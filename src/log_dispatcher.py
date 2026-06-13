@@ -84,6 +84,9 @@ class LogDispatcher:
                     if not line:
                         continue
                     
+                    # Mirror to main bot logs for Docker visibility
+                    logger.info(f"[MC-SERVER] {line}")
+                    
                     # Store in rolling buffer
                     self._buffer.append(line)
                     

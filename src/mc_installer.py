@@ -56,17 +56,25 @@ class MinecraftInstaller:
         """
         try:
             jar_path = os.path.join(self.server_dir, "server.jar")
+            logger.info(f"Downloading {platform} server version {version} to {jar_path}")
             
             if platform == "paper":
-                return await self._download_paper(version, jar_path, progress_callback)
+                success, msg = await self._download_paper(version, jar_path, progress_callback)
             elif platform == "vanilla":
-                return await self._download_vanilla(version, jar_path, progress_callback)
+                success, msg = await self._download_vanilla(version, jar_path, progress_callback)
             elif platform == "fabric":
-                return await self._download_fabric(version, jar_path, progress_callback)
+                success, msg = await self._download_fabric(version, jar_path, progress_callback)
             elif platform == "forge":
-                return await self._download_forge(version, jar_path, progress_callback)
+                success, msg = await self._download_forge(version, jar_path, progress_callback)
             else:
                 return False, f"Unknown platform: {platform}"
+
+            if success:
+                logger.info(f"Successfully downloaded {platform} server.")
+            else:
+                logger.error(f"Failed to download {platform} server: {msg}")
+            
+            return success, msg
                 
         except Exception as e:
             logger.error(f"Download failed: {e}")

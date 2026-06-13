@@ -127,6 +127,8 @@ class Tasks(commands.Cog):
                     logger.debug("Server not running and no server.jar found — setup not complete, skipping crash recovery.")
                     return
 
+                logger.info("🚨 Minecraft server crash detected! Attempting auto-restart...")
+
                 # Clear stale player list — crash means no "left the game" messages were fired
                 bot_config = config.load_bot_config()
                 if bot_config.get('online_players'):

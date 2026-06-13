@@ -136,9 +136,12 @@ class ControlPanelCog(commands.Cog):
         if not channel: return
 
         import os
-        # Check if setup is complete by checking for server.jar
+        # Check if setup is complete
+        bot_config = config.load_bot_config()
         server_jar_path = os.path.join(config.SERVER_DIR, "server.jar")
-        if not os.path.exists(server_jar_path):
+        setup_complete = bot_config.get('installed_version') and os.path.exists(server_jar_path)
+
+        if not setup_complete:
             embed = discord.Embed(
                 title="👋 Welcome to MC-Bot!",
                 description=(

@@ -751,7 +751,44 @@ class SetupView(ui.View):
             }
             config.update_dynamic_config(version_update)
             await self._save_config_to_file(version_update)
-            
+
+            # STEP 4.5: Install Mods/Plugins
+            if setup_config['platform'] != "vanilla":
+                embed.description = "**Step 4.5/5:** Installing mods and plugins..."
+                await message.edit(embed=embed)
+
+                async def updater_callback(status_text):
+                    try:
+                        embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
+                        await message.edit(embed=embed)
+                    except Exception:
+                        pass
+
+                updater = ModUpdater(callback=updater_callback)
+                loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
+
+                # Auto-add Fabric API for Fabric servers
+                slugs = []
+                if setup_config.get('plugins'):
+                    slugs = [s.strip() for s in setup_config['plugins'].split(',') if s.strip()]
+                
+                if setup_config['platform'] == "fabric":
+                    if "fabric-api" not in slugs:
+                        logger.info("Auto-adding 'fabric-api' to installation slugs.")
+                        slugs.append("fabric-api")
+
+                # Install specific plugins if provided
+                failed_slugs = []
+                if slugs:
+                    for slug in slugs:
+                        await updater_callback(f"🔍 Fetching `{slug}`...")
+                        success = await updater.install_mod(slug, setup_config['version'], loader_override)
+                        if not success:
+                            failed_slugs.append(slug)
+                    
+                    if failed_slugs:
+                        logger.warning(f"Failed to install some mods: {', '.join(failed_slugs)}")
+
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
             await message.edit(embed=embed)
