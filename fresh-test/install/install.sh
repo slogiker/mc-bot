@@ -328,13 +328,17 @@ else
                     -H "authorization: Agent-Key ${SECRET_KEY}" \
                     -H "content-type: application/json" \
                     -d "{
-  \"agent_id\": \"${AGENT_ID}\",
+  \"name\": \"minecraft\",
   \"tunnel_type\": \"minecraft-java\",
   \"port_type\": \"both\",
   \"port_count\": 1,
   \"origin\": {
-    \"ip\": \"127.0.0.1\",
-    \"port\": 25565
+    \"type\": \"agent\",
+    \"data\": {
+      \"agent_id\": \"${AGENT_ID}\",
+      \"local_ip\": \"127.0.0.1\",
+      \"local_port\": 25565
+    }
   },
   \"enabled\": true
 }" https://api.playit.gg/v1/tunnels/create 2>/dev/null) || true

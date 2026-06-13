@@ -117,6 +117,8 @@ fi
 # Detect existing installation
 if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^mc-bot$'; then
     echo -e "\n  ${ICON_INFO} ${YELLOW}An existing installation was detected.${NC}"
+    echo -e "    ${DIM}Note: Your Minecraft server files, backups, and logs are stored in local folders${NC}"
+    echo -e "    ${DIM}and will remain safe during reconfiguration.${NC}"
     echo ""
     echo -e "    ${CYAN}${BOLD}1)${NC} Reconfigure & Reinstall ${DIM}(fresh setup)${NC}"
     echo -e "    ${CYAN}${BOLD}2)${NC} Update code only ${DIM}(git pull + rebuild)${NC}"
@@ -124,6 +126,11 @@ if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names
     echo ""
     read -p "  Choose an option [1/2/3]: " INSTALL_MODE
     case $INSTALL_MODE in
+        1)
+            echo -e "\n  ${BLUE}${ICON_GEAR} Stopping services for reconfiguration...${NC}"
+            docker stop mc-bot &>/dev/null || true
+            echo -e "  ${ICON_CHECK} Services stopped. Proceeding with setup..."
+            ;;
         2)
             echo -e "\n  ${BLUE}${ICON_GEAR} Updating code and rebuilding...${NC}"
             git pull || true
@@ -146,6 +153,7 @@ if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names
             ;;
         *)
             echo -e "  ${BLUE}Proceeding with full reconfigure...${NC}"
+            docker stop mc-bot &>/dev/null || true
             ;;
     esac
 fi
@@ -455,13 +463,17 @@ else
                     -H "authorization: Agent-Key ${SECRET_KEY}" \
                     -H "content-type: application/json" \
                     -d "{
-  \"agent_id\": \"${AGENT_ID}\",
+  \"name\": \"minecraft\",
   \"tunnel_type\": \"minecraft-java\",
   \"port_type\": \"both\",
   \"port_count\": 1,
   \"origin\": {
-    \"ip\": \"127.0.0.1\",
-    \"port\": 25565
+    \"type\": \"agent\",
+    \"data\": {
+      \"agent_id\": \"${AGENT_ID}\",
+      \"local_ip\": \"127.0.0.1\",
+      \"local_port\": 25565
+    }
   },
   \"enabled\": true
 }" https://api.playit.gg/v1/tunnels/create 2>/dev/null) || true
