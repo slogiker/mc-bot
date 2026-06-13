@@ -203,8 +203,8 @@ class MinecraftInstaller:
             
     async def _download_default_fabric_mods(self, version: str, callback) -> None:
         """Download recommended Fabric optimization mods via Modrinth"""
-        # Lithium, FerriteCore, Krypton, Starlight, Chunky, Spark
-        mod_slugs = ["lithium", "ferrite-core", "krypton", "starlight", "chunky", "spark"]
+        # Fabric API (Base), Lithium, FerriteCore, Krypton, Starlight, Chunky, Spark
+        mod_slugs = ["fabric-api", "lithium", "ferrite-core", "krypton", "starlight", "chunky", "spark"]
         mods_dir = os.path.join(self.server_dir, "mods")
         os.makedirs(mods_dir, exist_ok=True)
         
