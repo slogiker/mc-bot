@@ -69,23 +69,25 @@ class SetupState:
 
 class PlatformSelect(ui.Select):
     """Dropdown for selecting server platform"""
-    def __init__(self):
+    def __init__(self, current_platform: str = "paper"):
         options = [
             discord.SelectOption(
                 label="Paper",
                 value="paper",
                 description="Recommended - Best performance & plugin support",
-                default=True
+                default=(current_platform == "paper")
             ),
             discord.SelectOption(
                 label="Vanilla",
                 value="vanilla",
-                description="Official Minecraft server"
+                description="Official Minecraft server",
+                default=(current_platform == "vanilla")
             ),
             discord.SelectOption(
                 label="Fabric",
                 value="fabric",
-                description="Lightweight modding platform"
+                description="Lightweight modding platform",
+                default=(current_platform == "fabric")
             )
         ]
         super().__init__(
@@ -422,7 +424,7 @@ class SetupView(ui.View):
                 value=f"**{self.state.platform.title()}**",
                 inline=False
             )
-            return embed, [PlatformSelect(), self._next_button()]
+            return embed, [PlatformSelect(self.state.platform), self._next_button()]
             
         elif step == 1:  # Version
             embed = discord.Embed(
@@ -677,43 +679,6 @@ class SetupView(ui.View):
             }
             config.update_dynamic_config(version_update)
             await self._save_config_to_file(version_update)
-
-            # STEP 4.5: Install Mods/Plugins
-            if setup_config['platform'] != "vanilla":
-                embed.description = "**Step 4.5/5:** Installing mods and plugins..."
-                await message.edit(embed=embed)
-
-                async def updater_callback(status_text):
-                    try:
-                        embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
-                        await message.edit(embed=embed)
-                    except Exception:
-                        pass
-
-                updater = ModUpdater(callback=updater_callback)
-                loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
-
-                # Auto-add Fabric API for Fabric servers
-                slugs = []
-                if setup_config.get('plugins'):
-                    slugs = [s.strip() for s in setup_config['plugins'].split(',') if s.strip()]
-                
-                if setup_config['platform'] == "fabric":
-                    if "fabric-api" not in slugs:
-                        logger.info("Auto-adding 'fabric-api' to installation slugs.")
-                        slugs.append("fabric-api")
-
-                # Install specific plugins if provided
-                failed_slugs = []
-                if slugs:
-                    for slug in slugs:
-                        await updater_callback(f"🔍 Fetching `{slug}`...")
-                        success = await updater.install_mod(slug, setup_config['version'], loader_override)
-                        if not success:
-                            failed_slugs.append(slug)
-                    
-                    if failed_slugs:
-                        logger.warning(f"Failed to install some mods: {', '.join(failed_slugs)}")
 
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
