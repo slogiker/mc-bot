@@ -341,7 +341,7 @@ else
     }
   },
   \"enabled\": true
-}" https://api.playit.gg/v1/tunnels/create 2>/dev/null) || true
+}" https://api.playit.gg/tunnels/create 2>/dev/null) || true
 
                 if echo "$TUNNEL_RESULT" | grep -q '"status":"success"'; then
                     echo -e "${GREEN}[OK] Minecraft Java tunnel created automatically.${NC}"
