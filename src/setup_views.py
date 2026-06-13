@@ -367,42 +367,6 @@ class CustomNumberModal(ui.Modal):
                 ephemeral=True
             )
 
-class PluginsModal(ui.Modal, title="Plugins & Mods"):
-    """Modal for entering Modrinth project slugs"""
-    def __init__(self, current_value: str):
-        super().__init__()
-        self.value: Optional[str] = None
-        
-        self.plugins_input = ui.TextInput(
-            label="Modrinth Slugs (Comma-separated)",
-            style=discord.TextStyle.paragraph,
-            placeholder="e.g. essentials, clear-lagg, vault\nLeave empty to skip.",
-            default=current_value,
-            max_length=2000,
-            required=False
-        )
-        self.add_item(self.plugins_input)
-    
-    async def on_submit(self, interaction: discord.Interaction):
-        self.value = self.plugins_input.value.strip()
-        await interaction.response.defer()
-
-class PluginsButton(ui.Button):
-    """Button to set plugins"""
-    def __init__(self):
-        super().__init__(label="Enter Plugins/Mods", style=discord.ButtonStyle.primary)
-    
-    async def callback(self, interaction: discord.Interaction):
-        view: SetupView = self.view
-        modal = PluginsModal(view.state.plugins)
-        await interaction.response.send_modal(modal)
-        await modal.wait()
-        if modal.value is not None:
-            view.state.plugins = modal.value
-            # Explicitly edit message to show updated plugins list
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
-
-
 class SetupView(ui.View):
     """Main view controller for multi-step setup"""
     
@@ -413,7 +377,6 @@ class SetupView(ui.View):
         "Seed",
         "Max Players",
         "Advanced Settings",
-        "Plugins/Mods",
         "Confirmation"
     ]
     
@@ -534,43 +497,7 @@ class SetupView(ui.View):
             )
             return embed, [self._back_button(), self._configure_advanced_button(), self._next_button()]
             
-        elif step == 6:  # Plugins/Mods
-            if self.state.platform == "vanilla":
-                embed = discord.Embed(
-                    title="Minecraft Server Setup",
-                    description=(
-                        f"**{progress}** - Plugins & Mods\n"
-                        "Vanilla servers do not support mods or plugins.\n"
-                        "Click **Next** to proceed to confirmation."
-                    ),
-                    color=discord.Color.blue()
-                )
-                return embed, [self._back_button(), self._next_button()]
-            
-            embed = discord.Embed(
-                title="Minecraft Server Setup",
-                description=(
-                    f"**{progress}** - Plugins & Mods\n"
-                    "Enter a comma-separated list of Modrinth slugs to auto-download during setup.\n"
-                    "💡 **Not sure of the slug?** Close this and run `/mod_search <name>` — it autocompletes as you type and shows the exact slug to use."
-                ),
-                color=discord.Color.blue()
-            )
-            
-            display_plugins = self.state.plugins
-            if not display_plugins:
-                display_plugins = "*None*"
-            elif len(display_plugins) > 1000:
-                display_plugins = display_plugins[:1000] + "... (truncated)"
-                
-            embed.add_field(
-                name="Items to Install",
-                value=f"```\n{display_plugins}\n```",
-                inline=False
-            )
-            return embed, [PluginsButton(), self._back_button(), self._next_button()]
-            
-        else:  # Confirmation (step 7)
+        else:  # Confirmation (step 6)
             embed = discord.Embed(
                 title="Ready to Install",
                 description="Review your configuration and click Install to begin",
@@ -587,8 +514,7 @@ class SetupView(ui.View):
                     f"**Max Players:** {self.state.max_players}\n"
                     f"**RAM:** {self.state.ram} GB\n"
                     f"**Whitelist:** {'Enabled' if self.state.whitelist else 'Disabled'}\n"
-                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}\n"
-                    f"**Plugins/Mods:** {len(self.state.plugins.split(',')) if self.state.plugins else '0'} specified"
+                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}"
                 ),
                 inline=False
             )
