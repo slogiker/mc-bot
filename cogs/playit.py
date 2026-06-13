@@ -5,6 +5,7 @@ import asyncio
 import aiohttp
 import os
 import time
+from src.config import config
 from src.logger import logger
 from src.utils import has_role
 
@@ -65,6 +66,7 @@ class PlayitCog(commands.Cog):
         return False
 
     @app_commands.command(name="ip", description="Get the public Playit.gg address")
+    @has_role("status")
     async def get_ip(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
         

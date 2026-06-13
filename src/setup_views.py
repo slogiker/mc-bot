@@ -91,7 +91,7 @@ class PlatformSelect(ui.Select):
             )
         ]
         super().__init__(
-            placeholder="Choose server platform...",
+            placeholder=f"Currently: {current_platform.title()}",
             options=options,
             min_values=1,
             max_values=1
@@ -130,7 +130,7 @@ class VersionSelect(ui.Select):
         )
         
         super().__init__(
-            placeholder="Choose Minecraft version...",
+            placeholder=f"Currently: {current_value}",
             options=options,
             min_values=1,
             max_values=1

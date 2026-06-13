@@ -443,11 +443,22 @@ else
                 # Exchange the claim code for a secret key (waits until browser claim is done)
                 # We use tr to strictly clean the key of any hidden whitespace or newlines
                 SECRET_KEY=$(docker exec mc-bot playit-cli claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | awk '{print $NF}' | tr -d '\r\n ') || true
-
                 if [ -z "$SECRET_KEY" ]; then
                     echo -e "  ${ICON_CROSS} ${RED}Did not receive a secret key from Playit.${NC}"
                 else
                     echo "$SECRET_KEY" > data/playit_secret.key
+
+                    # Fetch and save IP to bot_config.json immediately
+                    echo -e "    Fetching public IP address..."
+                    RUNDATA=$(docker exec mc-bot curl -s -X POST -H "Authorization: Agent-Key ${SECRET_KEY}" -H "Content-Type: application/json" -d '{}' https://api.playit.gg/v1/agents/rundata 2>/dev/null)
+                    PLAYIT_IP=$(echo "$RUNDATA" | jq -r '.data.tunnels[0].display_address' 2>/dev/null)
+                    if [ "$PLAYIT_IP" != "null" ] && [ -n "$PLAYIT_IP" ]; then
+                        echo -e "    ${ICON_CHECK} ${GREEN}Public IP: ${BOLD}${PLAYIT_IP}${NC}"
+                        if [ ! -f data/bot_config.json ]; then echo "{}" > data/bot_config.json; fi
+                        TEMP_CONFIG=$(jq --arg ip "$PLAYIT_IP" '.playit_ip = $ip' data/bot_config.json)
+                        echo "$TEMP_CONFIG" > data/bot_config.json
+                    fi
+                    
                     chmod 600 data/playit_secret.key
                     echo -e "    ${ICON_CHECK} ${GREEN}Agent claimed successfully.${NC}"
                 fi
