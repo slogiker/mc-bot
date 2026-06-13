@@ -60,8 +60,10 @@ class MinecraftBot(commands.Bot):
         self.log_watcher = LogWatcher(self)
         self.presence_task = None
         
-        # Attach event listener
-        self.add_listener(self.on_minecraft_player_login, 'on_minecraft_player_login')
+        # Attach event listeners
+        self.add_listener(self.on_minecraft_player_login,  'on_minecraft_player_login')
+        self.add_listener(self.on_minecraft_player_quit,   'on_minecraft_player_quit')
+        self.add_listener(self.on_minecraft_collision,     'on_minecraft_collision')
 
     async def update_presence_loop(self):
         """Background task to update bot presence based on server and RCON status."""
@@ -110,6 +112,14 @@ class MinecraftBot(commands.Bot):
             uuid (str): The Minecraft UUID of the player.
         """
         await self.join_guard.handle_player_login(username, uuid)
+
+    async def on_minecraft_player_quit(self, username: str):
+        """Dispatched custom event from LogWatcher when a player leaves."""
+        self.join_guard.handle_player_quit(username)
+
+    async def on_minecraft_collision(self, username: str):
+        """Dispatched custom event from LogWatcher when a collision is detected."""
+        await self.join_guard.handle_collision(username)
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         """
@@ -390,6 +400,26 @@ async def main():
 
     if not config.RCON_PASSWORD:
         logger.warning("RCON_PASSWORD not set — server commands (start/stop/etc) will fail until it is configured in .env")
+
+    # --- Startup Banner ---
+    C_GREEN = "\033[38;5;118m" # Grass Green
+    C_BROWN = "\033[38;5;130m" # Dirt Brown
+    C_GRAY = "\033[38;5;245m"  # Stone Gray
+    C_WHITE = "\033[97m"       # Bright White
+    C_RESET = "\033[0m"
+    C_BOLD = "\033[1m"
+    
+    print(f"""
+{C_GREEN}      __  __  ____        ____   ___ _____ 
+{C_GREEN}     |  \\/  |/ ___|      | __ ) / _ \\_   _|
+{C_BROWN}     | |\\/| | |   _____  |  _ \\| | | || |  
+{C_BROWN}     | |  | | |__|_____| | |_) | |_| || |  
+{C_GRAY}     |_|  |_|\\____|      |____/ \\___/ |_|  {C_RESET}
+    
+{C_WHITE}{C_BOLD}     Minecraft Discord Bot{C_RESET}
+{C_GRAY}     Crafting connections...{C_RESET}
+    """)
+    # ----------------------
 
     logger.info("Starting bot client...")
     
