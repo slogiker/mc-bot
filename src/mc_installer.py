@@ -80,6 +80,87 @@ class MinecraftInstaller:
             logger.error(f"Download failed: {e}")
             return False, str(e)
     
+    async def install_mod_with_dependencies(self, slug: str, game_version: str, loader: str, callback=None) -> bool:
+        """
+        Recursively install a mod and its required dependencies using Modrinth API.
+        """
+        queue = deque([slug])
+        processed = set()
+        success_count = 0
+        
+        async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
+            while queue:
+                current_slug = queue.popleft()
+                if current_slug in processed:
+                    continue
+                
+                processed.add(current_slug)
+                
+                if callback:
+                    await callback(f"🔍 Resolving `{current_slug}`...")
+                
+                # 1. Get version info
+                api_url = f"https://api.modrinth.com/v2/project/{current_slug}/version"
+                params = {
+                    "loaders": f'["{loader}"]',
+                    "game_versions": f'["{game_version}"]'
+                }
+                
+                try:
+                    async with session.get(api_url, params=params) as resp:
+                        if resp.status != 200:
+                            logger.warning(f"Failed to fetch versions for {current_slug}: HTTP {resp.status}")
+                            continue
+                        
+                        versions = await resp.json()
+                        if not versions:
+                            logger.warning(f"No compatible versions for {current_slug} on {game_version} ({loader})")
+                            continue
+                        
+                        # Use latest release (or latest if no release)
+                        latest = versions[0]
+                        for v in versions:
+                            if v.get("version_type") == "release":
+                                latest = v
+                                break
+                        
+                        # 2. Check dependencies
+                        for dep in latest.get("dependencies", []):
+                            if dep.get("dependency_type") == "required":
+                                dep_id = dep.get("project_id") or dep.get("version_id")
+                                if dep_id and dep_id not in processed:
+                                    queue.append(dep_id)
+                        
+                        # 3. Download file
+                        files = latest.get("files", [])
+                        primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
+                        
+                        if primary_file:
+                            dest_dir = os.path.join(self.server_dir, "plugins" if loader == "paper" else "mods")
+                            os.makedirs(dest_dir, exist_ok=True)
+                            
+                            file_path = os.path.join(dest_dir, primary_file["filename"])
+                            
+                            if os.path.exists(file_path):
+                                logger.info(f"Mod {primary_file['filename']} already exists, skipping download.")
+                                success_count += 1
+                                continue
+
+                            async with session.get(primary_file["url"]) as mod_resp:
+                                if mod_resp.status == 200:
+                                    async with aiofiles.open(file_path, 'wb') as f:
+                                        async for chunk in mod_resp.content.iter_chunked(8192):
+                                            await f.write(chunk)
+                                    logger.info(f"Successfully downloaded: {primary_file['filename']}")
+                                    if callback:
+                                        await callback(f"✅ Downloaded `{primary_file['filename']}`")
+                                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Error processing mod {current_slug}: {e}")
+                    continue
+        
+        return success_count > 0
+
     async def _download_paper(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """Download Paper server"""
         try:
@@ -205,55 +286,11 @@ class MinecraftInstaller:
         """Download recommended Fabric optimization mods via Modrinth"""
         # Fabric API (Base), Lithium, FerriteCore, Krypton, Chunky, Spark
         mod_slugs = ["fabric-api", "lithium", "ferrite-core", "krypton", "chunky", "spark"]
-        mods_dir = os.path.join(self.server_dir, "mods")
-        os.makedirs(mods_dir, exist_ok=True)
         
         logger.info(f"Downloading default Fabric mods for version {version}...")
         
-        try:
-            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
-                for slug in mod_slugs:
-                    try:
-                        # Find compatible version
-                        api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
-                        params = {
-                            "loaders": '["fabric"]',
-                            "game_versions": f'["{version}"]'
-                        }
-                        async with session.get(api_url, params=params) as resp:
-                            if resp.status == 200:
-                                versions = await resp.json()
-                                if versions and len(versions) > 0:
-                                    # Get the primary file of the latest compatible version
-                                    latest = versions[0]
-                                    files = latest.get("files", [])
-                                    primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
-                                    
-                                    if primary_file:
-                                        download_url = primary_file["url"]
-                                        filename = primary_file["filename"]
-                                        file_path = os.path.join(mods_dir, filename)
-                                        
-                                        # Download the mod JAR
-                                        async with session.get(download_url) as mod_resp:
-                                            if mod_resp.status == 200:
-                                                async with aiofiles.open(file_path, 'wb') as f:
-                                                    async for chunk in mod_resp.content.iter_chunked(8192):
-                                                        await f.write(chunk)
-                                                logger.info(f"Successfully downloaded mod: {filename}")
-                                                if callback:
-                                                    await callback(f"✅ Added {filename}")
-                                            else:
-                                                logger.warning(f"Failed to download mod {slug} file: HTTP {mod_resp.status}")
-                                else:
-                                    logger.warning(f"No compatible versions found for mod {slug} on {version}")
-                            else:
-                                logger.warning(f"Failed to fetch version list for mod {slug}: HTTP {resp.status}")
-                    except Exception as e:
-                        logger.warning(f"Failed to download mod {slug}: {e}")
-                        continue
-        except Exception as e:
-            logger.error(f"Error during default Fabric mods download: {e}")
+        for slug in mod_slugs:
+            await self.install_mod_with_dependencies(slug, version, "fabric", callback)
     
     async def _download_forge(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """
