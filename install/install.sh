@@ -67,7 +67,7 @@ fi
 echo -e "${CYAN}${BOLD}"
 echo -e "  ⚡ Minecraft Discord Bot - Linux Installer"
 echo -e "  ──────────────────────────────────────────"
-echo -e "  ${DIM}Version: 1.1.0 | Playit: v1.0.10${NC}\n"
+echo -e "  ${DIM}Version: 1.1.1 | Playit: v1.0.10${NC}\n"
 
 # ---------------------------------------------------------
 # 0. Initial Warnings & Permissions
@@ -78,7 +78,8 @@ echo -e "  ${ICON_DISK} ${BOLD}Note on Storage:${NC}"
 echo -e "  A full installation (Docker images + Minecraft server + Backups)"
 echo -e "  can take up ${YELLOW}5GB or more${NC} of disk space."
 echo -e "  Please ensure you have enough space before proceeding.\n"
-read -p "  Do you wish to continue? [Y/n] " continue_install
+echo -ne "  Do you wish to continue? [Y/n] "
+read continue_install
 if [[ -n "$continue_install" && ! $continue_install =~ ^[Yy]$ ]]; then
     echo -e "\n  Installation cancelled by user."
     exit 0
@@ -124,14 +125,16 @@ if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names
     echo -e "    ${CYAN}${BOLD}2)${NC} Update code only ${DIM}(git pull + rebuild)${NC}"
     echo -e "    ${CYAN}${BOLD}3)${NC} Cancel"
     echo ""
-    read -p "  Choose an option [1/2/3]: " INSTALL_MODE
+    echo -ne "  Choose an option [1/2/3]: "
+    read INSTALL_MODE
     case $INSTALL_MODE in
         1)
             echo -e "\n  ${BLUE}${ICON_GEAR} Stopping services for reconfiguration...${NC}"
             docker stop mc-bot &>/dev/null || true
             
             if [ -f "data/playit_secret.key" ]; then
-                read -p "  ${ICON_WARN} ${YELLOW}Existing Playit key found. Reset it? (y/N) " reset_playit
+                echo -ne "  ${ICON_WARN} ${YELLOW}Existing Playit key found. Reset it? (y/N) ${NC}"
+                read reset_playit
                 if [[ $reset_playit =~ ^[Yy]$ ]]; then
                     rm -f data/playit_secret.key
                     echo -e "  ${ICON_CHECK} Playit key removed. A new claim link will be generated."
@@ -152,6 +155,7 @@ if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names
                 echo -e "  ${ICON_CROSS} ${RED}docker compose plugin not found.${NC}"
                 exit 1
             fi
+            $COMPOSE_CMD stop mc-bot &>/dev/null || true
             $COMPOSE_CMD up -d --build
             echo -e "\n  ${ICON_CHECK} ${GREEN}Update complete! Bot container has been rebuilt.${NC}"
             exit 0
@@ -437,7 +441,8 @@ else
                 echo -e ""
 
                 # Exchange the claim code for a secret key (waits until browser claim is done)
-                SECRET_KEY=$(docker exec mc-bot playit-cli claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | awk '{print $NF}') || true
+                # We use tr to strictly clean the key of any hidden whitespace or newlines
+                SECRET_KEY=$(docker exec mc-bot playit-cli claim exchange --wait 0 "$CLAIM_CODE" 2>&1 | tail -1 | awk '{print $NF}' | tr -d '\r\n ') || true
 
                 if [ -z "$SECRET_KEY" ]; then
                     echo -e "  ${ICON_CROSS} ${RED}Did not receive a secret key from Playit.${NC}"
@@ -453,7 +458,8 @@ else
             echo -e "    Starting Playit agent..."
             docker exec mc-bot tmux kill-session -t playit 2>/dev/null || true
             docker exec mc-bot tmux new-session -d -s playit "bash -c 'playit --platform-docker --secret-path /app/data/playit_secret.key --socket-path /app/data/playit.sock -l /app/logs/playit.log'"
-            sleep 8
+            # Increase sleep to ensure registration
+            sleep 10
 
             # Auto-create Minecraft Java tunnel via REST API v1
             echo -e "    Creating Minecraft Java tunnel (port 25565)..."
