@@ -319,10 +319,13 @@ else
                 https://api.playit.gg/v1/agents/rundata) || true
 
             AGENT_ID=$(echo "$AGENT_DATA" | docker exec -i mc-bot jq -r '.data.agent_id' 2>/dev/null) || true
+            TUNNEL_COUNT=$(echo "$AGENT_DATA" | docker exec -i mc-bot jq '.data.tunnels | length' 2>/dev/null) || echo 0
 
             if [ -z "$AGENT_ID" ] || [ "$AGENT_ID" = "null" ]; then
                 echo -e "${YELLOW}[WARN] Could not fetch agent ID. Tunnel creation skipped — create it manually at https://playit.gg${NC}"
                 echo "DEBUG: API response: $AGENT_DATA"
+            elif [ "$TUNNEL_COUNT" -gt 0 ]; then
+                echo -e "${GREEN}[OK] Agent already has $TUNNEL_COUNT tunnel(s). Using existing setup.${NC}"
             else
                 TUNNEL_RESULT=$(docker exec mc-bot curl -s -X POST \
                     -H "authorization: Agent-Key ${SECRET_KEY}" \
