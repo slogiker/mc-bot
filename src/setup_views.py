@@ -570,21 +570,13 @@ class SetupView(ui.View):
             )
             return embed, [PluginsButton(), self._back_button(), self._next_button()]
             
-        else:  # Confirmation (step 6)
+        else:  # Confirmation (step 7)
             embed = discord.Embed(
                 title="Ready to Install",
                 description="Review your configuration and click Install to begin",
                 color=discord.Color.green()
             )
             
-            # Display resolved version if 'latest'
-            display_version = self.state.version
-            if display_version == 'latest':
-                # Note: We can't easily await here since this is not async in the current design (it's called by _get_step_content)
-                # But we can add a note that it will be resolved.
-                # Alternatively, we could resolve it in _navigate when moving to Confirmation.
-                pass
-
             embed.add_field(
                 name="Configuration Summary",
                 value=(
@@ -646,7 +638,7 @@ class SetupView(ui.View):
         button.callback = callback
         return button
     
-    async def _navigate(self, interaction: discord.Interaction, new_step: int, already_responded: bool = False):
+    async def _navigate(self, interaction: discord.Interaction, new_step: int):
         """Navigate to a different step"""
         if new_step < 0 or new_step >= len(self.STEPS):
             return
@@ -656,14 +648,10 @@ class SetupView(ui.View):
         for item in view_items:
             self.add_item(item)
         
-        if already_responded:
-            await self.message.edit(embed=embed, view=self)
-        else:
-            await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.edit_message(embed=embed, view=self)
     
     async def _start_installation(self, interaction: discord.Interaction):
         """Start the installation process in background"""
-        # asyncio is now imported at module level
         
         # Create initial progress embed
         embed = discord.Embed(
@@ -692,7 +680,6 @@ class SetupView(ui.View):
         config.JAVA_XMS = f"{max(1, self.state.ram // 2)}G"
         
         try:
-            
             embed.description = "**Step 1/5:** Creating Discord channels and roles..."
             await message.edit(embed=embed)
             
@@ -816,15 +803,7 @@ class SetupView(ui.View):
                 inline=False
             )
             
-            if failed_slugs:
-                embed.add_field(
-                    name="⚠️ Plugin Install Failures",
-                    value=f"The following could not be installed: `{'`, `'.join(failed_slugs)}`\nCheck the slug spelling at modrinth.com and use `/mod_search` to find the correct slug.",
-                    inline=False
-                )
-
             embed.set_footer(text="Use /help to see all available commands")
-
             await message.edit(embed=embed)
             
             # Trigger control panel update immediately so it shows correct status
@@ -858,7 +837,6 @@ class SetupView(ui.View):
             logger.info("data/bot_config.json updated successfully")
         except Exception as e:
             logger.error(f"Failed to update data/bot_config.json: {e}")
-
 
 
 class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
@@ -923,117 +901,3 @@ class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
             await interaction.response.defer()
         except Exception as e:
             await interaction.response.send_message(f"Error: {e}", ephemeral=True)
-l panel\n"
-                    f"4. Check {command_channel.mention if command_channel else '#command'} for commands"
-                ),
-                inline=False
-            )
-            
-            if failed_slugs:
-                embed.add_field(
-                    name="⚠️ Plugin Install Failures",
-                    value=f"The following could not be installed: `{'`, `'.join(failed_slugs)}`\nCheck the slug spelling at modrinth.com and use `/mod_search` to find the correct slug.",
-                    inline=False
-                )
-
-            embed.set_footer(text="Use /help to see all available commands")
-
-            await message.edit(embed=embed)
-            
-            # Trigger control panel update immediately so it shows correct status
-            try:
-                control_cog = interaction.client.get_cog("ControlPanelCog")
-                if control_cog:
-                    await control_cog.update_panel()
-            except Exception as e:
-                logger.error(f"Failed to update control panel: {e}")
-            
-            # Initialize server info channel
-            try:
-                from src.server_info_manager import ServerInfoManager
-                await ServerInfoManager(interaction.client).update_info(interaction.guild)
-            except Exception as e:
-                logger.error(f"Failed to init server info channel: {e}")
-            
-        except Exception as e:
-            logger.error(f"Installation failed: {e}", exc_info=True)
-            embed.color = discord.Color.red()
-            embed.description = f"Installation failed: {str(e)}"
-            await message.edit(embed=embed)
-    
-    async def _save_config_to_file(self, updates: dict):
-        """Save configuration updates to bot_config.json file"""
-        try:
-            def update():
-                with config.update_bot_config() as data:
-                    data.update(updates)
-            await asyncio.to_thread(update)
-            logger.info("data/bot_config.json updated successfully")
-        except Exception as e:
-            logger.error(f"Failed to update data/bot_config.json: {e}")
-
-
-
-class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):
-    """Modal for advanced server settings"""
-    
-    def __init__(self, state: SetupState):
-        super().__init__()
-        self.state = state
-        
-        self.ram = ui.TextInput(
-            label="RAM Allocation in GB",
-            placeholder="4",
-            default=str(state.ram),
-            max_length=2,
-            required=False
-        )
-        self.add_item(self.ram)
-        
-        self.view_distance = ui.TextInput(
-            label="View Distance (chunks)",
-            placeholder="16",
-            default=str(state.view_distance),
-            max_length=2,
-            required=False
-        )
-        self.add_item(self.view_distance)
-        
-        self.whitelist = ui.TextInput(
-            label="Enable Whitelist? (yes/no)",
-            placeholder="no",
-            default="yes" if state.whitelist else "no",
-            max_length=3,
-            required=False
-        )
-        self.add_item(self.whitelist)
-        
-        self.online_mode = ui.TextInput(
-            label="Enable Online Mode? (yes/no)",
-            placeholder="yes",
-            default="yes" if state.online_mode else "no",
-            max_length=3,
-            required=False
-        )
-        self.add_item(self.online_mode)
-    
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            # Parse RAM
-            ram_clean = ''.join(filter(str.isdigit, self.ram.value or "4"))
-            self.state.ram = int(ram_clean) if ram_clean else 4
-            
-            # Parse view distance
-            vd_clean = ''.join(filter(str.isdigit, self.view_distance.value or "16"))
-            self.state.view_distance = int(vd_clean) if vd_clean else 16
-            
-            # Parse whitelist
-            self.state.whitelist = self.whitelist.value.lower().strip() in ["yes", "y", "true", "1"]
-            
-            # Parse online mode
-            self.state.online_mode = self.online_mode.value.lower().strip() in ["yes", "y", "true", "1"]
-            
-            await interaction.response.defer()
-        except Exception as e:
-            await interaction.response.send_message(f"Error: {e}", ephemeral=True)
-l=True)
