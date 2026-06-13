@@ -118,12 +118,11 @@ class VersionFetcher:
                 if resp.status != 200:
                     raise Exception(f"Vanilla API returned {resp.status}")
                 data = await resp.json()
-                # Filter to release versions only, reverse order
-                release_versions = [
+                # Filter to release versions only
+                return [
                     v['id'] for v in data.get('versions', [])
                     if v.get('type') == 'release'
                 ]
-                return list(reversed(release_versions))
         except Exception as e:
             logger.error(f"Vanilla version fetch error: {e}")
             raise
@@ -136,11 +135,10 @@ class VersionFetcher:
                 if resp.status != 200:
                     raise Exception(f"Vanilla API returned {resp.status}")
                 data = await resp.json()
-                versions = [
+                return [
                     v['id'] for v in data.get('versions', [])
                     if v.get('type') == 'release'
                 ]
-                return list(reversed(versions))
         except Exception as e:
             logger.error(f"Fabric version fetch error: {e}")
             raise

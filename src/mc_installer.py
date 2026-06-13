@@ -223,6 +223,9 @@ class MinecraftInstaller:
                 async with session.get(version_data['url']) as resp:
                     details = await resp.json()
                 
+                if 'downloads' not in details or 'server' not in details['downloads']:
+                    return False, f"Mojang API does not provide a server download for version {version}. Please pick a more recent version (1.2.5+)."
+                
                 download_url = details['downloads']['server']['url']
                 
                 if callback:
