@@ -16,9 +16,11 @@ class TmuxServerManager(ServerInterface):
         self._start_time = None
         self._state_file = os.path.join(config.SERVER_DIR, 'bot_state.json')
         self._state_lock = asyncio.Lock()  # Prevent race conditions
-        
-        # Load initial state asynchronously later, for now assume intentional stop
-        # Load it properly on first access
+
+        # Cache status for 5 seconds to prevent flickering
+        self._cached_is_running = False
+        self._last_status_check = 0
+        self._status_cache_ttl = 5
 
     def _run_tmux_cmd(self, args):
         """Run tmux command synchronously (only used for quick checks)"""
@@ -36,10 +38,16 @@ class TmuxServerManager(ServerInterface):
             return subprocess.CompletedProcess(args, 1, "", str(e))
 
     def is_running(self) -> bool:
-        """Check if tmux session exists (non-blocking subprocess call)"""
+        """Check if tmux session exists (cached for 5s)"""
+        now = time.time()
+        if now - self._last_status_check < self._status_cache_ttl:
+            return self._cached_is_running
+
         try:
             res = self._run_tmux_cmd(["has-session", "-t", self.session_name])
-            return res.returncode == 0
+            self._cached_is_running = (res.returncode == 0)
+            self._last_status_check = now
+            return self._cached_is_running
         except Exception as e:
             logger.error(f"Error checking if server is running: {e}")
             return False
