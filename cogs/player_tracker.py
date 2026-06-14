@@ -40,13 +40,17 @@ class PlayerTracker(commands.Cog):
         self.log_task = asyncio.create_task(self._consume())
 
     async def cog_unload(self):
+        from src.log_dispatcher import log_dispatcher
         self.stop_event.set()
+        if hasattr(self, 'log_queue') and self.log_queue:
+            log_dispatcher.unsubscribe(self.log_queue)
         if self.log_task:
             self.log_task.cancel()
             try:
                 await self.log_task
             except asyncio.CancelledError:
                 pass
+        logger.info("PlayerTracker cog unloaded and unsubscribed")
 
     async def _consume(self):
         await self.bot.wait_until_ready()

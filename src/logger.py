@@ -10,8 +10,18 @@ from logging.handlers import TimedRotatingFileHandler
 # --- Custom Formatter for [HH:MM:SS - DD.MM.YYYY] ---
 class CustomFormatter(logging.Formatter):
     def format(self, record):
-        timestamp = datetime.now().strftime('%H:%M:%S - %d.%m.%Y')
-        return f"[{timestamp}] {record.levelname:<8} {record.msg}"
+        try:
+            timestamp = datetime.now().strftime('%H:%M:%S - %d.%m.%Y')
+        except (ImportError, TypeError, NameError):
+            # Fallback during Python shutdown when modules are cleared
+            timestamp = "SHUTDOWN"
+            
+        # Add file and line number for errors to make debugging easier
+        location = ""
+        if record.levelno >= logging.ERROR:
+            location = f" [{record.filename}:{record.lineno}]"
+            
+        return f"[{timestamp}] {record.levelname:<8} {record.msg}{location}"
 
 # --- Redirect Terminal Output to Logger ---
 class StreamToLogger:
@@ -202,6 +212,9 @@ def setup_logging():
 
     # Redirect stderr to logger
     sys.stderr = StreamToLogger(logger, logging.ERROR)
+    
+    # Suppress discord.py voice client warnings (PyNaCl/davey not installed)
+    logging.getLogger('discord.voice_client').setLevel(logging.ERROR)
     
     return logger
 

@@ -56,10 +56,13 @@
 - `/economy_set <user> <amount>` - (Admin) Set a user's balance.
 
 ### Account Linking
+*Note: These commands support Slovenian localization in Discord.*
 
-- `/link <username>` - Link your Discord account to a Minecraft username. **Premium (paid) accounts only.**
-- `/unlink` - Unlink your own Minecraft account.
+- `/link <username>` - Link your Discord account to a Minecraft username. Supports both Premium and Offline accounts.
+- `/verify <code>` - Enter the 6-character code shown on your Minecraft kick screen to verify your identity.
+- `/unlink` - Remove the link between your Discord and Minecraft accounts.
 - `/unlink_admin [user] [username]` - Force-unlink a user by Discord mention or MC username. Admin only.
+- `/linked` - Show which Discord user is linked to an MC username (or vice-versa).
 
 ### Misc
 

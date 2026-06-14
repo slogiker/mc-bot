@@ -9,20 +9,29 @@ LABEL description="Minecraft Discord Bot with Java 21 and Playit.gg"
 # Create directory for man pages (required for openjdk in slim images)
 RUN mkdir -p /usr/share/man/man1
 
-# Install Java 21, tmux, and curl
+# Install Java 21, tmux, curl and jq
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-21-jre-headless \
     tmux \
     curl \
+    jq \
     ca-certificates \
+    procps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playit.gg binaries directly (avoiding PPA systemd issues)
-# v1.0.4 is used for compatibility with the latest API
-RUN curl -Lo /usr/local/bin/playit https://github.com/playit-cloud/playit-agent/releases/download/v1.0.4/playit-linux-amd64 \
-    && curl -Lo /usr/local/bin/playit-cli https://github.com/playit-cloud/playit-agent/releases/download/v1.0.4/playit-cli-linux-amd64 \
-    && chmod +x /usr/local/bin/playit /usr/local/bin/playit-cli
+# Install Playit.gg binaries with architecture auto-detection
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64)  PLAYIT_ARCH="amd64" ;; \
+        aarch64) PLAYIT_ARCH="aarch64" ;; \
+        armv7l)  PLAYIT_ARCH="armv7" ;; \
+        *)       PLAYIT_ARCH="amd64" ;; \
+    esac && \
+    echo "Detected architecture: $ARCH, using Playit arch: $PLAYIT_ARCH" && \
+    curl -Lo /usr/local/bin/playit "https://github.com/playit-cloud/playit-agent/releases/download/v1.0.10/playit-linux-$PLAYIT_ARCH" && \
+    curl -Lo /usr/local/bin/playit-cli "https://github.com/playit-cloud/playit-agent/releases/download/v1.0.10/playit-cli-linux-$PLAYIT_ARCH" && \
+    chmod +x /usr/local/bin/playit /usr/local/bin/playit-cli
 
 WORKDIR /app
 

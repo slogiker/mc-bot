@@ -20,15 +20,15 @@ class TestVersionFetcherLive:
         """PaperMC API returns a non-empty version list."""
         versions = await fetcher.get_versions("paper", limit=5)
         assert len(versions) > 0
-        # Recent versions should start with 1.
-        assert versions[0].startswith("1.")
+        # Recent versions should start with 1. or 26.
+        assert versions[0].startswith("1.") or versions[0].startswith("26.")
 
     @pytest.mark.asyncio
     async def test_vanilla_versions(self, fetcher):
         """Mojang API returns vanilla release versions."""
         versions = await fetcher.get_versions("vanilla", limit=5)
         assert len(versions) > 0
-        assert versions[0].startswith("1.")
+        assert versions[0].startswith("1.") or versions[0].startswith("26.")
 
     @pytest.mark.asyncio
     async def test_fabric_versions(self, fetcher):

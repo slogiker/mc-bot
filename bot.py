@@ -52,14 +52,19 @@ class MinecraftBot(commands.Bot):
         
         self.synced = False  # Prevent duplicate syncs
         self._sync_lock = asyncio.Lock()  # Prevent race conditions
+        self.start_time = time.time()  # Track bot uptime
+        self._startup_complete = False  # Track if initial setup is done
         
         # Initialize Security modules
+        self.session = None  # Created in on_ready or similar
         self.join_guard = JoinGuard(self)
         self.log_watcher = LogWatcher(self)
         self.presence_task = None
         
-        # Attach event listener
-        self.add_listener(self.on_minecraft_player_login, 'on_minecraft_player_login')
+        # Attach event listeners
+        self.add_listener(self.on_minecraft_player_login,  'on_minecraft_player_login')
+        self.add_listener(self.on_minecraft_player_quit,   'on_minecraft_player_quit')
+        self.add_listener(self.on_minecraft_collision,     'on_minecraft_collision')
 
     async def update_presence_loop(self):
         """Background task to update bot presence based on server and RCON status."""
@@ -108,6 +113,14 @@ class MinecraftBot(commands.Bot):
             uuid (str): The Minecraft UUID of the player.
         """
         await self.join_guard.handle_player_login(username, uuid)
+
+    async def on_minecraft_player_quit(self, username: str):
+        """Dispatched custom event from LogWatcher when a player leaves."""
+        self.join_guard.handle_player_quit(username)
+
+    async def on_minecraft_collision(self, username: str):
+        """Dispatched custom event from LogWatcher when a collision is detected."""
+        await self.join_guard.handle_collision(username)
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         """
@@ -180,6 +193,11 @@ class MinecraftBot(commands.Bot):
         """Called during bot startup - load extensions but DON'T sync yet."""
         self.tree.on_error = self.on_tree_error
         
+        # Initialize shared session
+        import aiohttp
+        self.session = aiohttp.ClientSession()
+        logger.debug("Initialized shared aiohttp ClientSession")
+        
         # Global command channel check
         async def restrict_command_channel(interaction: discord.Interaction) -> bool:
             """
@@ -212,7 +230,7 @@ class MinecraftBot(commands.Bot):
             
         self.tree.interaction_check = restrict_command_channel
             
-        logger.info("=== Bot Startup: Loading Extensions ===")
+        logger.debug("=== Bot Startup: Loading Extensions ===")
         # Load cogs - wrap os.listdir for async
         loaded_count = 0
         try:
@@ -228,12 +246,12 @@ class MinecraftBot(commands.Bot):
         except FileNotFoundError:
             logger.warning("No cogs directory found!")
         
-        logger.info(f"=== {loaded_count} extensions loaded successfully ===")
+        logger.debug(f"=== {loaded_count} extensions loaded successfully ===")
 
     async def on_ready(self):
         """Called when bot is fully connected and ready."""
         logger.debug(f"Logged in as {self.user} (ID: {self.user.id})")
-        logger.info("=== Bot Connected to Discord ===")
+        logger.debug("=== Bot Connected to Discord ===")
         
         if is_simulation:
             logger.info("👻 GHOST MODE ACTIVE: No files will be modified. Server is mocked.")
@@ -302,7 +320,44 @@ class MinecraftBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to start background tasks: {e}")
         
-        logger.info("=== Bot is now fully ready! ===")
+        # Send 'System Online' notification
+        if not self._startup_complete:
+            self._startup_complete = True
+            cmd_channel_id = config.COMMAND_CHANNEL_ID
+            if cmd_channel_id:
+                channel = self.get_channel(int(cmd_channel_id))
+                if channel:
+                    embed = discord.Embed(
+                        title="✅ System Online",
+                        description="Bot is ready! Start with **/setup**",
+                        color=discord.Color.green(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    server_status = "Online" if self.server.is_running() else "Offline"
+                    embed.add_field(name="Minecraft Server", value=f"**{server_status}**", inline=True)
+                    embed.add_field(name="Simulation Mode", value="Active 👻" if is_simulation else "Inactive", inline=True)
+                    
+                    await channel.send(embed=embed)
+                    logger.debug("Sent 'System Online' notification to command channel.")
+
+        # Check for pending bot restart message
+        try:
+            bot_cfg = config.load_bot_config()
+            restart_channel_id = bot_cfg.get('restart_channel_id')
+            restart_message_id = bot_cfg.get('restart_message_id')
+            if restart_channel_id and restart_message_id:
+                channel = self.get_channel(int(restart_channel_id))
+                if channel:
+                    msg = await channel.fetch_message(int(restart_message_id))
+                    await msg.edit(content="✅ Bot restarted successfully!")
+                
+                with config.update_bot_config() as data:
+                    data.pop('restart_channel_id', None)
+                    data.pop('restart_message_id', None)
+        except Exception as e:
+            logger.error(f"Failed to update restart message: {e}")
+
+        logger.debug("=== Bot is now fully ready! ===")
 
 # --- Lifecycle Management ---
 
@@ -327,6 +382,13 @@ async def shutdown_handler(bot):
     try:
         # Close bot connection
         logger.info("Closing bot connection...")
+        if bot.session:
+            await bot.session.close()
+            logger.info("Shared aiohttp session closed")
+        
+        from src.rcon_manager import rcon_manager
+        await rcon_manager.close()
+            
         await bot.close()
     except Exception as e:
         logger.error(f"Error closing bot: {e}")
@@ -352,7 +414,27 @@ async def main():
     if not config.RCON_PASSWORD:
         logger.warning("RCON_PASSWORD not set — server commands (start/stop/etc) will fail until it is configured in .env")
 
-    logger.info("Starting bot client...")
+    # --- Startup Banner ---
+    C_GREEN = "\033[38;5;118m" # Grass Green
+    C_BROWN = "\033[38;5;130m" # Dirt Brown
+    C_GRAY = "\033[38;5;245m"  # Stone Gray
+    C_WHITE = "\033[97m"       # Bright White
+    C_RESET = "\033[0m"
+    C_BOLD = "\033[1m"
+    
+    print(f"""
+{C_GREEN}      __  __  ____        ____   ___ _____ 
+{C_GREEN}     |  \\/  |/ ___|      | __ ) / _ \\_   _|
+{C_BROWN}     | |\\/| | |   _____  |  _ \\| | | || |  
+{C_BROWN}     | |  | | |__|_____| | |_) | |_| || |  
+{C_GRAY}     |_|  |_|\\____|      |____/ \\___/ |_|  {C_RESET}
+    
+{C_WHITE}{C_BOLD}     Minecraft Discord Bot{C_RESET}
+{C_GRAY}     Crafting connections...{C_RESET}
+    """)
+    # ----------------------
+
+    logger.debug("Starting bot client...")
     
     loop = asyncio.get_running_loop()
 

@@ -31,7 +31,7 @@ class MinecraftInstaller:
             platform (str): 'paper', 'vanilla', 'fabric', or 'forge'.
             
         Returns:
-            str: The version string (e.g. "1.21.4"). Defaults to "1.21.4" on error.
+            str: The version string (e.g. "26.1.2"). Defaults to "26.1.2" on error.
         """
         if platform == "forge":
             return "1.20.1" # Forge still manual
@@ -40,7 +40,7 @@ class MinecraftInstaller:
             return await version_fetcher.get_latest_version(platform, force_fresh=True)
         except Exception as e:
             logger.error(f"Failed to fetch latest version for {platform}: {e}")
-            return "1.21.4" # Safe current default
+            return "26.1.2" # Safe current default
     
     async def download_server(self, platform: str, version: str, progress_callback=None) -> tuple[bool, str]:
         """
@@ -56,22 +56,111 @@ class MinecraftInstaller:
         """
         try:
             jar_path = os.path.join(self.server_dir, "server.jar")
+            logger.info(f"Downloading {platform} server version {version} to {jar_path}")
             
             if platform == "paper":
-                return await self._download_paper(version, jar_path, progress_callback)
+                success, msg = await self._download_paper(version, jar_path, progress_callback)
             elif platform == "vanilla":
-                return await self._download_vanilla(version, jar_path, progress_callback)
+                success, msg = await self._download_vanilla(version, jar_path, progress_callback)
             elif platform == "fabric":
-                return await self._download_fabric(version, jar_path, progress_callback)
+                success, msg = await self._download_fabric(version, jar_path, progress_callback)
             elif platform == "forge":
-                return await self._download_forge(version, jar_path, progress_callback)
+                success, msg = await self._download_forge(version, jar_path, progress_callback)
             else:
                 return False, f"Unknown platform: {platform}"
+
+            if success:
+                logger.info(f"Successfully downloaded {platform} server.")
+            else:
+                logger.error(f"Failed to download {platform} server: {msg}")
+            
+            return success, msg
                 
         except Exception as e:
             logger.error(f"Download failed: {e}")
             return False, str(e)
     
+    async def install_mod_with_dependencies(self, slug: str, game_version: str, loader: str, callback=None) -> bool:
+        """
+        Recursively install a mod and its required dependencies using Modrinth API.
+        """
+        queue = deque([slug])
+        processed = set()
+        success_count = 0
+        
+        async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
+            while queue:
+                current_slug = queue.popleft()
+                if current_slug in processed:
+                    continue
+                
+                processed.add(current_slug)
+                
+                if callback:
+                    await callback(f"🔍 Resolving `{current_slug}`...")
+                
+                # 1. Get version info
+                api_url = f"https://api.modrinth.com/v2/project/{current_slug}/version"
+                params = {
+                    "loaders": f'["{loader}"]',
+                    "game_versions": f'["{game_version}"]'
+                }
+                
+                try:
+                    async with session.get(api_url, params=params) as resp:
+                        if resp.status != 200:
+                            logger.warning(f"Failed to fetch versions for {current_slug}: HTTP {resp.status}")
+                            continue
+                        
+                        versions = await resp.json()
+                        if not versions:
+                            logger.warning(f"No compatible versions for {current_slug} on {game_version} ({loader})")
+                            continue
+                        
+                        # Use latest release (or latest if no release)
+                        latest = versions[0]
+                        for v in versions:
+                            if v.get("version_type") == "release":
+                                latest = v
+                                break
+                        
+                        # 2. Check dependencies
+                        for dep in latest.get("dependencies", []):
+                            if dep.get("dependency_type") == "required":
+                                dep_id = dep.get("project_id") or dep.get("version_id")
+                                if dep_id and dep_id not in processed:
+                                    queue.append(dep_id)
+                        
+                        # 3. Download file
+                        files = latest.get("files", [])
+                        primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
+                        
+                        if primary_file:
+                            dest_dir = os.path.join(self.server_dir, "plugins" if loader == "paper" else "mods")
+                            os.makedirs(dest_dir, exist_ok=True)
+                            
+                            file_path = os.path.join(dest_dir, primary_file["filename"])
+                            
+                            if os.path.exists(file_path):
+                                logger.info(f"Mod {primary_file['filename']} already exists, skipping download.")
+                                success_count += 1
+                                continue
+
+                            async with session.get(primary_file["url"]) as mod_resp:
+                                if mod_resp.status == 200:
+                                    async with aiofiles.open(file_path, 'wb') as f:
+                                        async for chunk in mod_resp.content.iter_chunked(8192):
+                                            await f.write(chunk)
+                                    logger.info(f"Successfully downloaded: {primary_file['filename']}")
+                                    if callback:
+                                        await callback(f"✅ Downloaded `{primary_file['filename']}`")
+                                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Error processing mod {current_slug}: {e}")
+                    continue
+        
+        return success_count > 0
+
     async def _download_paper(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """Download Paper server"""
         try:
@@ -134,6 +223,9 @@ class MinecraftInstaller:
                 async with session.get(version_data['url']) as resp:
                     details = await resp.json()
                 
+                if 'downloads' not in details or 'server' not in details['downloads']:
+                    return False, f"Mojang API does not provide a server download for version {version}. Please pick a more recent version (1.2.5+)."
+                
                 download_url = details['downloads']['server']['url']
                 
                 if callback:
@@ -182,62 +274,12 @@ class MinecraftInstaller:
                 
                 size_mb = os.path.getsize(jar_path) / (1024 * 1024)
                 
-                # Fetch default fabric mods (performance optimization)
-                if callback:
-                    await callback(f"📥 Downloading recommended Fabric optimization mods...")
-                await self._download_default_fabric_mods(version, callback)
-                
-                return True, f"Downloaded Fabric {version} ({size_mb:.1f}MB) + Optimization Mods"
+                return True, f"Downloaded Fabric {version} ({size_mb:.1f}MB)"
                 
         except Exception as e:
             logger.error(f"Fabric download failed: {e}")
             return False, str(e)
             
-    async def _download_default_fabric_mods(self, version: str, callback) -> None:
-        """Download recommended Fabric optimization mods via Modrinth"""
-        # Lithium, FerriteCore, Krypton, Starlight, Chunky, Spark
-        mod_slugs = ["lithium", "ferrite-core", "krypton", "starlight", "chunky", "spark"]
-        mods_dir = os.path.join(self.server_dir, "mods")
-        os.makedirs(mods_dir, exist_ok=True)
-        
-        try:
-            async with aiohttp.ClientSession(timeout=self.API_TIMEOUT) as session:
-                for slug in mod_slugs:
-                    try:
-                        # Find compatible version
-                        api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
-                        params = {
-                            "loaders": '["fabric"]',
-                            "game_versions": f'["{version}"]'
-                        }
-                        async with session.get(api_url, params=params) as resp:
-                            if resp.status == 200:
-                                versions = await resp.json()
-                                if versions and len(versions) > 0:
-                                    # Get the primary file of the latest compatible version
-                                    latest = versions[0]
-                                    files = latest.get("files", [])
-                                    primary_file = next((f for f in files if f.get("primary")), files[0] if files else None)
-                                    
-                                    if primary_file:
-                                        download_url = primary_file["url"]
-                                        filename = primary_file["filename"]
-                                        file_path = os.path.join(mods_dir, filename)
-                                        
-                                        # Download the mod JAR
-                                        async with session.get(download_url) as mod_resp:
-                                            if mod_resp.status == 200:
-                                                async with aiofiles.open(file_path, 'wb') as f:
-                                                    async for chunk in mod_resp.content.iter_chunked(8192):
-                                                        await f.write(chunk)
-                                                if callback:
-                                                    await callback(f"✅ Added {filename}")
-                    except Exception as e:
-                        logger.warning(f"Failed to download mod {slug}: {e}")
-                        continue
-        except Exception as e:
-            logger.error(f"Error during default Fabric mods download: {e}")
-    
     async def _download_forge(self, version: str, jar_path: str, callback) -> tuple[bool, str]:
         """
         Forge automatic installation is not yet supported.

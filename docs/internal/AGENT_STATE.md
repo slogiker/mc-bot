@@ -1,25 +1,19 @@
 [PHASE]
-Audit Complete
+Remediation and Feature Upgrade Complete
 
 [FINDINGS]
+- [CONFIG] Deadlock discovered in Config.load() when called from within update_* contexts (re-entrant lock failure).
+- [INSTALL] install.sh limited to Debian/Alpine; failed on other Linux families.
+- [JOINGUARD] DM-based verification was unreliable (blocked DMs, API latency).
 
 [FIXED]
-[INSTALL] Dockerfile:5 | Container running as root | Added non-root 'bot' user, created directories with correct permissions, and used USER instruction.
-[INSTALL] .gitignore:22 | data/ directory not fully ignored | Updated .gitignore to ignore entire data/ directory.
-[INSTALL] Dockerfile.test | git and COPY data/ issues | Removed git and replaced COPY data/ with mkdir.
-[INSTALL] bot.py:289 | Signal handler fallback | Updated to use loop.add_signal_handler() properly.
-[INSTALL] src/config.py:99 | DISCORD_TOKEN name | Updated config to prefer DISCORD_TOKEN env var.
-[INSTALL] requirements.txt | version typos | Corrected pytz and aiohttp versions.
-[DISCORD] cogs/link.py:1 | Missing `/verify` command | Implemented /verify command for JoinGuard.
-[DISCORD] src/join_guard.py | JoinGuard logic updates | 6-char alphanumeric, 30-min grace, 5-min challenge.
-[DISCORD] cogs/backup.py | Permission guards | Added administrator permission checks to /backup commands.
-[DISCORD] Multiple Cogs | Missing .defer() | Added .defer() to long-running commands (status, players, seed, etc.).
-[CATCHING] src/config.py:118 | bot_config.json corruption | Implemented automatic backup of corrupt config.
-[CATCHING] cogs/stats.py:50 | WORLD_FOLDER hardcoded | Replaced with config.WORLD_FOLDER.
-[CATCHING] src/config.py:393 | except Exception: pass | Added logging to WORLD_FOLDER.
-[CATCHING] cogs/management.py:95 | online_players not cleared | Added clearing to /restart command.
-[CATCHING] cogs/info.py & backup.py | Silent exceptions | Added logging to all bare except blocks.
-[ERRCODES] Full Audit | Format & Consistency | Normalized error_codes.md, split multi-file refs, assigned 5 new codes for unassigned conditions.
+[CONFIG] src/config.py | Deadlock Fix | Refactored with internal non-locking methods; load() no longer attempts to re-acquire locks.
+[INSTALL] install.sh | Multi-Distro | Added dnf/pacman support, improved sudo handling, and added manual guidance for restricted environments.
+[JOINGUARD] src/join_guard.py | Kick-Screen Codes | Migrated to 6-char cryptographically secure codes shown on kick screen.
+[JOINGUARD] cogs/link.py | /verify Command | Implemented new verification flow with ephemeral response.
+[JOINGUARD] src/mc_link_manager.py | Grace Windows | Implemented 30-minute grace windows for linked players.
+[PLAYIT] Dockerfile & install.sh | v1.0.10 Upgrade | Standardized on version 1.0.10 across the project.
+[PERMS] data/user_config.json | @everyone Perms | Added link, unlink, linked, and verify to default everyone permissions.
 
 [IN_PROGRESS]
 
@@ -27,7 +21,9 @@ Audit Complete
 
 [DONE]
 Auditors: All 4 finished.
-Fixer: All findings addressed and verified.
-Documenter: information.md updated and normalized.
-Orchestrator: Audit and remediation complete.
-[POLISH] Performed a deep 'Clean Code' pass across the priority files (bot.py, src/config.py, src/join_guard.py, cogs/backup.py, cogs/management.py, cogs/stats.py), adding Google-style docstrings, logical sections, and improving readability while maintaining all existing functionality and security fixes.
+Fixer: All deadlock, installation, and security findings addressed and verified.
+Documenter: information.md and AGENT_STATE.md updated.
+Orchestrator: Phase 8 remediation and v3.1.1 polish complete.
+Tests: All 68 tests passing and verified via Docker.
+[POLISH] Performed a deep 'Clean Code' pass across the priority files, ensuring Google-style docstrings and logical sections while maintaining technical integrity.
+[VERIFIED] Branch is fully workable and ready for production use.

@@ -137,6 +137,10 @@ class ModUpdater:
         Main execution flow.
         Runs through the mods folder, identifies all jars, backs them up, and replaces them with updated dependencies.
         """
+        # Cleanup old backups first
+        if not is_setup:
+            await asyncio.to_thread(self._cleanup_old_backups)
+
         if not os.path.exists(self.target_dir):
             await self._send_status("❌ Target directory not found. Is the server fully setup?")
             return False

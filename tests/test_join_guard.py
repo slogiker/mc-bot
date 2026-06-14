@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.join_guard import JoinGuard
 
@@ -14,122 +15,119 @@ def mock_bot():
 def join_guard(mock_bot):
     with patch('src.join_guard.MCLinkManager') as mock_link_manager:
         jg = JoinGuard(mock_bot)
-        jg.link_manager = mock_link_manager.return_value
+        # Mock methods on link_manager as needed
+        jg.link_manager.get_link_by_mc = AsyncMock()
+        jg.link_manager.is_within_grace = AsyncMock(return_value=False)
+        jg.link_manager.record_verified = AsyncMock()
         return jg
 
 @pytest.mark.asyncio
 async def test_handle_player_login_premium_no_link(join_guard):
     """Test that a premium player with no link is allowed to join."""
-    join_guard.link_manager.get_link_by_mc = AsyncMock(return_value=None)
+    join_guard.link_manager.get_link_by_mc.return_value = None
     
     with patch('src.join_guard.verify_premium_mc_account', new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = True
-        
-        # We don't want to actually kick
-        join_guard._kick_player = AsyncMock()
+        join_guard._kick = AsyncMock()
         
         await join_guard.handle_player_login("PremiumPlayer", "uuid-123")
         
-        join_guard.link_manager.get_link_by_mc.assert_called_with("PremiumPlayer")
-        mock_verify.assert_called_with("PremiumPlayer")
-        join_guard._kick_player.assert_not_called()
+        # Check that it was called (ignoring session argument which is mocked)
+        assert mock_verify.called
+        assert mock_verify.call_args[0][0] == "PremiumPlayer"
+        join_guard._kick.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_handle_player_login_cracked_no_link_kicked(join_guard):
     """Test that a cracked player with no link is kicked."""
-    join_guard.link_manager.get_link_by_mc = AsyncMock(return_value=None)
+    join_guard.link_manager.get_link_by_mc.return_value = None
     
     with patch('src.join_guard.verify_premium_mc_account', new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = False
-        join_guard._kick_player = AsyncMock()
+        join_guard._kick = AsyncMock()
         
         await join_guard.handle_player_login("CrackedPlayer", "uuid-456")
         
-        join_guard._kick_player.assert_called_once()
-        args, _ = join_guard._kick_player.call_args
+        join_guard._kick.assert_called_once()
+        args, _ = join_guard._kick.call_args
         assert args[0] == "CrackedPlayer"
-        assert "must link your Discord" in args[1]
+        assert "ni povezan z Discordom" in args[1]
 
 @pytest.mark.asyncio
 async def test_handle_player_login_premium_link_allowed(join_guard):
-    """Test that a player with a premium link is allowed."""
-    join_guard.link_manager.get_link_by_mc = AsyncMock(return_value={
-        "discord_id": 123,
-        "mc_username": "PremiumLinked",
-        "is_premium": True
-    })
-    join_guard._kick_player = AsyncMock()
-    
-    await join_guard.handle_player_login("PremiumLinked", "uuid-789")
-    
-    join_guard._kick_player.assert_not_called()
+    """Test that a player who is premium (from Mojang API) is allowed regardless of link."""
+    # Note: In the new JoinGuard, it checks verify_premium_mc_account FIRST.
+    with patch('src.join_guard.verify_premium_mc_account', new_callable=AsyncMock) as mock_verify:
+        mock_verify.return_value = True
+        join_guard._kick = AsyncMock()
+        
+        await join_guard.handle_player_login("PremiumLinked", "uuid-789")
+        
+        join_guard._kick.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_handle_player_login_cracked_link_grace_period(join_guard):
     """Test that a cracked player within grace period is allowed."""
-    join_guard.link_manager.get_link_by_mc = AsyncMock(return_value={
+    join_guard.link_manager.get_link_by_mc.return_value = {
         "discord_id": 123,
         "mc_username": "CrackedLinked",
         "is_premium": False
-    })
-    join_guard._kick_player = AsyncMock()
+    }
+    join_guard.link_manager.is_within_grace.return_value = True
+    join_guard._kick = AsyncMock()
     
-    # Set grace period
-    join_guard.recently_disconnected["crackedlinked"] = asyncio.get_event_loop().time() + 1000 # Future but it uses time.time()
-    
-    # Mock time.time()
-    with patch('time.time', return_value=10000):
-        join_guard.recently_disconnected["crackedlinked"] = 9500 # 500s ago, within 1800s grace
-        
+    with patch('src.join_guard.verify_premium_mc_account', new_callable=AsyncMock) as mock_verify:
+        mock_verify.return_value = False
         await join_guard.handle_player_login("CrackedLinked", "uuid-abc")
-        
-        join_guard._kick_player.assert_not_called()
-        assert "crackedlinked" not in join_guard.recently_disconnected
+        join_guard._kick.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_handle_player_login_cracked_link_issue_challenge(join_guard):
-    """Test that a cracked player outside grace period is challenged."""
-    join_guard.link_manager.get_link_by_mc = AsyncMock(return_value={
+    """Test that a cracked player outside grace period is challenged (kicked with code)."""
+    join_guard.link_manager.get_link_by_mc.return_value = {
         "discord_id": 123,
         "mc_username": "CrackedLinked",
         "is_premium": False
-    })
-    join_guard._kick_player = AsyncMock()
-    join_guard._issue_challenge = AsyncMock()
+    }
+    join_guard.link_manager.is_within_grace.return_value = False
+    join_guard._kick = AsyncMock()
     
-    # No entry in recently_disconnected
-    
-    await join_guard.handle_player_login("CrackedLinked", "uuid-abc")
-    
-    join_guard._issue_challenge.assert_called_once_with("CrackedLinked", 123)
+    with patch('src.join_guard.verify_premium_mc_account', new_callable=AsyncMock) as mock_verify:
+        mock_verify.return_value = False
+        await join_guard.handle_player_login("CrackedLinked", "uuid-abc")
+        
+        # In new JoinGuard, issuing challenge means kicking with a code
+        join_guard._kick.assert_called_once()
+        assert "Koda:" in join_guard._kick.call_args[0][1]
+        assert "crackedlinked" in join_guard.active_challenges
 
 @pytest.mark.asyncio
 async def test_verify_code_success(join_guard):
     """Test successful code verification."""
-    join_guard.active_challenges["PlayerOne"] = {
+    join_guard.active_challenges["playerone"] = {
         "discord_id": 123,
         "code": "SECRET",
-        "timeout_task": MagicMock()
+        "expires_at": time.time() + 300
     }
     
     success, message = await join_guard.verify_code(123, "SECRET")
     
     assert success is True
-    assert "successful" in message
-    assert "PlayerOne" not in join_guard.active_challenges
-    assert "playerone" in join_guard.recently_disconnected
+    assert "potrjena" in message
+    assert "playerone" not in join_guard.active_challenges
+    join_guard.link_manager.record_verified.assert_called_with("playerone")
 
 @pytest.mark.asyncio
 async def test_verify_code_wrong(join_guard):
     """Test incorrect code verification."""
-    join_guard.active_challenges["PlayerOne"] = {
+    join_guard.active_challenges["playerone"] = {
         "discord_id": 123,
         "code": "SECRET",
-        "timeout_task": MagicMock()
+        "expires_at": time.time() + 300
     }
     
     success, message = await join_guard.verify_code(123, "WRONG")
     
     assert success is False
-    assert "Incorrect" in message
-    assert "PlayerOne" in join_guard.active_challenges
+    assert "Napacna koda" in message
+    assert "playerone" in join_guard.active_challenges

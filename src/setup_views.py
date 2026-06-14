@@ -31,7 +31,7 @@ async def fetch_versions():
                 return GLOBAL_VERSIONS
     except Exception as e:
         logger.error(f"Failed to fetch Modrinth versions: {e}")
-        GLOBAL_VERSIONS = ["1.21.4", "1.21.3", "1.21.1", "1.20.4", "1.19.4"] # Fallback
+        GLOBAL_VERSIONS = ["26.1.2", "26.1.1", "26.1", "25.4.1", "25.3"] # Fallback
         return GLOBAL_VERSIONS
 
 class SetupState:
@@ -69,27 +69,29 @@ class SetupState:
 
 class PlatformSelect(ui.Select):
     """Dropdown for selecting server platform"""
-    def __init__(self):
+    def __init__(self, current_platform: str = "paper"):
         options = [
             discord.SelectOption(
                 label="Paper",
                 value="paper",
                 description="Recommended - Best performance & plugin support",
-                default=True
+                default=(current_platform == "paper")
             ),
             discord.SelectOption(
                 label="Vanilla",
                 value="vanilla",
-                description="Official Minecraft server"
+                description="Official Minecraft server",
+                default=(current_platform == "vanilla")
             ),
             discord.SelectOption(
                 label="Fabric",
                 value="fabric",
-                description="Lightweight modding platform"
+                description="Lightweight modding platform",
+                default=(current_platform == "fabric")
             )
         ]
         super().__init__(
-            placeholder="Choose server platform...",
+            placeholder=f"Currently: {current_platform.title()}",
             options=options,
             min_values=1,
             max_values=1
@@ -105,7 +107,7 @@ class PlatformSelect(ui.Select):
 class VersionSelect(ui.Select):
     """Dropdown for selecting Minecraft version"""
     def __init__(self, platform: str = "paper", current_value: str = "latest"):
-        versions = GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["1.21.4", "1.20.4"]
+        versions = GLOBAL_VERSIONS if GLOBAL_VERSIONS else ["26.1.2", "26.1.1"]
         
         options = []
         for i, version in enumerate(versions[:24]):  # Discord limit is 25
@@ -128,7 +130,7 @@ class VersionSelect(ui.Select):
         )
         
         super().__init__(
-            placeholder="Choose Minecraft version...",
+            placeholder=f"Currently: {current_value}",
             options=options,
             min_values=1,
             max_values=1
@@ -367,42 +369,6 @@ class CustomNumberModal(ui.Modal):
                 ephemeral=True
             )
 
-class PluginsModal(ui.Modal, title="Plugins & Mods"):
-    """Modal for entering Modrinth project slugs"""
-    def __init__(self, current_value: str):
-        super().__init__()
-        self.value: Optional[str] = None
-        
-        self.plugins_input = ui.TextInput(
-            label="Modrinth Slugs (Comma-separated)",
-            style=discord.TextStyle.paragraph,
-            placeholder="e.g. essentials, clear-lagg, vault\nLeave empty to skip.",
-            default=current_value,
-            max_length=2000,
-            required=False
-        )
-        self.add_item(self.plugins_input)
-    
-    async def on_submit(self, interaction: discord.Interaction):
-        self.value = self.plugins_input.value.strip()
-        await interaction.response.defer()
-
-class PluginsButton(ui.Button):
-    """Button to set plugins"""
-    def __init__(self):
-        super().__init__(label="Enter Plugins/Mods", style=discord.ButtonStyle.primary)
-    
-    async def callback(self, interaction: discord.Interaction):
-        view: SetupView = self.view
-        modal = PluginsModal(view.state.plugins)
-        await interaction.response.send_modal(modal)
-        await modal.wait()
-        if modal.value is not None:
-            view.state.plugins = modal.value
-            # Explicitly edit message to show updated plugins list
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
-
-
 class SetupView(ui.View):
     """Main view controller for multi-step setup"""
     
@@ -413,7 +379,6 @@ class SetupView(ui.View):
         "Seed",
         "Max Players",
         "Advanced Settings",
-        "Plugins/Mods",
         "Confirmation"
     ]
     
@@ -459,7 +424,7 @@ class SetupView(ui.View):
                 value=f"**{self.state.platform.title()}**",
                 inline=False
             )
-            return embed, [PlatformSelect(), self._next_button()]
+            return embed, [PlatformSelect(self.state.platform), self._next_button()]
             
         elif step == 1:  # Version
             embed = discord.Embed(
@@ -534,42 +499,6 @@ class SetupView(ui.View):
             )
             return embed, [self._back_button(), self._configure_advanced_button(), self._next_button()]
             
-        elif step == 6:  # Plugins/Mods
-            if self.state.platform == "vanilla":
-                embed = discord.Embed(
-                    title="Minecraft Server Setup",
-                    description=(
-                        f"**{progress}** - Plugins & Mods\n"
-                        "Vanilla servers do not support mods or plugins.\n"
-                        "Click **Next** to proceed to confirmation."
-                    ),
-                    color=discord.Color.blue()
-                )
-                return embed, [self._back_button(), self._next_button()]
-            
-            embed = discord.Embed(
-                title="Minecraft Server Setup",
-                description=(
-                    f"**{progress}** - Plugins & Mods\n"
-                    "Enter a comma-separated list of Modrinth slugs to auto-download during setup.\n"
-                    "💡 **Not sure of the slug?** Close this and run `/mod_search <name>` — it autocompletes as you type and shows the exact slug to use."
-                ),
-                color=discord.Color.blue()
-            )
-            
-            display_plugins = self.state.plugins
-            if not display_plugins:
-                display_plugins = "*None*"
-            elif len(display_plugins) > 1000:
-                display_plugins = display_plugins[:1000] + "... (truncated)"
-                
-            embed.add_field(
-                name="Items to Install",
-                value=f"```\n{display_plugins}\n```",
-                inline=False
-            )
-            return embed, [PluginsButton(), self._back_button(), self._next_button()]
-            
         else:  # Confirmation (step 6)
             embed = discord.Embed(
                 title="Ready to Install",
@@ -577,14 +506,6 @@ class SetupView(ui.View):
                 color=discord.Color.green()
             )
             
-            # Display resolved version if 'latest'
-            display_version = self.state.version
-            if display_version == 'latest':
-                # Note: We can't easily await here since this is not async in the current design (it's called by _get_step_content)
-                # But we can add a note that it will be resolved.
-                # Alternatively, we could resolve it in _navigate when moving to Confirmation.
-                pass
-
             embed.add_field(
                 name="Configuration Summary",
                 value=(
@@ -595,8 +516,7 @@ class SetupView(ui.View):
                     f"**Max Players:** {self.state.max_players}\n"
                     f"**RAM:** {self.state.ram} GB\n"
                     f"**Whitelist:** {'Enabled' if self.state.whitelist else 'Disabled'}\n"
-                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}\n"
-                    f"**Plugins/Mods:** {len(self.state.plugins.split(',')) if self.state.plugins else '0'} specified"
+                    f"**Online Mode:** {'Enabled' if self.state.online_mode else 'Disabled'}"
                 ),
                 inline=False
             )
@@ -646,7 +566,7 @@ class SetupView(ui.View):
         button.callback = callback
         return button
     
-    async def _navigate(self, interaction: discord.Interaction, new_step: int, already_responded: bool = False):
+    async def _navigate(self, interaction: discord.Interaction, new_step: int):
         """Navigate to a different step"""
         if new_step < 0 or new_step >= len(self.STEPS):
             return
@@ -656,14 +576,10 @@ class SetupView(ui.View):
         for item in view_items:
             self.add_item(item)
         
-        if already_responded:
-            await self.message.edit(embed=embed, view=self)
-        else:
-            await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.edit_message(embed=embed, view=self)
     
     async def _start_installation(self, interaction: discord.Interaction):
         """Start the installation process in background"""
-        # asyncio is now imported at module level
         
         # Create initial progress embed
         embed = discord.Embed(
@@ -692,7 +608,6 @@ class SetupView(ui.View):
         config.JAVA_XMS = f"{max(1, self.state.ram // 2)}G"
         
         try:
-            
             embed.description = "**Step 1/5:** Creating Discord channels and roles..."
             await message.edit(embed=embed)
             
@@ -764,71 +679,7 @@ class SetupView(ui.View):
             }
             config.update_dynamic_config(version_update)
             await self._save_config_to_file(version_update)
-            
-            # STEP 4.5: Update Mods/Plugins to match new Version
-            if setup_config['platform'] != 'vanilla':
-                embed.description = "**Step 4.5/5:** Processing Mods/Plugins..."
-                await message.edit(embed=embed)
-                
-                async def updater_callback(status_text):
-                    try:
-                        embed.description = f"**Step 4.5/5:** Mod Updater\n{status_text}"
-                        await message.edit(embed=embed)
-                    except Exception:
-                        pass
-                        
-                updater = ModUpdater(callback=updater_callback)
-                loader_override = "paper" if setup_config['platform'] == "paper" else "fabric"
-                
-                # Install specific plugins if provided
-                failed_slugs = []
-                if setup_config.get('plugins'):
-                    plugin_slugs = [slug.strip() for slug in setup_config['plugins'].split(',') if slug.strip()]
-                    if plugin_slugs:
-                        await updater_callback(f"Fetching {len(plugin_slugs)} user-specified plugins...")
-                        for slug in plugin_slugs:
-                            try:
-                                # Fetch project and versions directly via Modrinth API
-                                await updater_callback(f"Downloading '{slug}'...")
-                                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-                                    async with session.get(f"https://api.modrinth.com/v2/project/{slug}") as p_resp:
-                                        if p_resp.status != 200:
-                                            raise Exception(f"Project not found (HTTP {p_resp.status})")
-                                        project = await p_resp.json()
-                                        params = {
-                                            "loaders": f'["{loader_override}"]',
-                                            "game_versions": f'["{setup_config["version"]}"]'
-                                        }
-                                        async with session.get(f"https://api.modrinth.com/v2/project/{project['id']}/version", params=params) as v_resp:
-                                            if v_resp.status == 200:
-                                                versions = await v_resp.json()
-                                                if not versions:
-                                                    raise Exception("No compatible version found")
-                                                version = versions[0]
-                                                primary_file = next((f for f in version["files"] if f.get("primary")), version["files"][0])
 
-                                                mods_dir = os.path.join(config.SERVER_DIR, "mods" if loader_override != "paper" else "plugins")
-                                                os.makedirs(mods_dir, exist_ok=True)
-
-                                                filepath = os.path.join(mods_dir, primary_file["filename"])
-                                                async with session.get(primary_file["url"]) as d_resp:
-                                                    if d_resp.status == 200:
-                                                        async with aiofiles.open(filepath, 'wb') as f:
-                                                            await f.write(await d_resp.read())
-                                                logger.info(f"Downloaded plugin {project.get('title', slug)} to {filepath}")
-                                            else:
-                                                raise Exception(f"Version fetch failed (HTTP {v_resp.status})")
-
-                            except Exception as e:
-                                logger.error(f"Failed to fetch requested plugin/mod '{slug}': {e}")
-                                failed_slugs.append(slug)
-                
-                # Then run the standard update_all to catch any existing
-                await updater.update_all(game_version=setup_config['version'], loader=loader_override, is_setup=True)
-            else:
-                embed.description = "**Step 4.5/5:** Skipping Mods/Plugins (Vanilla)..."
-                await message.edit(embed=embed)
-            
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
             await message.edit(embed=embed)
@@ -880,15 +731,7 @@ class SetupView(ui.View):
                 inline=False
             )
             
-            if failed_slugs:
-                embed.add_field(
-                    name="⚠️ Plugin Install Failures",
-                    value=f"The following could not be installed: `{'`, `'.join(failed_slugs)}`\nCheck the slug spelling at modrinth.com and use `/mod_search` to find the correct slug.",
-                    inline=False
-                )
-
             embed.set_footer(text="Use /help to see all available commands")
-
             await message.edit(embed=embed)
             
             # Trigger control panel update immediately so it shows correct status
@@ -922,7 +765,6 @@ class SetupView(ui.View):
             logger.info("data/bot_config.json updated successfully")
         except Exception as e:
             logger.error(f"Failed to update data/bot_config.json: {e}")
-
 
 
 class AdvancedSettingsModal(ui.Modal, title="⚙️ Advanced Settings"):

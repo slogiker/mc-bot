@@ -127,6 +127,32 @@ class Info(commands.Cog):
             except Exception as send_error:
                 logger.debug(f"Failed to send status error message: {send_error}")
 
+    @app_commands.command(name="uptime", description="Check how long the bot and server have been running")
+    @has_role("status")
+    async def uptime(self, interaction: discord.Interaction):
+        """Displays uptime for both the bot and the Minecraft server."""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Bot Uptime
+        bot_uptime_sec = int(time.time() - self.bot.start_time)
+        bot_uptime = str(timedelta(seconds=bot_uptime_sec))
+        
+        # Server Uptime
+        server_uptime = "Offline 🔴"
+        if self.bot.server.is_running():
+            start_time = self.bot.server.get_start_time()
+            if start_time:
+                server_uptime_sec = int(time.time() - start_time)
+                server_uptime = f"**{str(timedelta(seconds=server_uptime_sec))}** 🟢"
+            else:
+                server_uptime = "Online (Unknown duration) 🟢"
+        
+        embed = discord.Embed(title="⏲️ System Uptime", color=0x5865F2)
+        embed.add_field(name="Discord Bot", value=f"**{bot_uptime}**", inline=False)
+        embed.add_field(name="Minecraft Server", value=server_uptime, inline=False)
+        
+        await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="players", description="List online players")
     @has_role("players")
     async def players(self, interaction: discord.Interaction):
@@ -240,14 +266,18 @@ class Info(commands.Cog):
             # Show ephemeral info
             ver = await parse_server_version()
             
-            # Get IP from playit.gg cache if available
+            # Get IP from playit.gg cache or config
             ip = "Unknown (Check /ip)"
             try:
                 playit_cog = self.bot.get_cog("PlayitCog")
-                if playit_cog and playit_cog.tunnels:
-                    ip = playit_cog.tunnels[0]
+                if playit_cog and playit_cog.cached_address:
+                    ip = playit_cog.cached_address
+                else:
+                    # Fallback to persistent config
+                    bot_cfg = config.load_bot_config()
+                    ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
             except Exception as e:
-                logger.error(f"Failed to fetch IP from PlayitCog: {e}")
+                logger.error(f"Failed to fetch IP for info command: {e}")
             
             # Get spawn
             spawn = self.info_manager._get_spawn() or "Not set"

@@ -5,6 +5,7 @@ import asyncio
 import aiohttp
 import os
 import time
+from src.config import config
 from src.logger import logger
 from src.utils import has_role
 
@@ -21,6 +22,29 @@ class PlayitCog(commands.Cog):
         self.cached_address = None
         self.cache_time = None
         self.tunnels = []
+        
+        # Load from config if available
+        bot_cfg = config.load_bot_config()
+        self.cached_address = bot_cfg.get('playit_ip')
+        if self.cached_address:
+            self.tunnels = [self.cached_address]
+            self.cache_time = time.time() # Start fresh TTL for cached on-disk
+            
+        # Try to refresh in background on startup
+        asyncio.create_task(self._initial_fetch())
+
+    async def _initial_fetch(self):
+        """Fetch the IP address once on startup without blocking the bot."""
+        await asyncio.sleep(5) # Wait for bot to be fully ready
+        address, _ = await self.fetch_playit_address()
+        if address:
+            self.cached_address = address
+            self.cache_time = time.time()
+            self.tunnels = [address]
+            # Save to persistent config
+            with config.update_bot_config() as data:
+                data['playit_ip'] = address
+            logger.info(f"Playit IP address updated and saved: {address}")
 
     def get_secret_key(self):
         """Get Playit secret key from data file or env."""
@@ -42,6 +66,7 @@ class PlayitCog(commands.Cog):
         return False
 
     @app_commands.command(name="ip", description="Get the public Playit.gg address")
+    @has_role("status")
     async def get_ip(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
         

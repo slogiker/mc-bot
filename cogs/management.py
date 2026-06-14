@@ -146,6 +146,11 @@ class Management(commands.Cog):
             status=discord.Status.idle
         )
         
+        # For a manual restart, we want to ensure it's not marked as intentional stop
+        # so crash check doesn't ignore it if it takes too long to come up.
+        if hasattr(self.bot.server, '_intentional_stop'):
+            self.bot.server._intentional_stop = False
+
         success, message = await self.bot.server.restart()
         if success:
             embed = discord.Embed(
@@ -234,12 +239,17 @@ class Management(commands.Cog):
         Args:
             interaction (discord.Interaction): The interaction that triggered the command.
         """
-        import sys
-        await interaction.response.send_message("Restarting bot...", ephemeral=True)
-        # Use sys.exit instead of os.execv - Docker restart policy handles the actual restart
-        # os.execv replaces PID 1 in Docker which can cause the container to exit uncleanly
+        await interaction.response.defer(ephemeral=False)
+        msg = await interaction.followup.send("⏳ Restarting bot... Please wait.", wait=True)
+        
+        with config.update_bot_config() as data:
+            data['restart_channel_id'] = msg.channel.id
+            data['restart_message_id'] = msg.id
+
+        # We don't call sys.exit() here because it raises SystemExit which the 
+        # CommandTree logs as an error. bot.close() will cause bot.start() to 
+        # return in main(), and the process will exit naturally.
         await self.bot.close()
-        sys.exit(0)
 
 
 

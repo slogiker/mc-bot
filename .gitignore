@@ -1,9 +1,27 @@
-# Environment variables (SECRETS!)
+# --- PROJECT ESSENTIALS (STAY) ---
+# bot.py
+# Dockerfile
+# docker-compose.yml
+# Makefile
+# README.md
+# requirements.txt
+# GEMINI.md
+# CLAUDE.md
+GEMINI.md
+CLAUDE.md
+LICENSE
+# src/
+# cogs/
+# docs/
+# tests/
+# install/
+
+# --- Environment & Secrets ---
 .env
 *.env
 .env.*
 
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -17,43 +35,49 @@ env/
 ENV/
 .venv
 
-# Minecraft Server Data
-mc-server/
-backups/
-
-# Bot State & Config (contains secrets / machine-generated state!)
-bot_state.json
-*.json.backup
-config.json
-data/
-
-# Logs
-*.log
-logs/
-bot.log*
-
-# OS files
-.DS_Store
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-desktop.ini
-
-# IDE
+# --- Local Workspace & IDE ---
 .vscode/
 .idea/
+.claude/
+.backups/
+.local/
 *.swp
 *.swo
 *~
 .project
 .pydevproject
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Temporary files
-*.tmp
+# --- Runtime Data (Volume Mounted) ---
+mc-server/
+backups/
+logs/
+data/
+bot_state.json
+*.json.backup
+config.json
+playit_secret.key
+
+# --- Binaries & Downloads ---
+playit
+playit_cli
+playit_v1.0.10
+playit-linux-*
+ngrok
+
+# --- Local Tests & Simulation ---
+fresh-test/
+sim/
+test_tunnel.sh
+test.log
+*.log
 tmp/
 temp/
 world_tmp_backup/
 temp_pyonesend/
-
-new.txt
 install-log.txt
+new.txt
+poc.py
+simulate.py
