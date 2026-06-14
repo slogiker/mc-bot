@@ -1,9 +1,0 @@
-services:
-  test-runner:
-    build:
-      context: ../..
-      dockerfile: tests/infra/Dockerfile.test
-    container_name: mcbot-test-runner
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
