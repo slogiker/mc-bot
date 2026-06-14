@@ -100,6 +100,12 @@ class PlayitCog(commands.Cog):
         proc = await asyncio.create_subprocess_shell(start_cmd)
         await proc.wait()
 
+    def _is_cache_valid(self):
+        """Check if cached address is still valid (within TTL)."""
+        if self.cached_address and self.cache_time:
+            return (time.time() - self.cache_time) < CACHE_TTL
+        return False
+
     @app_commands.command(name="status", description="Show detailed bot and server status")
     @has_role("status")
     async def status_combined(self, interaction: discord.Interaction):
@@ -137,10 +143,16 @@ class PlayitCog(commands.Cog):
     async def playit_claim(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
+        # Ensure daemon is running first
+        await self.start_tunnel()
+        await asyncio.sleep(2)
+        
+        socket_path = os.path.join("data", "playit.sock")
+        
         try:
             # 1. Generate code
             proc = await asyncio.create_subprocess_exec(
-                "playit-cli", "claim", "generate",
+                "playit-cli", "--socket-path", socket_path, "claim", "generate",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -153,7 +165,7 @@ class PlayitCog(commands.Cog):
 
             # 2. Generate URL
             proc = await asyncio.create_subprocess_exec(
-                "playit-cli", "claim", "url", code,
+                "playit-cli", "--socket-path", socket_path, "claim", "url", code,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -167,7 +179,8 @@ class PlayitCog(commands.Cog):
             await interaction.followup.send(
                 f"🔗 **Playit Claim Link**: {url}\n\n"
                 "1. Click the link and claim the agent in your Playit account.\n"
-                "2. Once done, return here and run **`/playit verify`** to complete setup.",
+                "2. **IMPORTANT**: Keep the bot running while you do this!\n"
+                "3. Once done, return here and run **`/playit verify`**.",
                 ephemeral=True
             )
         except Exception as e:
@@ -182,10 +195,12 @@ class PlayitCog(commands.Cog):
         
         await interaction.response.send_message("🔄 Verifying claim and exchanging for secret key...", ephemeral=True)
         
+        socket_path = os.path.join("data", "playit.sock")
+        
         try:
             # Exchange code for secret
             proc = await asyncio.create_subprocess_exec(
-                "playit-cli", "claim", "exchange", self._current_claim_code,
+                "playit-cli", "--socket-path", socket_path, "claim", "exchange", self._current_claim_code,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

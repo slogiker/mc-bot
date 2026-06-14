@@ -269,9 +269,8 @@ class Info(commands.Cog):
                 embed.add_field(name="TPS", value=tps, inline=True)
 
                 try:
+                    # Fix: rcon_cmd returns (success, response)
                     success_list, players_raw = await rcon_cmd("list")
-                    if isinstance(players_raw, tuple):
-                        players_raw = players_raw[0]
                     players_formatted, current_players, max_players = self._get_player_list_info(players_raw)
                     embed.add_field(name="Players", value=players_formatted, inline=False)
                 except Exception as e:
