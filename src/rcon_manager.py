@@ -22,10 +22,11 @@ class RCONManager:
             return self._client
 
     async def send_command(self, cmd: str) -> tuple[bool, str]:
-        """Sends a command to the server and returns (success, response)."""
+        """Sends a command to the server and returns (success, response_string)."""
         try:
             client = await self.get_client()
-            response = await client.send_cmd(cmd)
+            # aiomcrcon returns (response_string, request_id)
+            response, _ = await client.send_cmd(cmd)
             return True, response
         except Exception as e:
             logger.warning(f"RCON command failed: {e}. Attempting reconnect...")
@@ -40,7 +41,7 @@ class RCONManager:
             
             try:
                 client = await self.get_client()
-                response = await client.send_cmd(cmd)
+                response, _ = await client.send_cmd(cmd)
                 return True, response
             except Exception as e2:
                 logger.error(f"RCON reconnect failed: {e2}")

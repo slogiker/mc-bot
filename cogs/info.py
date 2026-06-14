@@ -129,9 +129,6 @@ class Info(commands.Cog):
             
             try:
                 success, res = await rcon_cmd("list")
-                if isinstance(res, tuple):
-                    res = res[0]
-                
                 description, _, _ = self._get_player_list_info(res)
 
                 embed = discord.Embed(title="Online Players", description=description, color=0x5865F2)

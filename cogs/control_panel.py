@@ -72,8 +72,16 @@ class ControlPanelView(ui.View):
                 embed.color = 0x57F287
                 try:
                     success, players_response = await rcon_cmd("list")
+                    
+                    # Use Info cog's parser for pretty list
+                    info_cog = self.bot.get_cog("Info")
+                    if info_cog:
+                        players_val, _, _ = info_cog._get_player_list_info(players_response)
+                    else:
+                        players_val = f"```{players_response}```"
+
                     embed.add_field(name="Status", value="🟢 **Online**", inline=False)
-                    embed.add_field(name="Players", value=f"```{players_response}```", inline=False)
+                    embed.add_field(name="Players", value=players_val, inline=False)
                 except Exception as e:
                     embed.add_field(name="Status", value="🟢 **Online**", inline=False)
                     embed.add_field(name="Players", value="```Unable to fetch player list```", inline=False)

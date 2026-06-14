@@ -59,6 +59,13 @@ class PlayitCog(commands.Cog):
             with config.update_bot_config() as data:
                 data['playit_ip'] = address
             logger.info(f"Playit IP address updated: {address}")
+            
+            # Trigger server info update so #server-information is accurate
+            try:
+                from src.server_info_manager import ServerInfoManager
+                await ServerInfoManager(self.bot).update_info()
+            except Exception as e:
+                logger.error(f"Failed to update info after IP fetch: {e}")
 
     def get_secret_key(self):
         """Get Playit secret key from data file."""
