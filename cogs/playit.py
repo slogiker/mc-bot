@@ -7,6 +7,7 @@ import os
 import re
 import time
 import psutil
+import subprocess
 from src.config import config
 from src.logger import logger
 from src.utils import has_role
@@ -24,6 +25,7 @@ class PlayitCog(commands.Cog):
         self.cached_address = None
         self.cache_time = None
         self.tunnels = []
+        self._current_claim_code = None
         self._claim_link = None
         
         # Load from config if available
@@ -64,15 +66,17 @@ class PlayitCog(commands.Cog):
         if os.path.exists(key_path):
             try:
                 with open(key_path, "r") as f:
-                    return f.read().strip()
+                    key = f.read().strip()
+                    return key if key else None
             except Exception as e:
                 logger.error(f"Failed to read playit secret key: {e}")
         
         # Fallback to env
-        return os.environ.get("PLAYIT_SECRET_KEY", "").strip()
+        env_key = os.environ.get("PLAYIT_SECRET_KEY", "").strip()
+        return env_key if env_key else None
 
     async def start_tunnel(self):
-        """Starts or restarts the playit tunnel and watches for a claim link."""
+        """Starts or restarts the playit tunnel."""
         logger.info("Playit: Starting tunnel...")
         secret_key_path = os.path.join("data", "playit_secret.key")
         socket_path = os.path.join("data", "playit.sock")
@@ -83,35 +87,18 @@ class PlayitCog(commands.Cog):
         
         # Build command
         cmd = ["playit", "--platform-docker", "--socket-path", socket_path, "-l", log_path]
-        if os.path.exists(secret_key_path) and os.path.getsize(secret_key_path) > 0:
+        secret_key = self.get_secret_key()
+        if secret_key:
+            # Write key to file if it came from env but file is missing
+            if not os.path.exists(secret_key_path):
+                with open(secret_key_path, "w") as f:
+                    f.write(secret_key)
             cmd.extend(["--secret-path", secret_key_path])
 
         # Start in tmux
         start_cmd = f"tmux new-session -d -s playit '{' '.join(cmd)}'"
         proc = await asyncio.create_subprocess_shell(start_cmd)
         await proc.wait()
-
-        # Watch log for claim link
-        await asyncio.sleep(2)
-        if os.path.exists(log_path):
-            try:
-                with open(log_path, 'r') as f:
-                    content = f.read()
-                    # Look for https://playit.gg/claim/XXXX-XXXX
-                    match = re.search(r'https://playit\.gg/claim/[A-Z0-9-]+', content)
-                    if match:
-                        self._claim_link = match.group(0)
-                        logger.info(f"Playit: Found claim link: {self._claim_link}")
-                    else:
-                        self._claim_link = None
-            except Exception as e:
-                logger.error(f"Error reading playit log: {e}")
-
-    def _is_cache_valid(self):
-        """Check if cached address is still valid (within TTL)."""
-        if self.cached_address and self.cache_time:
-            return (time.time() - self.cache_time) < CACHE_TTL
-        return False
 
     @app_commands.command(name="status", description="Show detailed bot and server status")
     @has_role("status")
@@ -131,7 +118,7 @@ class PlayitCog(commands.Cog):
         address, error = await self.fetch_playit_address()
         if address:
             playit_status = f"🟢 Connected\n`{address}`"
-        elif self._claim_link:
+        elif not self.get_secret_key():
             playit_status = "🟡 Unclaimed\nUse `/playit claim`"
         else:
             playit_status = f"🔴 Error\n{error or 'Not running'}"
@@ -145,24 +132,99 @@ class PlayitCog(commands.Cog):
 
     playit_group = app_commands.Group(name="playit", description="Playit.gg tunnel management")
 
-    @playit_group.command(name="claim", description="Get the claim link for a new tunnel")
+    @playit_group.command(name="claim", description="Generate a new Playit.gg claim link")
     @has_role("admin")
     async def playit_claim(self, interaction: discord.Interaction):
-        if self._claim_link:
-            await interaction.response.send_message(
-                f"🔗 **Playit Claim Link**: {self._claim_link}\n\n"
-                "Click the link to assign this bot to your Playit.gg account. "
-                "Once claimed, run `/playit restart` to finish setup.",
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # 1. Generate code
+            proc = await asyncio.create_subprocess_exec(
+                "playit-cli", "claim", "generate",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                return await interaction.followup.send(f"❌ Failed to generate claim code: {stderr.decode()}")
+            
+            code = stdout.decode().strip()
+            self._current_claim_code = code
+
+            # 2. Generate URL
+            proc = await asyncio.create_subprocess_exec(
+                "playit-cli", "claim", "url", code,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                return await interaction.followup.send(f"❌ Failed to generate claim URL: {stderr.decode()}")
+            
+            url = stdout.decode().strip()
+            self._claim_link = url
+
+            await interaction.followup.send(
+                f"🔗 **Playit Claim Link**: {url}\n\n"
+                "1. Click the link and claim the agent in your Playit account.\n"
+                "2. Once done, return here and run **`/playit verify`** to complete setup.",
                 ephemeral=True
             )
-        else:
-            # Try to restart and find it
-            await interaction.response.defer(ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in /playit claim: {e}")
+            await interaction.followup.send(f"❌ Unexpected error: {e}")
+
+    @playit_group.command(name="verify", description="Verify and exchange your claim code for a secret key")
+    @has_role("admin")
+    async def playit_verify(self, interaction: discord.Interaction):
+        if not self._current_claim_code:
+            return await interaction.response.send_message("❌ No active claim process. Run `/playit claim` first.", ephemeral=True)
+        
+        await interaction.response.send_message("🔄 Verifying claim and exchanging for secret key...", ephemeral=True)
+        
+        try:
+            # Exchange code for secret
+            proc = await asyncio.create_subprocess_exec(
+                "playit-cli", "claim", "exchange", self._current_claim_code,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            
+            if proc.returncode != 0:
+                return await interaction.followup.send(
+                    f"❌ Exchange failed: {stderr.decode()}\n"
+                    "Make sure you clicked the link and confirmed it on Playit.gg first!",
+                    ephemeral=True
+                )
+            
+            secret = stdout.decode().strip()
+            if not secret:
+                return await interaction.followup.send("❌ Received empty secret key from Playit.", ephemeral=True)
+
+            # Save secret
+            key_path = os.path.join("data", "playit_secret.key")
+            with open(key_path, "w") as f:
+                f.write(secret)
+            
+            await interaction.followup.send("✅ Secret key saved! Restarting tunnel...", ephemeral=True)
             await self.start_tunnel()
-            if self._claim_link:
-                await interaction.followup.send(f"🔗 **Claim Link Generated**: {self._claim_link}")
+            
+            # Final check
+            await asyncio.sleep(5)
+            address, _ = await self.fetch_playit_address()
+            if address:
+                await interaction.followup.send(f"🚀 **Tunnel Online!** Public IP: `{address}`", ephemeral=True)
             else:
-                await interaction.followup.send("❌ Could not generate a claim link. Check bot logs.")
+                await interaction.followup.send("⚠️ Tunnel started, but IP is still initializing. Check `/ip` in a minute.", ephemeral=True)
+                
+            # Clear state
+            self._current_claim_code = None
+            self._claim_link = None
+
+        except Exception as e:
+            logger.error(f"Error in /playit verify: {e}")
+            await interaction.followup.send(f"❌ Unexpected error during verification: {e}", ephemeral=True)
 
     @playit_group.command(name="restart", description="Restart the Playit tunnel")
     @has_role("admin")
@@ -180,15 +242,10 @@ class PlayitCog(commands.Cog):
     @has_role("status")
     async def get_ip(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
-        
-        # 1. Check cache (with TTL)
         if self._is_cache_valid():
             await interaction.followup.send(f"🌍 **Public Address**: `{self.cached_address}`")
             return
-
-        # 2. Fetch from Playit API
         address, error = await self.fetch_playit_address()
-        
         if address:
             self.cached_address = address
             self.cache_time = time.time()
@@ -198,42 +255,28 @@ class PlayitCog(commands.Cog):
             await interaction.followup.send(error)
 
     async def fetch_playit_address(self):
-        """
-        Fetches the tunnel address via Playit REST API.
-        
-        Returns:
-            tuple: (address, error_message) — one will be None
-        """
+        """Fetches the tunnel address via Playit REST API."""
         secret_key = self.get_secret_key()
         if not secret_key:
             return None, "❌ No Playit secret key found."
-
         url = "https://api.playit.gg/v1/agents/rundata"
-        headers = {
-            "Authorization": f"Agent-Key {secret_key}",
-            "Content-Type": "application/json",
-        }
-
+        headers = {"Authorization": f"Agent-Key {secret_key}", "Content-Type": "application/json"}
         try:
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, headers=headers, json={}) as resp:
                     if resp.status == 401:
                         return None, "❌ Playit rejected the secret key (401 Unauthorized)."
-                    elif resp.status != 200:
-                        return None, f"❌ Playit API returned error (status {resp.status})."
-
+                    if resp.status != 200:
+                        return None, f"❌ Playit API error ({resp.status})."
                     data = await resp.json()
                     tunnels = data.get("data", {}).get("tunnels", [])
                     if not tunnels:
-                        return None, "❌ No tunnels configured on your Playit account."
-
-                    # Prefer minecraft-java tunnel
+                        return None, "❌ No tunnels configured."
                     for tunnel in tunnels:
                         if tunnel.get("tunnel_type") == "minecraft-java":
                             return tunnel["display_address"], None
                     return tunnels[0]["display_address"], None
-
         except Exception as e:
             logger.error(f"Error fetching Playit address: {e}")
             return None, "❌ Unexpected error fetching Playit address."
