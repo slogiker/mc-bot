@@ -10,58 +10,48 @@ class SetupHelper:
     async def ensure_setup(self, guild: discord.Guild):
         """
         Ensures the guild has the necessary Category, Channels, and Roles.
-        Returns a dict of found/created IDs to update the Config.
+        Self-healing: Reconciles missing items and repairs configuration.
         """
-        logger.debug(f"--- Starting Dynamic Setup for Guild: {guild.name} ({guild.id}) ---")
+        logger.debug(f"--- Starting Self-Healing Setup for Guild: {guild.name} ---")
         
         updates = {}
         
-        # Define roles to create
-        role_definitions = ["Owner", "Admin", "Player"]
-        
+        # 1. ROLES RECONCILIATION
+        role_definitions = ["Owner", "MC Admin", "MC Player"]
         existing_roles = {r.name: r for r in guild.roles}
-        dynamic_roles_config = {}
 
         for role_name in role_definitions:
             role = existing_roles.get(role_name)
             if not role:
                 try:
-                    role = await guild.create_role(name=role_name, reason="MC Bot Setup")
-                    logger.info(f"Created Role: {role_name}")
+                    # Create missing role with specific color
+                    color = discord.Color.gold() if "Admin" in role_name or "Owner" in role_name else discord.Color.blue()
+                    role = await guild.create_role(name=role_name, color=color, reason="Self-Healing: Role missing")
+                    logger.info(f"Self-Healer: Created missing Role: {role_name}")
                 except Exception as e:
                     logger.error(f"Failed to create role {role_name}: {e}")
                     continue
-            else:
-                logger.debug(f"Found Role: {role_name}")
             
-            # Special Case: Assign 'Owner' to Guild Owner
+            # Map IDs to config keys
             if role_name == "Owner":
                 updates['owner_role_id'] = role.id
                 await self._assign_owner_role(guild, role)
-            elif role_name == "Admin":
+            elif role_name == "MC Admin":
                 updates['admin_role_id'] = role.id
-            elif role_name == "Player":
+            elif role_name == "MC Player":
                 updates['player_role_id'] = role.id
 
-        # updates['roles'] is no longer needed as permissions are in user_config by name
-        updates['guild_id'] = guild.id  # Store as int for consistency
-        if guild.owner:
-            updates['owner_id'] = guild.owner.id
-
-        # 2. CATEGORY
+        # 2. CATEGORY RECONCILIATION
         cat_name = "Minecraft Server"
         category = discord.utils.get(guild.categories, name=cat_name)
         if not category:
             try:
-                category = await guild.create_category(cat_name, reason="MC Bot Setup")
-                logger.info(f"Created Category: {cat_name}")
+                category = await guild.create_category(cat_name, reason="Self-Healing: Category missing")
+                logger.info(f"Self-Healer: Created missing Category: {cat_name}")
             except Exception as e:
                 logger.error(f"Failed to create category {cat_name}: {e}")
-        else:
-            logger.debug(f"Found Category: {cat_name}")
-
-        # 3. CHANNELS
-        # Defined as name -> key in config
+        
+        # 3. CHANNELS RECONCILIATION
         channel_defs = {
             "command": "command_channel_id",
             "log": "log_channel_id",
@@ -71,32 +61,33 @@ class SetupHelper:
         for ch_name, config_key in channel_defs.items():
             channel = discord.utils.get(guild.text_channels, name=ch_name)
             
-            # If channel exists but is not in our category, move it? 
-            # For simplicity, if it exists, we use it. If not, we create it in the category.
-            
             if not channel:
                 try:
-                    if category:
-                        channel = await guild.create_text_channel(ch_name, category=category, reason="MC Bot Setup")
-                    else:
-                        channel = await guild.create_text_channel(ch_name, reason="MC Bot Setup") # Fallback
-                    logger.info(f"Created Channel: {ch_name}")
+                    channel = await guild.create_text_channel(
+                        ch_name, 
+                        category=category, 
+                        reason="Self-Healing: Channel missing"
+                    )
+                    logger.info(f"Self-Healer: Created missing Channel: {ch_name}")
                 except Exception as e:
                     logger.error(f"Failed to create channel {ch_name}: {e}")
                     continue
             else:
-                logger.debug(f"Found Channel: {ch_name}")
-                # Optional: Ensure it's in the correct category
-                if category and channel.category != category:
+                # Ensure existing channel is in the right category
+                if category and channel.category_id != category.id:
                     try:
                         await channel.edit(category=category)
-                        logger.info(f"Moved channel {ch_name} into category {cat_name}")
+                        logger.info(f"Self-Healer: Restored channel {ch_name} to category {cat_name}")
                     except Exception as e:
                         logger.warning(f"Failed to move channel {ch_name}: {e}")
 
             updates[config_key] = channel.id
 
-        logger.debug("--- Dynamic Setup Completed ---")
+        updates['guild_id'] = guild.id
+        if guild.owner:
+            updates['owner_id'] = guild.owner.id
+
+        logger.debug("--- Self-Healing Setup Completed ---")
         return updates
 
     async def _assign_owner_role(self, guild, owner_role):

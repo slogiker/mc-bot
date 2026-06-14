@@ -91,42 +91,6 @@ class Info(commands.Cog):
             tps = "N/A"
         return tps
 
-
-    @app_commands.command(name="status", description="Show Minecraft server status")
-    @has_role("status")
-    async def status(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        try:
-            embed = discord.Embed(title="Minecraft Server Status")
-            if self.bot.server.is_running():
-                embed.color = 0x57F287 # Green
-                try:
-                    success, players_response = await rcon_cmd("list")
-                    if isinstance(players_response, tuple):
-                        players_response = players_response[0]
-                    
-                    players_val, _, _ = self._get_player_list_info(players_response)
-                    
-                    embed.add_field(name="Status", value="🟢 **Online**", inline=False)
-                    embed.add_field(name="Players", value=players_val, inline=False)
-                except Exception as e:
-                    logger.error(f"Failed to get player list in status command: {e}")
-                    players_val, _, _ = self._get_player_list_info("Unable to fetch player list")
-                    embed.add_field(name="Status", value="🟢 **Online**", inline=False)
-                    embed.add_field(name="Players", value=players_val, inline=False)
-            else:
-                embed.color = 0xED4245 # Red
-                embed.add_field(name="Status", value="🔴 **Offline**", inline=False)
-            
-            embed.set_footer(text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
-            await interaction.followup.send(embed=embed)
-        except Exception as e:
-            logger.error(f"Error in status command: {e}", exc_info=True)
-            try:
-                await interaction.followup.send("❌ Failed to get server status.")
-            except Exception as send_error:
-                logger.debug(f"Failed to send status error message: {send_error}")
-
     @app_commands.command(name="uptime", description="Check how long the bot and server have been running")
     @has_role("status")
     async def uptime(self, interaction: discord.Interaction):
@@ -188,7 +152,6 @@ class Info(commands.Cog):
     async def version(self, interaction: discord.Interaction):
         try:
             ver = await parse_server_version()
-            # Try to fetch real version via RCON or log parsing if possible, or use configured
             await interaction.response.send_message(f"🛠️ Server version: {ver}", ephemeral=True)
         except Exception as e:
             logger.error(f"Error in version command: {e}", exc_info=True)
@@ -202,14 +165,12 @@ class Info(commands.Cog):
     async def seed(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         try:
-            # Try to read from server.properties first (works offline)
             seed = self.info_manager._get_seed()
             
             if seed and seed != 'Random/Hidden':
                 await interaction.followup.send(f"🌱 Seed: {seed}")
                 return
             
-            # Fallback to RCON if server is running
             if self.bot.server.is_running():
                 try:
                     success, seed_val = await rcon_cmd("seed")
@@ -254,48 +215,38 @@ class Info(commands.Cog):
             except Exception as send_error:
                 logger.debug(f"Failed to send mods error message: {send_error}")
 
-    @app_commands.command(name="info", description="Displays server information (updated)")
+    @app_commands.command(name="info", description="Show technical bot information")
     @has_role("server_info")
     async def info(self, interaction: discord.Interaction):
         """Displays detailed server information"""
         await interaction.response.defer(ephemeral=True)
         try:
-            # Trigger update of the info channel as well
             await self.info_manager.update_info(interaction.guild)
-            
-            # Show ephemeral info
             ver = await parse_server_version()
             
-            # Get IP from playit.gg cache or config
             ip = "Unknown (Check /ip)"
             try:
                 playit_cog = self.bot.get_cog("PlayitCog")
                 if playit_cog and playit_cog.cached_address:
                     ip = playit_cog.cached_address
                 else:
-                    # Fallback to persistent config
                     bot_cfg = config.load_bot_config()
                     ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
             except Exception as e:
                 logger.error(f"Failed to fetch IP for info command: {e}")
             
-            # Get spawn
             spawn = self.info_manager._get_spawn() or "Not set"
             
             embed = discord.Embed(title="🌍 Server Information", color=0x5865F2)
             embed.add_field(name="IP Address", value=ip, inline=False)
             embed.add_field(name="Version", value=ver, inline=True)
             
-            # System Stats (psutil)
-            # CPU
             cpu_percent = psutil.cpu_percent(interval=0.1)
             embed.add_field(name="System CPU", value=f"{cpu_percent}%", inline=True)
             
-            # RAM
             mem = psutil.virtual_memory()
             embed.add_field(name="System RAM", value=f"{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)", inline=True)
             
-            # Disk (where server is)
             server_path = config.SERVER_DIR
             try:
                 disk = psutil.disk_usage(server_path)
@@ -306,7 +257,6 @@ class Info(commands.Cog):
             if self.bot.server.is_running():
                 embed.add_field(name="Status", value="🟢 Online", inline=True)
                 
-                # Uptime check
                 uptime_str = "Unknown"
                 if hasattr(self.bot.server, 'get_start_time'):
                     start_time = self.bot.server.get_start_time()
@@ -320,29 +270,10 @@ class Info(commands.Cog):
 
                 try:
                     success_list, players_raw = await rcon_cmd("list")
-                    
                     if isinstance(players_raw, tuple):
                         players_raw = players_raw[0]
-
                     players_formatted, current_players, max_players = self._get_player_list_info(players_raw)
-
-                    if players_formatted.startswith("```"): # If it's a raw rcon response, just show it
-                        embed.add_field(name="Players", value=players_formatted, inline=False)
-                    elif current_players != "?" and max_players != "?":
-                         # The helper returns a full formatted string, but info command often wants summary
-                        if "players online" in players_formatted: # Check if it's the detailed format
-                            # Extract player names for detailed display
-                            match = re.search(r"\n(.*)", players_formatted, re.DOTALL) # Capture names after the first line
-                            if match:
-                                names_list_str = match.group(1)
-                                embed.add_field(name="Players", value=f"**{current_players}/{max_players}**\n{names_list_str}", inline=False)
-                            else: # Fallback for just count
-                                embed.add_field(name="Players", value=f"**{current_players}/{max_players}**", inline=False)
-                        else: # Fallback if helper returned a simpler message like "No players online"
-                             embed.add_field(name="Players", value=players_formatted, inline=False)
-                    else:
-                         # Likely a fallback from _get_player_list_info (e.g. "via logs")
-                         embed.add_field(name="Players", value=players_formatted, inline=False)
+                    embed.add_field(name="Players", value=players_formatted, inline=False)
                 except Exception as e:
                     logger.error(f"Error fetching player list for info command: {e}")
                     players_formatted, _, _ = self._get_player_list_info("Unable to fetch player list")
@@ -351,7 +282,6 @@ class Info(commands.Cog):
                 embed.add_field(name="Status", value="🔴 Offline", inline=True)
             
             embed.add_field(name="Spawn", value=spawn, inline=False)
-            
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
             logger.error(f"Error in info command: {e}", exc_info=True)

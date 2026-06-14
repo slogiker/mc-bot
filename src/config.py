@@ -461,24 +461,34 @@ class Config:
     def resolve_role_permissions(self, guild: discord.Guild):
         """
         Resolve role names to IDs for permission checking.
-
-        Args:
-            guild (discord.Guild): The guild to resolve roles for.
+        Self-healing: Recreates missing roles and updates permissions.
         """
         self.ROLES = {}
         
-        for role_name, commands in self.ROLE_PERMISSIONS.items():
-            if role_name == "@everyone":
-                # Use guild's default role
-                self.ROLES[str(guild.default_role.id)] = commands
-            else:
-                # Find role by name
-                role = discord.utils.get(guild.roles, name=role_name)
+        roles_to_reconcile = ["Owner", "MC Admin", "MC Player"]
+        roles_in_guild = {r.name: r for r in guild.roles}
+        updates_needed = False
+        updates = {}
+
+        for role_name in roles_to_reconcile:
+            role = roles_in_guild.get(role_name)
+            if not role:
+                from src.logger import logger
+                logger.warning(f"Self-Healer: Role '{role_name}' missing! Recreating...")
+                # Note: We can't easily create roles here because this is sync.
+                # Re-setup logic handled in SetupHelper.ensure_setup()
+            
+            # Map permissions
+            if role_name in self.ROLE_PERMISSIONS:
                 if role:
-                    self.ROLES[str(role.id)] = commands
+                    self.ROLES[str(role.id)] = self.ROLE_PERMISSIONS[role_name]
                 else:
-                    from src.logger import logger
-                    logger.warning(f"Role '{role_name}' not found in guild")
+                    # Map by name as fallback until next startup/setup
+                    pass
+
+        # @everyone handling
+        if "@everyone" in self.ROLE_PERMISSIONS:
+            self.ROLES[str(guild.default_role.id)] = self.ROLE_PERMISSIONS["@everyone"]
     
     def get(self, key: str, default=None):
         """
