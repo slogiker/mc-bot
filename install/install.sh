@@ -311,6 +311,17 @@ if [ -z "$SKIP_CONFIG" ]; then
     # Playit.gg
     echo -e "\n  ${ICON_LINK} ${BOLD}Playit.gg Tunneling${NC}"
     echo -e "    ${DIM}Free public access — no port forwarding needed.${NC}"
+
+    # CHECK FOR EXISTING KEY
+    if [ -f "data/playit_secret.key" ]; then
+        echo -e "    ${YELLOW}${ICON_WARN} Existing Playit Secret Key found.${NC}"
+        read -p "    > Reset Playit identity (requires new Discord claim)? [y/N] " reset_playit
+        if [[ $reset_playit =~ ^[Yy]$ ]]; then
+            rm -f data/playit_secret.key
+            echo -e "    ${ICON_CHECK} ${GREEN}Playit identity cleared.${NC}"
+        fi
+    fi
+
     read -p "    > Enable Playit.gg? [Y/n] " setup_playit
 
     PLAYIT_KEY=""
