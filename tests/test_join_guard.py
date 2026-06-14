@@ -32,7 +32,9 @@ async def test_handle_player_login_premium_no_link(join_guard):
         
         await join_guard.handle_player_login("PremiumPlayer", "uuid-123")
         
-        mock_verify.assert_called_with("PremiumPlayer")
+        # Check that it was called (ignoring session argument which is mocked)
+        assert mock_verify.called
+        assert mock_verify.call_args[0][0] == "PremiumPlayer"
         join_guard._kick.assert_not_called()
 
 @pytest.mark.asyncio

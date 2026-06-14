@@ -56,6 +56,7 @@ class MinecraftBot(commands.Bot):
         self._startup_complete = False  # Track if initial setup is done
         
         # Initialize Security modules
+        self.session = None  # Created in on_ready or similar
         self.join_guard = JoinGuard(self)
         self.log_watcher = LogWatcher(self)
         self.presence_task = None
@@ -191,6 +192,11 @@ class MinecraftBot(commands.Bot):
     async def setup_hook(self):
         """Called during bot startup - load extensions but DON'T sync yet."""
         self.tree.on_error = self.on_tree_error
+        
+        # Initialize shared session
+        import aiohttp
+        self.session = aiohttp.ClientSession()
+        logger.debug("Initialized shared aiohttp ClientSession")
         
         # Global command channel check
         async def restrict_command_channel(interaction: discord.Interaction) -> bool:
@@ -376,6 +382,13 @@ async def shutdown_handler(bot):
     try:
         # Close bot connection
         logger.info("Closing bot connection...")
+        if bot.session:
+            await bot.session.close()
+            logger.info("Shared aiohttp session closed")
+        
+        from src.rcon_manager import rcon_manager
+        await rcon_manager.close()
+            
         await bot.close()
     except Exception as e:
         logger.error(f"Error closing bot: {e}")

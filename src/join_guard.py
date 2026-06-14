@@ -53,8 +53,8 @@ class JoinGuard:
         key = mc_username.lower()
         logger.info(f"JoinGuard: login event for {mc_username}")
 
-        # Step 1: Premium check
-        is_premium = await verify_premium_mc_account(mc_username)
+        # Step 1: Premium check (using shared session)
+        is_premium = await verify_premium_mc_account(mc_username, session=getattr(self.bot, 'session', None))
         if is_premium:
             logger.info(f"JoinGuard: {mc_username} is premium — allow")
             return
@@ -229,12 +229,16 @@ class JoinGuard:
             logger.debug(f"JoinGuard: challenge expired for {key}")
 
     async def _kick(self, mc_username: str, reason: str):
-        """Kick a player via RCON. Waits 1 second to ensure player is fully connected."""
-        await asyncio.sleep(1.0)
+        """Kick a player via RCON. Waits 0.5 seconds to ensure player is fully connected."""
+        await asyncio.sleep(0.5)
         # Escape quotes and collapse newlines (RCON kick reason is single-line)
         escaped = reason.replace('"', '\\"').replace("\n", " | ")
         try:
-            await rcon_cmd(f'kick {mc_username} "{escaped}"')
-            logger.info(f"JoinGuard: kicked {mc_username}")
+            # We use rcon_cmd directly here
+            success, response = await rcon_cmd(f'kick {mc_username} "{escaped}"')
+            if success:
+                logger.info(f"JoinGuard: kicked {mc_username}")
+            else:
+                logger.error(f"JoinGuard: failed to kick {mc_username}: {response}")
         except Exception as e:
-            logger.error(f"JoinGuard: failed to kick {mc_username}: {e}")
+            logger.error(f"JoinGuard: exception while kicking {mc_username}: {e}")

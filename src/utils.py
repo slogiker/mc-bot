@@ -79,21 +79,10 @@ def has_role(cmd_name: str):
 async def rcon_cmd(cmd: str) -> tuple[bool, str]:
     """
     Execute an RCON command on the Minecraft server asynchronously.
-    
-    Args:
-        cmd (str): The command to execute (e.g., "list", "say hello").
-        
-    Returns:
-        tuple[bool, str]: (SuccessFlag, ServerResponse)
+    Uses rcon_manager for persistent, efficient connections.
     """
-    try:
-        async with Client(config.RCON_HOST, config.RCON_PORT, config.RCON_PASSWORD) as client:
-            response = await client.send_cmd(cmd)
-            return True, response
-    except Exception as e:
-        error_msg = f"RCON failed ({cmd}): {e}"
-        logger.error(error_msg)
-        return False, "❌ Server is not running or RCON is unavailable."
+    from src.rcon_manager import rcon_manager
+    return await rcon_manager.send_command(cmd)
 
 async def get_uuid(username: str) -> str | None:
     """
