@@ -1,0 +1,7 @@
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y curl jq strace
+WORKDIR /app
+COPY playit_cli /app/playit_cli
+COPY playit_v1.0.10 /app/playit
+RUN chmod +x /app/playit_cli /app/playit
+ENTRYPOINT ["/bin/bash"]

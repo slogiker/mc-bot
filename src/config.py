@@ -1,7 +1,10 @@
 import json
 import os
 import re
+import threading
+import shutil
 from datetime import datetime
+from contextlib import contextmanager
 from dotenv import load_dotenv
 from filelock import FileLock
 import discord
@@ -106,6 +109,7 @@ class Config:
         Load all configuration variables from environment and JSON files.
 
         Validates `user_config.json` on load.
+        Uses non-locking internal methods to avoid deadlocks when called from within update_* contexts.
         """
         self.TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
@@ -113,18 +117,15 @@ class Config:
         self.dry_run = _dry_run
         
         # Check for old config and migrate
-        if os.path.exists('config.json') and not os.path.exists(os.path.join('data', 'user_config.json')):
+        if os.path.exists('config.json') and not os.path.exists(self.USER_CONFIG_FILE):
             self._migrate_old_config()
         
         # Load user config
-        try:
-            with open(os.path.join('data', 'user_config.json'), 'r') as f:
-                user_cfg = json.load(f)
-        except FileNotFoundError:
+        user_cfg = self._load_user_config_no_lock()
+        if not user_cfg and not os.path.exists(self.USER_CONFIG_FILE):
             print("❌ user_config.json not found! Creating default...")
             self._create_default_configs()
-            with open(os.path.join('data', 'user_config.json'), 'r') as f:
-                user_cfg = json.load(f)
+            user_cfg = self._load_user_config_no_lock()
         
         # Validate
         valid, errors = validate_user_config(user_cfg)
@@ -134,13 +135,12 @@ class Config:
         
         # Load bot config
         try:
-            bot_cfg = self.load_bot_config()
+            bot_cfg = self._load_bot_config_no_lock()
         except (json.JSONDecodeError, Exception) as e:
             config_path = self.BOT_CONFIG_FILE
             if os.path.exists(config_path):
                 backup_path = f"{config_path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
                 try:
-                    import shutil
                     shutil.copy2(config_path, backup_path)
                     print(f"⚠️ bot_config.json is corrupt — backed up to {backup_path}")
                 except Exception as backup_err:
@@ -148,7 +148,7 @@ class Config:
             
             print(f"WARNING: Could not load bot_config.json ({type(e).__name__}: {e}) — recreating with defaults.")
             self._create_default_configs()
-            bot_cfg = self.load_bot_config()
+            bot_cfg = self._load_bot_config_no_lock()
         
         # Apply user config
         self.JAVA_XMX = user_cfg['java_ram_max']
@@ -168,7 +168,6 @@ class Config:
                         self.TIMEZONE = json.loads(response.read().decode()).get('timezone', 'UTC')
                 except Exception:
                     pass
-            import threading
             threading.Thread(target=fetch_tz, daemon=True).start()
         else:
             self.TIMEZONE = user_tz
@@ -223,9 +222,7 @@ class Config:
                 "timezone": old_cfg.get('timezone', 'auto'),
                 "permissions": self._convert_old_roles(old_cfg.get('roles', {}))
             }
-            
-            with open(os.path.join('data', 'user_config.json'), 'w') as f:
-                json.dump(user_cfg, f, indent='\t')
+            self._save_user_config_no_lock(user_cfg)
             
             # Create bot_config.json
             bot_cfg = {
@@ -235,9 +232,7 @@ class Config:
                 "log_channel_id": old_cfg.get('log_channel_id'),
                 "debug_channel_id": old_cfg.get('debug_channel_id')
             }
-            
-            with open(os.path.join('data', 'bot_config.json'), 'w') as f:
-                json.dump(bot_cfg, f, indent='\t')
+            self._save_bot_config_no_lock(bot_cfg)
             
             # Backup old config
             os.rename('config.json', 'config.json.backup')
@@ -303,18 +298,9 @@ class Config:
             "debug_channel_id": None
         }
         
-        # In simulation, we don't write defaults to disk
         if not self.dry_run:
-            try:
-                os.makedirs('data', exist_ok=True)
-            except OSError:
-                pass # Ignore if exists
-                
-            with open(os.path.join('data', 'user_config.json'), 'w') as f:
-                json.dump(user_cfg, f, indent='\t')
-            
-            with open(os.path.join('data', 'bot_config.json'), 'w') as f:
-                json.dump(bot_cfg, f, indent='\t')
+            self._save_user_config_no_lock(user_cfg)
+            self._save_bot_config_no_lock(bot_cfg)
         else:
              print("👻 Simulation Mode: Skipping default config creation")
 
@@ -359,6 +345,13 @@ class Config:
             elif key == 'installed_platform':
                 self.INSTALLED_PLATFORM = value
 
+    def _load_bot_config_no_lock(self) -> dict:
+        """Internal helper to load bot config without acquiring a lock."""
+        if not os.path.exists(self.BOT_CONFIG_FILE):
+            return {}
+        with open(self.BOT_CONFIG_FILE, 'r') as f:
+            return json.load(f)
+
     def load_bot_config(self) -> dict:
         """
         Load the bot configuration with file locking.
@@ -367,10 +360,13 @@ class Config:
             dict: The loaded bot configuration.
         """
         with self._bot_lock:
-            if not os.path.exists(self.BOT_CONFIG_FILE):
-                return {}
-            with open(self.BOT_CONFIG_FILE, 'r') as f:
-                return json.load(f)
+            return self._load_bot_config_no_lock()
+
+    def _save_bot_config_no_lock(self, data: dict):
+        """Internal helper to save bot config without acquiring a lock."""
+        os.makedirs(os.path.dirname(self.BOT_CONFIG_FILE), exist_ok=True)
+        with open(self.BOT_CONFIG_FILE, 'w') as f:
+            json.dump(data, f, indent='\t')
 
     def save_bot_config(self, data: dict):
         """
@@ -379,10 +375,15 @@ class Config:
         Args:
             data (dict): The configuration data to save.
         """
-        os.makedirs(os.path.dirname(self.BOT_CONFIG_FILE), exist_ok=True)
         with self._bot_lock:
-            with open(self.BOT_CONFIG_FILE, 'w') as f:
-                json.dump(data, f, indent='\t')
+            self._save_bot_config_no_lock(data)
+
+    def _load_user_config_no_lock(self) -> dict:
+        """Internal helper to load user config without acquiring a lock."""
+        if not os.path.exists(self.USER_CONFIG_FILE):
+            return {}
+        with open(self.USER_CONFIG_FILE, 'r') as f:
+            return json.load(f)
 
     def load_user_config(self) -> dict:
         """
@@ -392,10 +393,13 @@ class Config:
             dict: The loaded user configuration.
         """
         with self._user_lock:
-            if not os.path.exists(self.USER_CONFIG_FILE):
-                return {}
-            with open(self.USER_CONFIG_FILE, 'r') as f:
-                return json.load(f)
+            return self._load_user_config_no_lock()
+
+    def _save_user_config_no_lock(self, data: dict):
+        """Internal helper to save user config without acquiring a lock."""
+        os.makedirs(os.path.dirname(self.USER_CONFIG_FILE), exist_ok=True)
+        with open(self.USER_CONFIG_FILE, 'w') as f:
+            json.dump(data, f, indent='\t')
 
     def save_user_config(self, data: dict):
         """
@@ -404,13 +408,9 @@ class Config:
         Args:
             data (dict): The user preferences to save.
         """
-        os.makedirs(os.path.dirname(self.USER_CONFIG_FILE), exist_ok=True)
         with self._user_lock:
-            with open(self.USER_CONFIG_FILE, 'w') as f:
-                json.dump(data, f, indent='\t')
+            self._save_user_config_no_lock(data)
     
-    from contextlib import contextmanager
-
     @contextmanager
     def update_bot_config(self):
         """
@@ -418,18 +418,14 @@ class Config:
         Holds a file lock throughout the modification process.
         """
         with self._bot_lock:
-            if not os.path.exists(self.BOT_CONFIG_FILE):
-                data = {}
-            else:
-                with open(self.BOT_CONFIG_FILE, 'r') as f:
-                    data = json.load(f)
+            data = self._load_bot_config_no_lock()
             
             yield data
             
-            with open(self.BOT_CONFIG_FILE, 'w') as f:
-                json.dump(data, f, indent='\t')
+            self._save_bot_config_no_lock(data)
             
             # Refresh memory config
+            # load() uses non-locking methods internally, so it won't deadlock
             self.load()
 
     @contextmanager
@@ -439,11 +435,7 @@ class Config:
         Holds a file lock throughout the modification process.
         """
         with self._user_lock:
-            if not os.path.exists(self.USER_CONFIG_FILE):
-                data = {}
-            else:
-                with open(self.USER_CONFIG_FILE, 'r') as f:
-                    data = json.load(f)
+            data = self._load_user_config_no_lock()
             
             yield data
             
@@ -453,10 +445,10 @@ class Config:
                 error_msg = "❌ Invalid user_config.json modification:\n" + "\n".join(f"  - {e}" for e in errors)
                 raise ValueError(error_msg)
 
-            with open(self.USER_CONFIG_FILE, 'w') as f:
-                json.dump(data, f, indent='\t')
+            self._save_user_config_no_lock(data)
             
             # Refresh memory config
+            # load() uses non-locking methods internally, so it won't deadlock
             self.load()
 
     def resolve_role_permissions(self, guild: discord.Guild):

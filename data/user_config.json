@@ -77,13 +77,18 @@
 			"help"
 		],
 		"@everyone": [
-			"status",
-			"help",
-			"players",
-			"seed",
-			"server_info",
-			"mods",
-			"stats"
+		        "status",
+		        "help",
+		        "players",
+		        "seed",
+		        "server_info",
+		        "mods",
+		        "stats",
+		        "link",
+		        "unlink",
+		        "linked",
+		        "verify"
 		]
+
 	}
 }
