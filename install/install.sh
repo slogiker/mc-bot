@@ -541,14 +541,11 @@ fi
 # ---------------------------------------------------------
 echo -e "\n${GREEN}${BOLD}  ──────────────────────────────────────────${NC}"
 echo -e "${GREEN}${BOLD}     ${ICON_ROCKET} Installation Complete!${NC}"
-echo -e "${GREEN}${BOLD}  ──────────────────────────────────────────${NC}\n"
+echo -e "\n  ${BOLD}Next Step:${NC} Run ${CYAN}/setup${NC} in Discord to initialize channels.\n"
 
-echo -e "  Your bot should be online in Discord shortly."
-echo -e "  ${BOLD}Next Step:${NC} Run ${CYAN}/setup${NC} in Discord to initialize channels.\n"
-
-echo -e "  ${BOLD}Useful Commands:${NC}"
-echo -e "    ${DIM}View Logs:${NC}         ${CYAN}$COMPOSE_CMD logs -f mc-bot${NC}"
-echo -e "    ${DIM}View Playit Logs:${NC}  ${CYAN}docker exec mc-bot cat /app/logs/playit.log${NC}"
-echo -e "    ${DIM}Restart Bot:${NC}       ${CYAN}$COMPOSE_CMD restart mc-bot${NC}\n"
+echo -e "  ${BOLD}Manage your bot with:${NC}"
+echo -e "    ${CYAN}./mc-bot.sh logs${NC}    - View live logs"
+echo -e "    ${CYAN}./mc-bot.sh restart${NC} - Restart the bot"
+echo -e "    ${CYAN}./mc-bot.sh update${NC}  - Pull latest code and rebuild\n"
 
 echo -e "  ${DIM}Thank you for using Minecraft Discord Bot!${NC}\n"

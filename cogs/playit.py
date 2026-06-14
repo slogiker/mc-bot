@@ -277,10 +277,17 @@ class PlayitCog(commands.Cog):
             await interaction.followup.send(error)
 
     async def fetch_playit_address(self):
-        """Fetches the tunnel address via Playit REST API."""
+        """
+        Fetches the tunnel address via Playit REST API.
+        Checks for the secret key file dynamically to ensure consistency.
+        """
         secret_key = self.get_secret_key()
         if not secret_key:
-            return None, "❌ No Playit secret key found."
+            # If the file is gone, clear any stale cached address immediately
+            self.cached_address = None
+            self.tunnels = []
+            return None, "❌ No Playit secret key found. Run `/playit claim` to set one up."
+
         url = "https://api.playit.gg/v1/agents/rundata"
         headers = {"Authorization": f"Agent-Key {secret_key}", "Content-Type": "application/json"}
         try:
