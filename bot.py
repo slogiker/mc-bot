@@ -215,14 +215,30 @@ class MinecraftBot(commands.Bot):
                 
             cmd_channel_id = config.COMMAND_CHANNEL_ID
             if not cmd_channel_id:
-                return True # If it's not setup yet, allow anywhere (or setup command wouldn't work)
+                return True # If it's not setup yet, allow anywhere
                 
             # Allow /setup to be run anywhere by admins to fix channels if broken
             if interaction.command and interaction.command.name == "setup":
                 return True
                 
             if interaction.channel_id != int(cmd_channel_id):
-                error_msg = f"❌ Commands can only be used in <#{cmd_channel_id}>."
+                # Self-healing check: Is the configured channel actually valid?
+                configured_channel = interaction.client.get_channel(int(cmd_channel_id))
+                
+                if not configured_channel:
+                    # The channel is gone or inaccessible!
+                    if interaction.user.guild_permissions.administrator:
+                        # Allow admins to use commands anywhere if the bot is "lost"
+                        return True
+                    else:
+                        await interaction.response.send_message(
+                            "❌ The configured command channel is missing or inaccessible. "
+                            "Please ask a server administrator to run `/setup` to fix this.", 
+                            ephemeral=True
+                        )
+                        return False
+                
+                error_msg = f"❌ Commands can only be used in {configured_channel.mention}."
                 await interaction.response.send_message(error_msg, ephemeral=True)
                 return False
                 
@@ -287,9 +303,9 @@ class MinecraftBot(commands.Bot):
         setup_helper = SetupHelper(self)
         try:
             updates = await setup_helper.ensure_setup(guild)
-            # In simulation, this updates memory config but skips saving
-            config.update_dynamic_config(updates)
-            logger.debug(f"Dynamic Config Updated: {updates}")
+            # Persist these to disk so they stay valid across restarts
+            config.update_dynamic_config(updates, save=not is_simulation)
+            logger.debug(f"Dynamic Config Updated & Persisted: {updates}")
         except Exception as e:
             logger.error(f"Dynamic Setup Failed: {e}", exc_info=True)
             

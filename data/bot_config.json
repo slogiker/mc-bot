@@ -1,14 +1,14 @@
 {
 	"server_directory": "./mc-server",
 	"guild_id": 1479949792451891356,
-	"command_channel_id": 1508390167931519098,
-	"log_channel_id": 1508390169827344504,
-	"debug_channel_id": 1508390170939097110,
-	"control_panel_message_id": 1513954876319596544,
+	"command_channel_id": null,
+	"log_channel_id": null,
+	"debug_channel_id": null,
 	"owner_role_id": 1506984014731542570,
 	"admin_role_id": 1506984017080090645,
 	"player_role_id": 1506984018086854686,
 	"owner_id": 734509662099079232,
 	"installed_version": "1.21.11",
-	"installed_platform": "paper"
+	"installed_platform": "paper",
+	"control_panel_message_id": 1515777500561539213
 }

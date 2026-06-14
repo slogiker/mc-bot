@@ -329,21 +329,28 @@ class Config:
         self.LOG_CHANNEL_ID = log_id
         self.DEBUG_CHANNEL_ID = debug_id
 
-    def update_dynamic_config(self, updates: dict):
+    def update_dynamic_config(self, updates: dict, save: bool = False):
         """
         Update memory config with dynamically found IDs.
 
         Args:
             updates (dict): A dictionary of updates to apply.
+            save (bool): Whether to persist these changes to bot_config.json.
         """
-        for key, value in updates.items():
-            attr_name = key.upper()
-            if hasattr(self, attr_name):
-                setattr(self, attr_name, value)
-            elif key == 'installed_version':
-                self.INSTALLED_VERSION = value
-            elif key == 'installed_platform':
-                self.INSTALLED_PLATFORM = value
+        if save:
+            with self.update_bot_config() as data:
+                for key, value in updates.items():
+                    data[key] = value
+                    # The update_bot_config context manager handles refreshing memory
+        else:
+            for key, value in updates.items():
+                attr_name = key.upper()
+                if hasattr(self, attr_name):
+                    setattr(self, attr_name, value)
+                elif key == 'installed_version':
+                    self.INSTALLED_VERSION = value
+                elif key == 'installed_platform':
+                    self.INSTALLED_PLATFORM = value
 
     def _load_bot_config_no_lock(self) -> dict:
         """Internal helper to load bot config without acquiring a lock."""
