@@ -12,6 +12,12 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 BOLD='\033[1m'
 
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Assuming script is in install/, project root is one level up
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
 # Check for Docker
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Error: Docker is not installed.${NC}"

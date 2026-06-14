@@ -543,9 +543,10 @@ echo -e "\n${GREEN}${BOLD}  ─────────────────�
 echo -e "${GREEN}${BOLD}     ${ICON_ROCKET} Installation Complete!${NC}"
 echo -e "\n  ${BOLD}Next Step:${NC} Run ${CYAN}/setup${NC} in Discord to initialize channels.\n"
 
-echo -e "  ${BOLD}Manage your bot with:${NC}"
-echo -e "    ${CYAN}./mc-bot.sh logs${NC}    - View live logs"
-echo -e "    ${CYAN}./mc-bot.sh restart${NC} - Restart the bot"
-echo -e "    ${CYAN}./mc-bot.sh update${NC}  - Pull latest code and rebuild\n"
+echo -e "  Manage your bot with:"
+echo -e "    ${CYAN}./install/mc-bot.sh logs${NC}    - View live logs"
+echo -e "    ${CYAN}./install/mc-bot.sh restart${NC} - Restart the bot"
+echo -e "    ${CYAN}./install/mc-bot.sh update${NC}  - Pull latest code and rebuild\n"
+
 
 echo -e "  ${DIM}Thank you for using Minecraft Discord Bot!${NC}\n"
