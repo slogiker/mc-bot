@@ -73,13 +73,14 @@ class PlayitCog(commands.Cog):
         if os.path.exists(key_path):
             try:
                 with open(key_path, "r") as f:
-                    key = f.read().strip()
+                    # Replace any newlines/carriage returns that might cause HTTP header injection errors
+                    key = f.read().strip().replace('\r', '').replace('\n', '')
                     return key if key else None
             except Exception as e:
                 logger.error(f"Failed to read playit secret key: {e}")
         
         # Fallback to env
-        env_key = os.environ.get("PLAYIT_SECRET_KEY", "").strip()
+        env_key = os.environ.get("PLAYIT_SECRET_KEY", "").strip().replace('\r', '').replace('\n', '')
         return env_key if env_key else None
 
     async def start_tunnel(self):
@@ -236,67 +237,55 @@ class PlayitCog(commands.Cog):
             await interaction.followup.send(
                 f"🔗 **Playit Claim Link**: {url}\n\n"
                 "1. Click the link and claim the agent in your Playit account.\n"
-                "2. **IMPORTANT**: Keep the bot running while you do this!\n"
-                "3. Once done, return here and run **`/playit verify`**.",
+                "2. The bot is waiting and will automatically verify once you click 'Claim' on the website.",
                 ephemeral=True
             )
-        except Exception as e:
-            logger.error(f"Error in /playit claim: {e}")
-            await interaction.followup.send(f"❌ Unexpected error: {e}")
 
-    @playit_group.command(name="verify", description="Verify and exchange your claim code for a secret key")
-    @has_role("admin")
-    async def playit_verify(self, interaction: discord.Interaction):
-        if not self._current_claim_code:
-            return await interaction.response.send_message("❌ No active claim process. Run `/playit claim` first.", ephemeral=True)
-        
-        await interaction.response.send_message("🔄 Verifying claim and exchanging for secret key...", ephemeral=True)
-        
-        socket_path = os.path.join("data", "playit.sock")
-        
-        try:
-            # Exchange code for secret
-            proc = await asyncio.create_subprocess_exec(
-                "playit-cli", "--socket-path", socket_path, "claim", "exchange", self._current_claim_code,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await proc.communicate()
-            
-            if proc.returncode != 0:
-                return await interaction.followup.send(
-                    f"❌ Exchange failed: {stderr.decode()}\n"
-                    "Make sure you clicked the link and confirmed it on Playit.gg first!",
-                    ephemeral=True
-                )
-            
-            secret = stdout.decode().strip()
-            if not secret:
-                return await interaction.followup.send("❌ Received empty secret key from Playit.", ephemeral=True)
-
-            # Save secret
-            key_path = os.path.join("data", "playit_secret.key")
-            with open(key_path, "w") as f:
-                f.write(secret)
-            
-            await interaction.followup.send("✅ Secret key saved! Restarting tunnel...", ephemeral=True)
-            await self.start_tunnel()
-            
-            # Final check
-            await asyncio.sleep(5)
-            address, _ = await self.fetch_playit_address()
-            if address:
-                await interaction.followup.send(f"🚀 **Tunnel Online!** Public IP: `{address}`", ephemeral=True)
-            else:
-                await interaction.followup.send("⚠️ Tunnel started, but IP is still initializing. Check `/ip` in a minute.", ephemeral=True)
+            # 3. Automatically wait and verify
+            max_attempts = 12 # 1 minute total wait (12 * 5s)
+            for attempt in range(max_attempts):
+                await asyncio.sleep(5)
                 
-            # Clear state
+                # Try to exchange
+                proc = await asyncio.create_subprocess_exec(
+                    "playit-cli", "--socket-path", socket_path, "claim", "exchange", self._current_claim_code,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await proc.communicate()
+                
+                if proc.returncode == 0:
+                    secret = stdout.decode().strip()
+                    if secret:
+                        # Save secret
+                        key_path = os.path.join("data", "playit_secret.key")
+                        with open(key_path, "w") as f:
+                            f.write(secret)
+                        
+                        await interaction.followup.send("✅ You claimed it! Secret key saved. Restarting tunnel...", ephemeral=True)
+                        await self.start_tunnel()
+                        
+                        # Final check
+                        await asyncio.sleep(5)
+                        address, _ = await self.fetch_playit_address()
+                        if address:
+                            await interaction.followup.send(f"🚀 **Tunnel Online!** Public IP: `{address}`", ephemeral=True)
+                        else:
+                            await interaction.followup.send("⚠️ Tunnel started, but IP is still initializing. Check `/ip` in a minute.", ephemeral=True)
+                            
+                        # Clear state
+                        self._current_claim_code = None
+                        self._claim_link = None
+                        return
+
+            # Timeout
             self._current_claim_code = None
             self._claim_link = None
+            await interaction.followup.send("❌ Claim process timed out after 1 minute. Please try `/playit claim` again.", ephemeral=True)
 
         except Exception as e:
-            logger.error(f"Error in /playit verify: {e}")
-            await interaction.followup.send(f"❌ Unexpected error during verification: {e}", ephemeral=True)
+            logger.error(f"Error in /playit claim: {e}")
+            await interaction.followup.send(f"❌ Unexpected error: {e}", ephemeral=True)
 
     @playit_group.command(name="restart", description="Restart the Playit tunnel")
     @has_role("admin")
