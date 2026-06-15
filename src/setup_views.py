@@ -101,7 +101,7 @@ class PlatformSelect(ui.Select):
         view: SetupView = self.view
         view.state.platform = self.values[0]
         await interaction.response.defer()
-        await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+        await view.update_current_step(interaction)
 
 
 class VersionSelect(ui.Select):
@@ -145,11 +145,11 @@ class VersionSelect(ui.Select):
             await modal.wait()
             if modal.value:
                 view.state.version = modal.value
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+            await view.update_current_step(interaction)
         else:
             view.state.version = self.values[0]
             await interaction.response.defer()
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+            await view.update_current_step(interaction)
 
 
 class CustomVersionModal(ui.Modal, title="Custom Version"):
@@ -212,7 +212,7 @@ class DifficultySelect(ui.Select):
         view: SetupView = self.view
         view.state.difficulty = self.values[0]
         await interaction.response.defer()
-        await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+        await view.update_current_step(interaction)
 
 
 class SeedModal(ui.Modal, title="World Seed"):
@@ -247,7 +247,7 @@ class SeedButton(ui.Button):
         await modal.wait()
         if modal.value is not None:
             view.state.seed = modal.value
-        await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+        await view.update_current_step(interaction)
 
 
 class MaxPlayersSelect(ui.Select):
@@ -284,11 +284,11 @@ class MaxPlayersSelect(ui.Select):
             await modal.wait()
             if modal.value:
                 view.state.max_players = modal.value
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+            await view.update_current_step(interaction)
         else:
             view.state.max_players = int(self.values[0])
             await interaction.response.defer()
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+            await view.update_current_step(interaction)
 
 
 class RAMSelect(ui.Select):
@@ -326,11 +326,11 @@ class RAMSelect(ui.Select):
             await modal.wait()
             if modal.value:
                 view.state.ram = modal.value
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+            await view.update_current_step(interaction)
         else:
             view.state.ram = int(self.values[0])
             await interaction.response.defer()
-            await view.message.edit(embed=view._get_step_content(view.state.current_step)[0], view=view)
+            await view.update_current_step(interaction)
 
 
 class CustomNumberModal(ui.Modal):
@@ -403,9 +403,24 @@ class SetupView(ui.View):
         for item in view_items:
             self.add_item(item)
 
-        await self.interaction.response.send_message(embed=embed, view=self, ephemeral=True)
-        self.message = await self.interaction.original_response()
+        if not self.interaction.response.is_done():
+            await self.interaction.response.send_message(embed=embed, view=self, ephemeral=True)
+            self.message = await self.interaction.original_response()
+        else:
+            self.message = await self.interaction.followup.send(embed=embed, view=self, ephemeral=True, wait=True)
     
+    async def update_current_step(self, interaction: discord.Interaction):
+        """Regenerate items for the current step and update the message."""
+        embed, view_items = self._get_step_content(self.state.current_step)
+        self.clear_items()
+        for item in view_items:
+            self.add_item(item)
+        
+        if not interaction.response.is_done():
+            await interaction.response.edit_message(embed=embed, view=self)
+        elif self.message:
+            await self.message.edit(embed=embed, view=self)
+
     def _get_step_content(self, step: int) -> tuple[discord.Embed, list]:
         """Get embed and view items for current step"""
         self.state.current_step = step
@@ -554,7 +569,7 @@ class SetupView(ui.View):
             await interaction.response.send_modal(modal)
             await modal.wait()
             # Refresh current view
-            await self.message.edit(embed=self._get_step_content(self.state.current_step)[0], view=self)
+            await self.update_current_step(interaction)
         button.callback = callback
         return button
     

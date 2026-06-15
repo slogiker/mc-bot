@@ -77,6 +77,7 @@ class Setup(commands.Cog):
 
                 @ui.button(label="Reset World (No Backup)", style=discord.ButtonStyle.secondary, emoji="🗑️")
                 async def reset_only(self, interaction: discord.Interaction, button: ui.Button):
+                    await interaction.response.defer(ephemeral=True)
                     # 1. Delete world
                     import shutil
                     world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
@@ -90,7 +91,8 @@ class Setup(commands.Cog):
 
                 @ui.button(label="Keep Existing World", style=discord.ButtonStyle.success, emoji="🌍")
                 async def keep_world(self, interaction: discord.Interaction, button: ui.Button):
-                    await interaction.response.send_message(
+                    await interaction.response.defer(ephemeral=True)
+                    await interaction.followup.send(
                         "✅ Keeping world files. You can always restart fresh later if you change your mind.", 
                         ephemeral=True
                     )
