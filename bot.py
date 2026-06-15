@@ -145,16 +145,27 @@ class MinecraftBot(commands.Bot):
         logger.error(f"Global Command error: {error}", exc_info=True)
         
         # Notify user ephemerally
-        if not interaction.response.is_done():
-            await interaction.response.send_message(f"❌ An unexpected error occurred. Technical details have been sent to the debug channel.", ephemeral=True)
-        else:
-            await interaction.followup.send(f"❌ An unexpected error occurred. Technical details have been sent to the debug channel.", ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ An unexpected error occurred. Technical details have been sent to the debug channel.", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ An unexpected error occurred. Technical details have been sent to the debug channel.", ephemeral=True)
+        except (discord.NotFound, discord.HTTPException):
+            pass
+        except Exception as e:
+            logger.error(f"Failed to notify user of error: {e}")
 
         # Send detailed report to debug channel
         try:
             debug_channel_id = config.DEBUG_CHANNEL_ID
             if debug_channel_id:
                 channel = self.get_channel(int(debug_channel_id))
+                if not channel:
+                    try:
+                        channel = await self.fetch_channel(int(debug_channel_id))
+                    except:
+                        channel = None
+
                 if channel:
                     import traceback
                     tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))

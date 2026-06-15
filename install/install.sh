@@ -43,7 +43,125 @@ handle_error() {
 }
 trap 'handle_error $LINENO' ERR
 
-# Parse arguments
+# --- Subcommand Functions ---
+
+get_compose_cmd() {
+    if docker compose version &> /dev/null; then
+        echo "docker compose"
+    elif command -v docker-compose &> /dev/null; then
+        echo "docker-compose"
+    else
+        echo ""
+    fi
+}
+
+do_start() {
+    local cmd=$(get_compose_cmd)
+    if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
+    $cmd up -d
+}
+
+do_stop() {
+    local cmd=$(get_compose_cmd)
+    if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
+    $cmd stop
+}
+
+do_restart() {
+    local cmd=$(get_compose_cmd)
+    if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
+    $cmd restart
+}
+
+do_logs() {
+    local cmd=$(get_compose_cmd)
+    if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
+    $cmd logs -f
+}
+
+do_status() {
+    local cmd=$(get_compose_cmd)
+    if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
+    $cmd ps
+}
+
+do_update() {
+    echo -e "${BLUE}${ICON_GEAR} Updating MC-Bot...${NC}"
+    git pull origin main || true
+    local cmd=$(get_compose_cmd)
+    if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
+    $cmd up -d --build
+    echo -e "${GREEN}${ICON_CHECK} Bot updated and restarted.${NC}"
+}
+
+do_reinstall() {
+    echo -e "\n${BLUE}${BOLD}${ICON_GEAR} Reinstalling everything...${NC}"
+    SKIP_DETECTION=1
+    # 1. Credentials
+    echo -e "Which credentials do you want to reset?"
+    echo -e "  1) Discord Bot Token only"
+    echo -e "  2) Playit Secret Key only"
+    echo -e "  3) Both"
+    echo -e "  4) None"
+    read -p "Choose [1-4]: " reset_choice
+    case $reset_choice in
+        1) rm -f .env; echo "Discord token cleared." ;;
+        2) rm -f data/playit_secret.key; echo "Playit key cleared." ;;
+        3) rm -f .env data/playit_secret.key; echo "All credentials cleared." ;;
+    esac
+
+    # 2. World deletion
+    echo -ne "\n${ICON_WARN} ${YELLOW}Do you want to delete the current world save? (y/N) ${NC}"
+    read del_world
+    if [[ $del_world =~ ^[Yy]$ ]]; then
+        echo -ne "Do you want to create a backup first? [Y/n] "
+        read do_backup
+        if [[ -z "$do_backup" || $do_backup =~ ^[Yy]$ ]]; then
+            DATE_STR=$(date +%Y-%m-%d_%H-%M-%S)
+            BACKUP_FILE="backups/backup-final-${DATE_STR}.zip"
+            echo -e "Creating backup: $BACKUP_FILE ..."
+            mkdir -p backups
+            # Check if zip is installed
+            if command -v zip &> /dev/null; then
+                zip -r "$BACKUP_FILE" mc-server/world &>/dev/null || true
+            else
+                tar -czf "${BACKUP_FILE}.tar.gz" mc-server/world &>/dev/null || true
+                BACKUP_FILE="${BACKUP_FILE}.tar.gz"
+            fi
+            echo -e "Backup created: $BACKUP_FILE"
+        fi
+        echo -e "Deleting world and associated files..."
+        rm -rf mc-server/world
+        rm -f mc-server/server.properties
+    else
+         echo -e "Keeping world files. You can always restart fresh if you use /setup again in Discord."
+    fi
+
+    echo -e "\n${ICON_CHECK} Reinstall preparation complete. Continuing setup...\n"
+}
+
+# --- Argument Parsing ---
+
+if [ -n "$1" ]; then
+    case "$1" in
+        start) do_start; exit 0 ;;
+        stop) do_stop; exit 0 ;;
+        restart) do_restart; exit 0 ;;
+        logs) do_logs; exit 0 ;;
+        status) do_status; exit 0 ;;
+        update) do_update; exit 0 ;;
+        reinstall) do_reinstall ;; # Don't exit, continue to setup
+        *) # If it's a flag like --skip-start, we handle it later
+           if [[ ! "$1" =~ ^-- ]]; then
+               # Not a flag, maybe a mistyped command? 
+               # We'll just ignore and continue to main script for now
+               :
+           fi
+           ;;
+    esac
+fi
+
+# Parse flags
 ORIG_ARGS="$@"
 SKIP_START=0
 for arg in "$@"; do
@@ -74,17 +192,20 @@ echo -e "  ${DIM}Version: 1.1.1 | Playit: v1.0.10${NC}\n"
 # ---------------------------------------------------------
 
 # Storage Warning
-echo -e "  ${ICON_DISK} ${BOLD}Note on Storage:${NC}"
-echo -e "  A full installation (Docker images + Minecraft server + Backups)"
-echo -e "  can take up ${YELLOW}5GB or more${NC} of disk space."
-echo -e "  Please ensure you have enough space before proceeding.\n"
-echo -ne "  Do you wish to continue? [Y/n] "
-read continue_install
-if [[ -n "$continue_install" && ! $continue_install =~ ^[Yy]$ ]]; then
-    echo -e "\n  Installation cancelled by user."
-    exit 0
+if [ ! -f .install_warned ]; then
+    echo -e "  ${ICON_DISK} ${BOLD}Note on Storage:${NC}"
+    echo -e "  A full installation (Docker images + Minecraft server + Backups)"
+    echo -e "  can take up ${YELLOW}5GB or more${NC} of disk space."
+    echo -e "  Please ensure you have enough space before proceeding.\n"
+    echo -ne "  Do you wish to continue? [Y/n] "
+    read continue_install
+    if [[ -n "$continue_install" && ! $continue_install =~ ^[Yy]$ ]]; then
+        echo -e "\n  Installation cancelled by user."
+        exit 0
+    fi
+    touch .install_warned
+    echo ""
 fi
-echo ""
 
 # Sudo / Permission Handling
 SUDO=""
@@ -116,7 +237,7 @@ fi
 
 
 # Detect existing installation
-if [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^mc-bot$'; then
+if [ -z "$SKIP_DETECTION" ] && [ -f .env ] && command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^mc-bot$'; then
     echo -e "\n  ${ICON_INFO} ${YELLOW}An existing installation was detected.${NC}"
     echo -e "    ${DIM}Note: Your Minecraft server files, backups, and logs are stored in local folders${NC}"
     echo -e "    ${DIM}and will remain safe during reconfiguration.${NC}"

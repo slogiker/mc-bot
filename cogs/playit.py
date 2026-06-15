@@ -119,27 +119,50 @@ class PlayitCog(commands.Cog):
         await interaction.response.defer()
         
         # Build status embed
-        embed = discord.Embed(title="🖥️ Server Status", color=discord.Color.blue())
+        embed = discord.Embed(
+            title="🖥️ System & Server Status", 
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow()
+        )
         
-        # 1. Minecraft Status
-        mc_status = "🟢 Online" if self.bot.server.is_running() else "🔴 Offline"
-        if self.bot.server.is_intentionally_stopped():
-            mc_status = "⚪ Stopped"
-        embed.add_field(name="Minecraft", value=mc_status, inline=True)
+        # --- 1. Minecraft Server Section ---
+        is_running = self.bot.server.is_running()
+        is_stopped = self.bot.server.is_intentionally_stopped()
+        
+        mc_val = "🟢 **Online**" if is_running else "🔴 **Offline**"
+        if is_stopped:
+            mc_val = "⚪ **Stopped (Intentionally)**"
+            
+        embed.add_field(name="Minecraft Server", value=mc_val, inline=True)
 
-        # 2. Playit Status
+        # --- 2. Network/Tunnel Section ---
         address, error = await self.fetch_playit_address()
         if address:
-            playit_status = f"🟢 Connected\n`{address}`"
+            playit_val = f"🟢 **Connected**\n`{address}`"
         elif not self.get_secret_key():
-            playit_status = "🟡 Unclaimed\nUse `/playit claim`"
+            playit_val = "🟡 **Unclaimed**\nUse `/playit claim`"
         else:
-            playit_status = f"🔴 Error\n{error or 'Not running'}"
-        embed.add_field(name="Tunnel (Playit)", value=playit_status, inline=True)
+            playit_val = f"🔴 **Error**\n*{error or 'Not running'}*"
+        
+        embed.add_field(name="Playit.gg Tunnel", value=playit_val, inline=True)
 
-        # 3. Hardware
-        usage = psutil.disk_usage('/')
-        embed.add_field(name="Disk Space", value=f"{usage.percent}% used", inline=True)
+        # --- 3. Resource Usage Section ---
+        try:
+            cpu_usage = psutil.cpu_percent()
+            ram = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            res_val = (
+                f"📊 **CPU**: `{cpu_usage}%`\n"
+                f"🧠 **RAM**: `{ram.percent}%` ({ram.used // (1024**2)}MB / {ram.total // (1024**2)}MB)\n"
+                f"💾 **Disk**: `{disk.percent}%` ({disk.free // (1024**3)}GB free)"
+            )
+            embed.add_field(name="Hardware Resources", value=res_val, inline=False)
+        except Exception as e:
+            logger.error(f"Error fetching resource stats: {e}")
+            embed.add_field(name="Hardware Resources", value="❌ Failed to fetch stats", inline=False)
+
+        embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
         
         await interaction.followup.send(embed=embed)
 
@@ -295,6 +318,7 @@ class PlayitCog(commands.Cog):
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, headers=headers, json={}) as resp:
                     if resp.status == 401:
+                        logger.error(f"Playit API 401 Unauthorized. Key length: {len(secret_key)}. First 4 chars: {secret_key[:4]}... Last 4: ...{secret_key[-4:]}")
                         return None, "❌ Playit rejected the secret key (401 Unauthorized)."
                     if resp.status != 200:
                         return None, f"❌ Playit API error ({resp.status})."

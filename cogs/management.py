@@ -1,8 +1,11 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from src.config import config
 from src.utils import send_debug, has_role
+import os
+import time
+from src.logger import logger
 
 class Management(commands.Cog):
     """
@@ -14,6 +17,105 @@ class Management(commands.Cog):
     def __init__(self, bot):
         """Initializes the Management cog with the bot instance."""
         self.bot = bot
+        self.consecutive_restarts = 0
+        self.auto_restart_loop.start()
+
+    def cog_unload(self):
+        self.auto_restart_loop.stop()
+
+    @tasks.loop(seconds=60)
+    async def auto_restart_loop(self):
+        """Monitors the server and auto-restarts if it crashes."""
+        try:
+            if not self.bot.server.is_running() and not self.bot.server.is_intentionally_stopped():
+                self.consecutive_restarts += 1
+                logger.warning(f"⚠️ Server crash detected! Attempting auto-restart {self.consecutive_restarts}/3")
+                
+                if self.consecutive_restarts > 3:
+                    logger.error("❌ Max auto-restart attempts reached. Server will remain offline.")
+                    await self._notify_owner_of_failure()
+                    return
+
+                # Perform smart analysis for attempts 1 and 2
+                crash_reason = await self._analyze_crash()
+                logger.info(f"Crash Analysis: {crash_reason}")
+
+                # Send debug alert
+                debug_msg = f"⚠️ Server crashed! Auto-restart attempt {self.consecutive_restarts}/3\n**Analysis:** {crash_reason}"
+                await send_debug(self.bot, debug_msg)
+
+                # Attempt start
+                success, msg = await self.bot.server.start()
+                if success:
+                    logger.info("✅ Auto-restart successful.")
+                    # We don't reset consecutive_restarts here yet, wait for it to be stable
+                    # or reset it if it stays up for X minutes. 
+                    # For now, let's just wait.
+                else:
+                    logger.error(f"❌ Auto-restart failed: {msg}")
+
+            elif self.bot.server.is_running():
+                # Reset counter if server is running stably (e.g. for at least one loop cycle)
+                if self.consecutive_restarts > 0:
+                    self.consecutive_restarts = 0
+                    logger.info("✅ Server is stable. Resetting crash counter.")
+                    
+        except Exception as e:
+            logger.error(f"Error in auto-restart loop: {e}", exc_info=True)
+
+    async def _analyze_crash(self) -> str:
+        """Parses logs/latest.log to guess the crash reason."""
+        log_path = os.path.join(config.SERVER_DIR, "logs", "latest.log")
+        if not os.path.exists(log_path):
+            return "No latest.log found."
+
+        try:
+            # Read last 50 lines
+            with open(log_path, 'r') as f:
+                lines = f.readlines()[-50:]
+            
+            log_text = "".join(lines).lower()
+            
+            if "java.lang.unsupportedclassversionerror" in log_text or "has been compiled by a more recent version" in log_text:
+                return "❌ Java Version Mismatch (Server requires a newer Java version)."
+            if "java.lang.outofmemoryerror" in log_text:
+                return "❌ Out of Memory Error (Consider increasing RAM in settings)."
+            if "failed to bind to port" in log_text:
+                return "❌ Port already in use (Is another server running?)."
+            if "exception stopping the server" in log_text:
+                return "❌ Critical Exception during runtime."
+            if "corrupt" in log_text:
+                return "❌ Potential World/File Corruption detected."
+            
+            return "Unknown cause. Check logs/latest.log"
+        except Exception as e:
+            return f"Error reading logs: {e}"
+
+    async def _notify_owner_of_failure(self):
+        """Sends a high-priority alert pinging the owner in #debug."""
+        debug_channel_id = config.DEBUG_CHANNEL_ID
+        if not debug_channel_id:
+            return
+
+        channel = self.bot.get_channel(int(debug_channel_id))
+        if not channel:
+            try:
+                channel = await self.bot.fetch_channel(int(debug_channel_id))
+            except:
+                return
+
+        owner_ping = f"<@{config.OWNER_ID}>" if config.OWNER_ID else "@here"
+        
+        embed = discord.Embed(
+            title="🛑 Server Persistent Crash",
+            description="The Minecraft server has failed to start after 3 consecutive attempts and has been halted.",
+            color=discord.Color.red(),
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="Last Analysis", value=await self._analyze_crash())
+        embed.set_footer(text="Auto-restart loop suspended.")
+        
+        await channel.send(content=f"{owner_ping} 🚨 **URGENT: Server is stuck in a crash loop!**", embed=embed)
 
     # --- Server Control Commands ---
 
