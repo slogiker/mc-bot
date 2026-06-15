@@ -25,7 +25,12 @@ class SetupHelper:
             if not role:
                 try:
                     # Create missing role with specific color
-                    color = discord.Color.gold() if "Admin" in role_name or "Owner" in role_name else discord.Color.blue()
+                    if role_name == "Owner":
+                        color = discord.Color.red()
+                    elif role_name == "MC Admin":
+                        color = discord.Color.gold()
+                    else:
+                        color = discord.Color.blue()
                     role = await guild.create_role(name=role_name, color=color, reason="Self-Healing: Role missing")
                     logger.info(f"Self-Healer: Created missing Role: {role_name}")
                 except Exception as e:
