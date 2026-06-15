@@ -262,6 +262,8 @@ class Tasks(commands.Cog):
     async def before_crash_check(self):
         """Wait for bot to be ready before starting crash checks"""
         await self.bot.wait_until_ready()
+        # Give the server ample time to initialize on slow hardware (e.g. CM4/Fabric) before we start monitoring for crashes
+        await asyncio.sleep(60)
         logger.info("Crash check task is now active")
 
 async def setup(bot):
