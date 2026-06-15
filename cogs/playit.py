@@ -207,10 +207,12 @@ class PlayitCog(commands.Cog):
                         await self.start_tunnel()
                         
                         # Final check
-                        await asyncio.sleep(5)
-                        address, _ = await self.fetch_playit_address()
-                        if address:
-                            await interaction.followup.send(f"🚀 **Tunnel Online!** Public IP: `{address}`", ephemeral=True)
+                        for check_attempt in range(15):
+                            await asyncio.sleep(2)
+                            address, _ = await self.fetch_playit_address()
+                            if address:
+                                await interaction.followup.send(f"🚀 **Tunnel Online!** Public IP: `{address}`", ephemeral=True)
+                                break
                         else:
                             await interaction.followup.send("⚠️ Tunnel started, but IP is still initializing. Check `/ip` in a minute.", ephemeral=True)
                             
@@ -233,12 +235,16 @@ class PlayitCog(commands.Cog):
     async def playit_restart(self, interaction: discord.Interaction):
         await interaction.response.send_message("🔄 Restarting Playit tunnel...", ephemeral=True)
         await self.start_tunnel()
-        await asyncio.sleep(5)
-        address, _ = await self.fetch_playit_address()
-        if address:
-            await interaction.followup.send(f"✅ Playit restarted! New IP: `{address}`", ephemeral=True)
-        else:
-            await interaction.followup.send("⚠️ Playit restarted but IP is still unknown. It may take a minute.", ephemeral=True)
+        
+        # Smart polling for IP instead of a blind sleep
+        for attempt in range(15):  # Max 30 seconds
+            await asyncio.sleep(2)
+            address, _ = await self.fetch_playit_address()
+            if address:
+                await interaction.followup.send(f"✅ Playit restarted! New IP: `{address}`", ephemeral=True)
+                return
+                
+        await interaction.followup.send("⚠️ Playit restarted but IP is still unknown after 30s. It may take a minute longer.", ephemeral=True)
 
     @app_commands.command(name="ip", description="Get the public Playit.gg address")
     @has_role("status")

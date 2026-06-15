@@ -50,12 +50,17 @@ class BackupManager:
                 
                 if not success_off or not success_all:
                     logger.warning("RCON save-off or save-all failed. Backup might be inconsistent.")
+                    # Fallback to the old brief wait if RCON failed, just in case
+                    await asyncio.sleep(2)
                 else:
                     save_disabled = True
-                
-                await asyncio.sleep(2) # Brief wait for flush
+                    from src.log_dispatcher import log_dispatcher
+                    # Wait for the server to confirm it finished saving to disk (can take time on slow drives)
+                    logger.info("Waiting for world flush to complete...")
+                    if not await log_dispatcher.wait_for_pattern("Saved the game", timeout=60):
+                        logger.warning("Timed out waiting for 'Saved the game' confirmation. Proceeding anyway.")
 
-            try:
+                try:
                 # Run blocking zip operation in a separate thread
                 await asyncio.to_thread(self._zip_world, dest_path)
                 logger.info(f"Backup created successfully: {dest_path}")
