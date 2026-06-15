@@ -17,8 +17,14 @@ class RCONManager:
         async with self._lock:
             if self._client is None:
                 logger.info("RCON: Connecting to server...")
-                self._client = Client(config.RCON_HOST, config.RCON_PORT, config.RCON_PASSWORD)
-                await self._client.connect()
+                client = Client(config.RCON_HOST, config.RCON_PORT, config.RCON_PASSWORD)
+                try:
+                    await client.connect()
+                    self._client = client
+                except Exception as e:
+                    # Connection failed (server probably still starting)
+                    # Don't save the broken client instance
+                    raise e
             return self._client
 
     async def send_command(self, cmd: str) -> tuple[bool, str]:
