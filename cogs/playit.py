@@ -119,22 +119,12 @@ class PlayitCog(commands.Cog):
         await interaction.response.defer()
         
         # Build status embed
-        embed = discord.Embed(
-            title="🖥️ Server Status", 
-            color=discord.Color.blue(),
-            timestamp=discord.utils.utcnow()
-        )
+        embed = discord.Embed(title="🖥️ Server Status", color=discord.Color.blue())
         
         # 1. Minecraft Status
-        is_running = self.bot.server.is_running()
-        is_stopped = self.bot.server.is_intentionally_stopped()
-        
-        mc_status = "🟢 Online" if is_running else "🔴 Offline"
-        if is_stopped:
+        mc_status = "🟢 Online" if self.bot.server.is_running() else "🔴 Offline"
+        if self.bot.server.is_intentionally_stopped():
             mc_status = "⚪ Stopped"
-        elif not is_running:
-             mc_status = "⚠️ Crashed"
-             
         embed.add_field(name="Minecraft", value=mc_status, inline=True)
 
         # 2. Playit Status
@@ -148,13 +138,8 @@ class PlayitCog(commands.Cog):
         embed.add_field(name="Tunnel (Playit)", value=playit_status, inline=True)
 
         # 3. Hardware
-        try:
-            usage = psutil.disk_usage('/')
-            embed.add_field(name="Disk Space", value=f"{usage.percent}% used", inline=True)
-        except:
-            pass
-        
-        embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
+        usage = psutil.disk_usage('/')
+        embed.add_field(name="Disk Space", value=f"{usage.percent}% used", inline=True)
         
         await interaction.followup.send(embed=embed)
 
