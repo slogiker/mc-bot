@@ -140,6 +140,26 @@ do_reinstall() {
     echo -e "\n${ICON_CHECK} Reinstall preparation complete. Continuing setup...\n"
 }
 
+show_help() {
+    echo -e "${CYAN}${BOLD}Minecraft Discord Bot CLI${NC}"
+    echo -e "Usage: ./install.sh [command] [options]"
+    echo -e ""
+    echo -e "Commands:"
+    echo -e "  ${GREEN}start${NC}     - Start the bot containers"
+    echo -e "  ${YELLOW}stop${NC}      - Stop the bot containers"
+    echo -e "  ${BLUE}restart${NC}   - Restart the bot containers"
+    echo -e "  ${CYAN}logs${NC}      - View live bot logs"
+    echo -e "  ${NC}status${NC}    - Show container status"
+    echo -e "  ${BLUE}update${NC}    - Pull latest code and rebuild"
+    echo -e "  ${RED}reinstall${NC} - Reconfigure credentials and/or reset world"
+    echo -e ""
+    echo -e "Options:"
+    echo -e "  ${MAGENTA}--skip-start${NC} - Run setup without starting containers"
+    echo -e "  ${MAGENTA}-h, --help${NC}   - Show this help message"
+    echo -e ""
+    echo -e "If no command is provided, the interactive installer will launch."
+}
+
 # --- Argument Parsing ---
 
 if [ -n "$1" ]; then
@@ -151,6 +171,7 @@ if [ -n "$1" ]; then
         status) do_status; exit 0 ;;
         update) do_update; exit 0 ;;
         reinstall) do_reinstall ;; # Don't exit, continue to setup
+        -h|--help) show_help; exit 0 ;;
         *) # If it's a flag like --skip-start, we handle it later
            if [[ ! "$1" =~ ^-- ]]; then
                # Not a flag, maybe a mistyped command? 
@@ -665,9 +686,9 @@ echo -e "${GREEN}${BOLD}     ${ICON_ROCKET} Installation Complete!${NC}"
 echo -e "\n  ${BOLD}Next Step:${NC} Run ${CYAN}/setup${NC} in Discord to initialize channels.\n"
 
 echo -e "  Manage your bot with:"
-echo -e "    ${CYAN}./install/mc-bot.sh logs${NC}    - View live logs"
-echo -e "    ${CYAN}./install/mc-bot.sh restart${NC} - Restart the bot"
-echo -e "    ${CYAN}./install/mc-bot.sh update${NC}  - Pull latest code and rebuild\n"
+echo -e "    ${CYAN}./install.sh logs${NC}    - View live logs"
+echo -e "    ${CYAN}./install.sh restart${NC} - Restart the bot"
+echo -e "    ${CYAN}./install.sh update${NC}  - Pull latest code and rebuild\n"
 
 
 echo -e "  ${DIM}Thank you for using Minecraft Discord Bot!${NC}\n"
