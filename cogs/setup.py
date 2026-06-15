@@ -32,8 +32,11 @@ class Setup(commands.Cog):
 
         # Check if server is already installed
         server_jar = os.path.join(config.SERVER_DIR, "server.jar")
+        world_folder = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
         
-        if os.path.exists(server_jar):
+        # We only consider it "already installed" if both the JAR and WORLD exist.
+        # If the JAR exists but no WORLD, it might be a broken installation that needs repair.
+        if os.path.exists(server_jar) and os.path.exists(world_folder):
             # Server already installed - warn user and handle world management
             embed = discord.Embed(
                 title="⚠️ Server Already Installed",

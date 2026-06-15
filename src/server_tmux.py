@@ -111,7 +111,31 @@ class TmuxServerManager(ServerInterface):
             msg = f"Server jar not found: {jar_path}"
             logger.error(msg)
             return False, msg
-        
+
+        world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
+        world_exists = await asyncio.to_thread(os.path.exists, world_path)
+
+        # Self-healing: If jar exists but world is missing, try to generate it
+        if jar_exists and not world_exists:
+            logger.warning("World folder missing but server.jar exists. Attempting auto-generation...")
+            # Run once to generate files. 
+            # We use a short timeout as it only needs to start and exit (usually due to EULA or initial generation)
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "java", "-jar", config.SERVER_JAR, "nogui",
+                    cwd=config.SERVER_DIR,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                await asyncio.wait_for(proc.wait(), timeout=60.0)
+            except Exception as e:
+                logger.error(f"Auto-generation of world folder failed: {e}")
+
+            # Re-check
+            world_exists = await asyncio.to_thread(os.path.exists, world_path)
+            if not world_exists:
+                return False, "❌ World folder is missing and auto-generation failed. Please run **/setup** to repair the installation."
+
         server_dir_exists = await asyncio.to_thread(os.path.exists, config.SERVER_DIR)
         if not server_dir_exists:
             msg = f"Server directory not found: {config.SERVER_DIR}"
