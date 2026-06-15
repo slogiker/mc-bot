@@ -117,19 +117,50 @@ class TmuxServerManager(ServerInterface):
 
         # Self-healing: If jar exists but world is missing, try to generate it
         if jar_exists and not world_exists:
-            logger.warning("World folder missing but server.jar exists. Attempting auto-generation...")
-            # Run once to generate files. 
-            # We use a short timeout as it only needs to start and exit (usually due to EULA or initial generation)
+            logger.warning("World folder missing but server.jar exists. Attempting auto-generation (watching logs for 'Done')...")
+            
+            # Start the process in the background
             try:
                 proc = await asyncio.create_subprocess_exec(
                     "java", "-jar", config.SERVER_JAR, "nogui",
                     cwd=config.SERVER_DIR,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stdin=subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-                await asyncio.wait_for(proc.wait(), timeout=120.0)
+                
+                # Watch the output for 'Done' or errors
+                done_detected = False
+                # Max 5 minutes for extremely slow generation
+                try:
+                    async with asyncio.timeout(300.0):
+                        while True:
+                            line = await proc.stdout.readline()
+                            if not line:
+                                break
+                            decoded_line = line.decode('utf-8', errors='ignore').strip()
+                            if "Done" in decoded_line and "For help, type" in decoded_line:
+                                logger.info(f"Auto-generation finished successfully: {decoded_line}")
+                                done_detected = True
+                                # Stop the server gracefully since it generated the files
+                                proc.stdin.write(b"stop\n")
+                                await proc.stdin.drain()
+                                break
+                            elif "Failed to load properties from file" in decoded_line:
+                                logger.warning("First run EULA/properties generation detected.")
+                                # Often it stops itself here, let it finish naturally
+                except asyncio.TimeoutError:
+                    logger.error("Auto-generation timed out after 5 minutes.")
+                
+                # Ensure the process is dead before continuing
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    
             except Exception as e:
-                logger.error(f"Auto-generation of world folder failed or timed out: {e}")
+                logger.error(f"Auto-generation of world folder failed: {e}")
 
             # Re-check
             world_exists = await asyncio.to_thread(os.path.exists, world_path)
