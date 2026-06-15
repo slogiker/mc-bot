@@ -152,12 +152,15 @@ class TmuxServerManager(ServerInterface):
         await asyncio.sleep(3)
         if not self.is_running():
             logger.error("Server process died immediately after starting.")
-            # Check for world folder if this was supposed to be a fresh start
+            self._intentional_stop = True # Reset state on failure
+            await self._save_state()
+
+            # Check for world folder
             world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
             world_exists = await asyncio.to_thread(os.path.exists, world_path)
             if not world_exists:
-                return False, "Server crashed before creating the world folder. Check if Java is installed correctly."
-            return False, "Server crashed immediately. Check crash-reports/ or logs/latest.log for details."
+                return False, "❌ Server crashed before creating the world folder. This usually means the installation was incomplete. Please run **/setup** again."
+            return False, "❌ Server crashed immediately. Check crash-reports/ or logs/latest.log for details."
 
         logger.info("Server started successfully")
         return True, "Server started successfully"

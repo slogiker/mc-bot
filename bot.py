@@ -93,9 +93,17 @@ class MinecraftBot(commands.Bot):
                             status=discord.Status.idle
                         )
                 else:
+                    # Not running
+                    status_type = discord.Status.dnd
+                    if self.server.is_intentionally_stopped():
+                        status_text = "Minecraft Server: Offline"
+                    else:
+                        # Not running and NOT intentionally stopped = crashed
+                        status_text = "Minecraft Server: ⚠️ Crashed"
+                        
                     await self.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
-                        status=discord.Status.dnd
+                        activity=discord.Activity(type=discord.ActivityType.playing, name=status_text),
+                        status=status_type
                     )
             except Exception as e:
                 logger.error(f"Error in presence update loop: {e}")
