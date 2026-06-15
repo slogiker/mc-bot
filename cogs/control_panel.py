@@ -67,27 +67,11 @@ class ControlPanelView(ui.View):
         if not await self._check_perm(interaction, "status"): return
         await interaction.response.defer(ephemeral=True)
         try:
-            embed = discord.Embed(title="Minecraft Server Status")
-            if self.bot.server.is_running():
-                embed.color = 0x57F287
-                try:
-                    success, players_response = await rcon_cmd("list")
-                    
-                    # Use Info cog's parser for pretty list
-                    info_cog = self.bot.get_cog("Info")
-                    if info_cog:
-                        players_val, _, _ = info_cog._get_player_list_info(players_response)
-                    else:
-                        players_val = f"```{players_response}```"
-
-                    embed.add_field(name="Status", value="🟢 **Online**", inline=False)
-                    embed.add_field(name="Players", value=players_val, inline=False)
-                except Exception as e:
-                    embed.add_field(name="Status", value="🟢 **Online**", inline=False)
-                    embed.add_field(name="Players", value="```Unable to fetch player list```", inline=False)
+            playit_cog = self.bot.get_cog("PlayitCog")
+            if playit_cog:
+                embed = await playit_cog.build_status_embed()
             else:
-                embed.color = 0xED4245
-                embed.add_field(name="Status", value="🔴 **Offline**", inline=False)
+                embed = discord.Embed(title="Minecraft Server Status", description="Status cog not loaded.")
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
             logger.error(f"Status btn error: {e}")

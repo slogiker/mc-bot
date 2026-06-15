@@ -162,7 +162,7 @@ class Info(commands.Cog):
     async def seed(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         try:
-            seed = self.info_manager._get_seed()
+            seed = await self.info_manager._get_seed()
             
             if seed and seed != 'Random/Hidden':
                 await interaction.followup.send(f"🌱 Seed: {seed}")

@@ -113,11 +113,8 @@ class PlayitCog(commands.Cog):
             return (time.time() - self.cache_time) < CACHE_TTL
         return False
 
-    @app_commands.command(name="status", description="Show detailed bot and server status")
-    @has_role("status")
-    async def status_combined(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        
+    async def build_status_embed(self) -> discord.Embed:
+        """Shared method to build the status embed for both /status and Control Panel."""
         # 1. Gather Data
         is_running = self.bot.server.is_running()
         is_stopped = self.bot.server.is_intentionally_stopped()
@@ -145,7 +142,7 @@ class PlayitCog(commands.Cog):
         embed = discord.Embed(title="🖥️ Server Status", color=embed_color)
         
         # IP at the top
-        embed.add_field(name="🌍 Public Address", value=f"`{address}`", inline=False)
+        embed.add_field(name="🌍 Public Address", value=f"`{address}`\n\u200b", inline=False)
         
         # Minecraft Status
         embed.add_field(name="🎮 Minecraft", value=mc_status, inline=True)
@@ -166,7 +163,7 @@ class PlayitCog(commands.Cog):
         from src.utils import get_dir_size_gb
         world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
         world_size = await get_dir_size_gb(world_path)
-        embed.add_field(name="📂 World Size", value=f"**{world_size:.2f} GB**", inline=True)
+        embed.add_field(name="📂 World Size", value=f"**{world_size:.2f} GB**\n\u200b", inline=True)
 
         # Players List
         if is_running:
@@ -174,7 +171,6 @@ class PlayitCog(commands.Cog):
             success, response = await rcon_cmd("list")
             if success:
                 # Basic parsing: 'There are 0 of a max of 20 players online:'
-                # or 'There are 1 of a max of 20 players online: Slogiker'
                 if ":" in response:
                     count_part, names_part = response.split(":", 1)
                     players_list = names_part.strip() or "None"
@@ -187,7 +183,14 @@ class PlayitCog(commands.Cog):
                 players_val = "```Unable to fetch player list (RCON)```"
             
             embed.add_field(name="👥 Online Players", value=players_val, inline=False)
+            
+        return embed
 
+    @app_commands.command(name="status", description="Show detailed bot and server status")
+    @has_role("status")
+    async def status_combined(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        embed = await self.build_status_embed()
         await interaction.followup.send(embed=embed)
 
     playit_group = app_commands.Group(name="playit", description="Playit.gg tunnel management")
