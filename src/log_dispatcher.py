@@ -23,6 +23,29 @@ class LogDispatcher:
         """Return the last 50 lines of logs."""
         return list(self._buffer)
 
+    async def wait_for_pattern(self, pattern: str, timeout: int = 180) -> bool:
+        """
+        Subscribes to live logs and waits for a specific string to appear.
+        Returns True if found, False if it times out.
+        """
+        q = self.subscribe()
+        try:
+            # Check the buffer first in case it just happened a second ago
+            for line in reversed(self._buffer):
+                if pattern in line:
+                    return True
+            
+            # Wait for it live
+            async with asyncio.timeout(timeout):
+                while True:
+                    line = await q.get()
+                    if pattern in line:
+                        return True
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            self.unsubscribe(q)
+
     async def start(self):
         if self._running:
             return

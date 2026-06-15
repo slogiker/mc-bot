@@ -235,13 +235,18 @@ class TmuxServerManager(ServerInterface):
         logger.info("Sending stop command to server...")
         self.send_command("stop")
         
-        # Wait a bit for graceful shutdown
-        await asyncio.sleep(5)
-        
-        # If still running, kill the session
-        if self.is_running():
-            logger.warning("Server didn't stop gracefully, killing tmux session")
+        # Wait for graceful shutdown via logs
+        from src.log_dispatcher import log_dispatcher
+        # Waiting for "Thread RCON Listener stopped" or "Stopping server" ensures it's shutting down safely.
+        # It can take over 30s to save a large world on slow hardware.
+        if not await log_dispatcher.wait_for_pattern("Thread RCON Listener stopped", timeout=60):
+            logger.warning("Server didn't stop gracefully within 60s, killing tmux session")
             await self.emergency_stop()
+        else:
+            # Give it 3 more seconds to fully exit the java process after RCON closes
+            await asyncio.sleep(3)
+            if self.is_running():
+                await self.emergency_stop()
         
         logger.info("Server stopped successfully")
         return True, "Server stopped successfully"

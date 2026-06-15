@@ -608,6 +608,9 @@ class SetupView(ui.View):
         config.JAVA_XMS = f"{max(1, self.state.ram // 2)}G"
         
         try:
+            from src.utils import send_debug
+            await send_debug(interaction.client, f"🚀 **Starting fresh installation of {setup_config['platform']} {setup_config['version']}**")
+            
             embed.description = "**Step 1/5:** Creating Discord channels and roles..."
             await message.edit(embed=embed)
             
@@ -619,6 +622,7 @@ class SetupView(ui.View):
             await self._save_config_to_file(updates)
             
             logger.info(f"Discord setup completed by {interaction.user.name}")
+            await send_debug(interaction.client, "✅ Step 1: Discord channels and roles created.")
             
             # STEP 2: Download server
             embed.description = f"**Step 2/5:** Downloading {setup_config['platform'].title()} server..."
@@ -643,10 +647,12 @@ class SetupView(ui.View):
             
             if not success:
                 raise Exception(result)
+            await send_debug(interaction.client, f"✅ Step 2: Downloaded {setup_config['platform']} {setup_config['version']}.")
             
             # STEP 2.5: Generate Files
             embed.description = "**Step 2.5/5:** Launching server to generate files..."
             await message.edit(embed=embed)
+            await send_debug(interaction.client, "⏳ Step 2.5: Running jar to generate eula.txt...")
             
             proc = await asyncio.create_subprocess_exec(
                 "java", "-jar", "server.jar", "nogui",
@@ -656,21 +662,25 @@ class SetupView(ui.View):
             )
             # Wait for it to exit due to EULA missing
             try:
-                await asyncio.wait_for(proc.wait(), timeout=45.0)
+                await asyncio.wait_for(proc.wait(), timeout=60.0)
+                await send_debug(interaction.client, "✅ EULA generation exited naturally.")
             except asyncio.TimeoutError:
                 proc.kill()
+                await send_debug(interaction.client, "⚠️ EULA generation killed after 60s timeout.")
             
             # STEP 3: Accept EULA
             embed.description = "**Step 3/5:** Accepting Minecraft EULA..."
             await message.edit(embed=embed)
             
             await mc_installer.accept_eula()
+            await send_debug(interaction.client, "✅ Step 3: Accepted Minecraft EULA.")
             
             # STEP 4: Configure server
             embed.description = "**Step 4/5:** Configuring server settings..."
             await message.edit(embed=embed)
             
             await mc_installer.configure_server_properties(setup_config)
+            await send_debug(interaction.client, "✅ Step 4: Configured server.properties.")
             
             # Save resolved version and platform to config
             version_update = {
@@ -683,31 +693,29 @@ class SetupView(ui.View):
             # STEP 5: Start server
             embed.description = "**Step 5/5:** Starting server for first time..."
             await message.edit(embed=embed)
+            await send_debug(interaction.client, "⏳ Step 5: Starting Tmux server session...")
             
             # Start the server using the bot's server instance
             start_success, start_msg = await interaction.client.server.start()
             
             if not start_success:
                 logger.warning(f"Server failed to start after installation: {start_msg}")
+                await send_debug(interaction.client, f"❌ Failed to start server: {start_msg}")
             
-            # Wait for server to actually be ready (RCON available)
+            # Wait for server to actually be ready (via logs)
             server_ready = False
             if start_success:
                 embed.description = "**Step 5/5:** Server started, waiting for it to be fully ready..."
                 await message.edit(embed=embed)
                 
-                for attempt in range(90):  # Up to 180 seconds (90 * 2s) for slow hardware like CM4
-                    try:
-                        success, response = await rcon_cmd("list")
-                        if success and "players" in response.lower():
-                            server_ready = True
-                            break
-                    except Exception:
-                        pass
-                    await asyncio.sleep(2)
-                
-                if not server_ready:
-                    logger.warning("Server started but RCON not available after 180s timeout")
+                await send_debug(interaction.client, "⏳ Server booting up. Waiting for 'Done' signal in console logs (can take a few minutes)...")
+                from src.log_dispatcher import log_dispatcher
+                if await log_dispatcher.wait_for_pattern('Done (', timeout=300):
+                    server_ready = True
+                    await send_debug(interaction.client, "✅ Server is fully booted and ready!")
+                else:
+                    logger.warning("Server started but 'Done' log not detected after 5m timeout")
+                    await send_debug(interaction.client, "⚠️ Timed out waiting for server boot log. It might still be starting.")
             
             # Success embed
             command_channel = interaction.client.get_channel(config.COMMAND_CHANNEL_ID)

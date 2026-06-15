@@ -152,27 +152,44 @@ class Management(commands.Cog):
         success, message = await self.bot.server.start()
         if success:
             embed = discord.Embed(
-                title="🚀 Server Starting",
-                description=message,
-                color=0x57F287
+                title="🚀 Server Starting...",
+                description="Waiting for the server to finish booting. This may take a minute.",
+                color=0xFEE75C # Yellow
             )
-            # Update info channel
-            from src.server_info_manager import ServerInfoManager
-            await ServerInfoManager(self.bot).update_info(interaction.guild)
+            await interaction.followup.send(embed=embed, ephemeral=True)
             
             # Update explicit presence
             await self.bot.change_presence(
                 activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
                 status=discord.Status.idle
             )
+            
+            from src.log_dispatcher import log_dispatcher
+            if await log_dispatcher.wait_for_pattern('Done (', timeout=300):
+                embed = discord.Embed(
+                    title="✅ Server is Online!",
+                    description="The server has fully booted and is ready for players.",
+                    color=0x57F287 # Green
+                )
+                await interaction.edit_original_response(embed=embed)
+                
+                # Update info channel
+                from src.server_info_manager import ServerInfoManager
+                await ServerInfoManager(self.bot).update_info(interaction.guild)
+            else:
+                embed = discord.Embed(
+                    title="⚠️ Server Start Timeout",
+                    description="The server started but took too long to report 'Done'. It might still be booting.",
+                    color=0xED4245 # Red
+                )
+                await interaction.edit_original_response(embed=embed)
         else:
             embed = discord.Embed(
                 title="❌ Failed to Start Server",
                 description=f"**Error:** {message}",
                 color=0xED4245
             )
-        
-        await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="stop", description="Stop the server")
     @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
