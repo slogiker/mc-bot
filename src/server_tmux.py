@@ -127,9 +127,9 @@ class TmuxServerManager(ServerInterface):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-                await asyncio.wait_for(proc.wait(), timeout=60.0)
+                await asyncio.wait_for(proc.wait(), timeout=120.0)
             except Exception as e:
-                logger.error(f"Auto-generation of world folder failed: {e}")
+                logger.error(f"Auto-generation of world folder failed or timed out: {e}")
 
             # Re-check
             world_exists = await asyncio.to_thread(os.path.exists, world_path)
