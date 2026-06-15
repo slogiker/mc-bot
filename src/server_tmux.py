@@ -122,7 +122,7 @@ class TmuxServerManager(ServerInterface):
             # Start the process in the background
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    "java", "-jar", config.SERVER_JAR, "nogui",
+                    "java", "-Ddisable.watchdog=true", "-jar", config.SERVER_JAR, "nogui",
                     cwd=config.SERVER_DIR,
                     stdin=subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,

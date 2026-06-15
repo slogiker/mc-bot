@@ -61,17 +61,17 @@ class BackupManager:
                         logger.warning("Timed out waiting for 'Saved the game' confirmation. Proceeding anyway.")
 
                 try:
-                # Run blocking zip operation in a separate thread
-                await asyncio.to_thread(self._zip_world, dest_path)
-                logger.info(f"Backup created successfully: {dest_path}")
-                
-                if not custom_name:
-                    await self._cleanup_auto_backups()
+                    # Run blocking zip operation in a separate thread
+                    await asyncio.to_thread(self._zip_world, dest_path)
+                    logger.info(f"Backup created successfully: {dest_path}")
                     
-                return True, filename, dest_path
-            except Exception as e:
-                logger.error(f"Backup failed: {e}")
-                return False, str(e), None
+                    if not custom_name:
+                        await self._cleanup_auto_backups()
+                        
+                    return True, filename, dest_path
+                except Exception as e:
+                    logger.error(f"Backup failed: {e}")
+                    return False, str(e), None
             finally:
                 if save_disabled:
                     from src.utils import rcon_cmd
