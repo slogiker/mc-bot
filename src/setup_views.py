@@ -664,26 +664,7 @@ class SetupView(ui.View):
                 raise Exception(result)
             await send_debug(interaction.client, f"✅ Step 2: Downloaded {setup_config['platform']} {setup_config['version']}.")
             
-            # STEP 2.5: Generate Files
-            embed.description = "**Step 2.5/5:** Launching server to generate files..."
-            await message.edit(embed=embed)
-            await send_debug(interaction.client, "⏳ Step 2.5: Running jar to generate eula.txt...")
-            
-            proc = await asyncio.create_subprocess_exec(
-                "java", "-jar", "server.jar", "nogui",
-                cwd=config.SERVER_DIR,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            # Wait for it to exit due to EULA missing
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=60.0)
-                await send_debug(interaction.client, "✅ EULA generation exited naturally.")
-            except asyncio.TimeoutError:
-                proc.kill()
-                await send_debug(interaction.client, "⚠️ EULA generation killed after 60s timeout.")
-            
-            # STEP 3: Accept EULA
+            # STEP 3: Accept EULA (Pre-generation)
             embed.description = "**Step 3/5:** Accepting Minecraft EULA..."
             await message.edit(embed=embed)
             
