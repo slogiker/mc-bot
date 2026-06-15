@@ -51,7 +51,7 @@ class ServerInfoManager:
             channel = await self.get_or_create_channel(guild)
             
             # Gather information
-            ip_address = self._get_address()
+            ip_address = await self._get_address()
             version = self._get_version()
             seed = await self._get_seed()
             spawn = self._get_spawn()
@@ -95,20 +95,34 @@ class ServerInfoManager:
         except Exception as e:
             logger.error(f"Failed to update server info: {e}", exc_info=True)
 
-    def _get_address(self) -> str:
-        # Prefer live Playit address from the cog's cache
+    async def _get_address(self) -> str:
+        # 1. Prefer live Playit address from the cog's cache
         try:
             playit_cog = self.bot.get_cog("PlayitCog")
-            if playit_cog and playit_cog.tunnels:
-                return playit_cog.tunnels[0]
-            if playit_cog and playit_cog.cached_address:
-                return playit_cog.cached_address
-        except Exception:
-            pass
-        # Fall back to static config value if set
+            if playit_cog:
+                # If cache exists, use it
+                if playit_cog.tunnels:
+                    return playit_cog.tunnels[0]
+                if playit_cog.cached_address:
+                    return playit_cog.cached_address
+                
+                # If no cache, try to fetch it dynamically (will use secret key)
+                address, _ = await playit_cog.fetch_playit_address()
+                if address:
+                    # Update cache while we're here
+                    playit_cog.cached_address = address
+                    playit_cog.tunnels = [address]
+                    import time
+                    playit_cog.cache_time = time.time()
+                    return address
+        except Exception as e:
+            logger.debug(f"Error fetching address from PlayitCog: {e}")
+
+        # 2. Fall back to static config value if set
         addr = getattr(config, 'SERVER_ADDRESS', None)
         if addr:
             return addr
+            
         return "Run /ip in Discord to get the address"
 
     def _get_version(self) -> str:
