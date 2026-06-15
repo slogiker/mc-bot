@@ -163,6 +163,25 @@ def display_key(key):
         return key[10:]
     return key
 
+async def get_dir_size_gb(start_path='.') -> float:
+    """
+    Calculate the total size of a directory in GB asynchronously.
+    """
+    def get_size():
+        total_size = 0
+        try:
+            for dirpath, dirnames, filenames in os.walk(start_path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    # skip if it is symbolic link
+                    if not os.path.islink(fp):
+                        total_size += os.path.getsize(fp)
+        except Exception as e:
+            logger.debug(f"Error calculating dir size: {e}")
+        return total_size / (1024**3)
+        
+    return await asyncio.to_thread(get_size)
+
 async def parse_server_version():
     """Parse Minecraft version from latest.log asynchronously."""
     import aiofiles

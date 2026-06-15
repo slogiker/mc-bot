@@ -118,29 +118,76 @@ class PlayitCog(commands.Cog):
     async def status_combined(self, interaction: discord.Interaction):
         await interaction.response.defer()
         
-        # Build status embed
-        embed = discord.Embed(title="🖥️ Server Status", color=discord.Color.blue())
+        # 1. Gather Data
+        is_running = self.bot.server.is_running()
+        is_stopped = self.bot.server.is_intentionally_stopped()
         
-        # 1. Minecraft Status
-        mc_status = "🟢 Online" if self.bot.server.is_running() else "🔴 Offline"
-        if self.bot.server.is_intentionally_stopped():
-            mc_status = "⚪ Stopped"
-        embed.add_field(name="Minecraft", value=mc_status, inline=True)
+        # IP Address
+        address, _ = await self.fetch_playit_address()
+        if not address:
+            if not self.get_secret_key():
+                address = "🟡 Unclaimed (Use /playit claim)"
+            else:
+                address = "🔴 Error fetching address"
 
-        # 2. Playit Status
-        address, error = await self.fetch_playit_address()
-        if address:
-            playit_status = f"🟢 Connected\n`{address}`"
-        elif not self.get_secret_key():
-            playit_status = "🟡 Unclaimed\nUse `/playit claim`"
+        # Minecraft Status & Color
+        if is_running:
+            mc_status = "🟢 **Online**"
+            embed_color = discord.Color.green()
+        elif is_stopped:
+            mc_status = "⚪ **Stopped (Intentionally)**"
+            embed_color = discord.Color.light_grey()
         else:
-            playit_status = f"🔴 Error\n{error or 'Not running'}"
-        embed.add_field(name="Tunnel (Playit)", value=playit_status, inline=True)
+            mc_status = "⚠️ **Crashed / Offline**"
+            embed_color = discord.Color.red()
 
-        # 3. Hardware
-        usage = psutil.disk_usage('/')
-        embed.add_field(name="Disk Space", value=f"{usage.percent}% used", inline=True)
+        # Build Status Embed
+        embed = discord.Embed(title="🖥️ Server Status", color=embed_color)
         
+        # IP at the top
+        embed.add_field(name="🌍 Public Address", value=f"`{address}`", inline=False)
+        
+        # Minecraft Status
+        embed.add_field(name="🎮 Minecraft", value=mc_status, inline=True)
+
+        # Uptime
+        uptime_str = "Offline"
+        if is_running:
+            start_time = self.bot.server.get_start_time()
+            if start_time:
+                from datetime import timedelta
+                delta = timedelta(seconds=int(time.time() - start_time))
+                uptime_str = f"**{str(delta).split('.')[0]}**" # Remove milliseconds
+            else:
+                uptime_str = "Unknown"
+        embed.add_field(name="⏱️ Uptime", value=uptime_str, inline=True)
+
+        # World Size
+        from src.utils import get_dir_size_gb
+        world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
+        world_size = await get_dir_size_gb(world_path)
+        embed.add_field(name="📂 World Size", value=f"**{world_size:.2f} GB**", inline=True)
+
+        # Players List
+        if is_running:
+            from src.utils import rcon_cmd
+            success, response = await rcon_cmd("list")
+            if success:
+                # Basic parsing: 'There are 0 of a max of 20 players online:'
+                # or 'There are 1 of a max of 20 players online: Slogiker'
+                if ":" in response:
+                    count_part, names_part = response.split(":", 1)
+                    players_list = names_part.strip() or "None"
+                    count = count_part.split(" ")[2]
+                    max_players = count_part.split(" ")[5]
+                    players_val = f"**{count}/{max_players}**\n{players_list}"
+                else:
+                    players_val = f"```{response}```"
+            else:
+                players_val = "```Unable to fetch player list (RCON)```"
+            
+            embed.add_field(name="👥 Online Players", value=players_val, inline=False)
+
         await interaction.followup.send(embed=embed)
 
     playit_group = app_commands.Group(name="playit", description="Playit.gg tunnel management")
