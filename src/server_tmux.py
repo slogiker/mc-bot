@@ -148,8 +148,8 @@ class TmuxServerManager(ServerInterface):
         self._start_time = time.time()
         await self._save_state()
         
-        # Immediate crash detection
-        await asyncio.sleep(3)
+        # Immediate crash detection (Wait longer for slower hardware like CM4)
+        await asyncio.sleep(10)
         if not self.is_running():
             logger.error("Server process died immediately after starting.")
             self._intentional_stop = True # Reset state on failure
