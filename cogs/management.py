@@ -47,10 +47,21 @@ class Management(commands.Cog):
                 # Attempt start
                 success, msg = await self.bot.server.start()
                 if success:
-                    logger.info("✅ Auto-restart successful.")
-                    # We don't reset consecutive_restarts here yet, wait for it to be stable
-                    # or reset it if it stays up for X minutes. 
-                    # For now, let's just wait.
+                    logger.info("✅ Auto-restart initiated. Waiting for boot...")
+                    from src.log_dispatcher import log_dispatcher
+                    if await log_dispatcher.wait_for_pattern('Done (', timeout=300):
+                        logger.info("✅ Auto-restart successful and server is online.")
+                        try:
+                            cmd_channel = self.bot.get_channel(int(config.COMMAND_CHANNEL_ID))
+                            if cmd_channel:
+                                info_cog = self.bot.get_cog("Info")
+                                if info_cog:
+                                    info_embed = await info_cog.build_info_embed(cmd_channel.guild)
+                                    await cmd_channel.send(content="🔄 **Server recovered from crash and is back online!**", embed=info_embed)
+                        except Exception as e:
+                            logger.error(f"Failed to broadcast recovery: {e}")
+                    else:
+                        logger.warning("Auto-restart timed out waiting for 'Done'.")
                 else:
                     logger.error(f"❌ Auto-restart failed: {msg}")
 
@@ -176,6 +187,18 @@ class Management(commands.Cog):
                 # Update info channel
                 from src.server_info_manager import ServerInfoManager
                 await ServerInfoManager(self.bot).update_info(interaction.guild)
+                
+                # Broadcast readiness to the command channel
+                try:
+                    cmd_channel = self.bot.get_channel(int(config.COMMAND_CHANNEL_ID))
+                    if cmd_channel:
+                        info_cog = self.bot.get_cog("Info")
+                        if info_cog:
+                            info_embed = await info_cog.build_info_embed(interaction.guild)
+                            await cmd_channel.send(content="🎉 **Your Minecraft server is ready!**", embed=info_embed)
+                except Exception as e:
+                    logger.error(f"Failed to broadcast server readiness: {e}")
+                    
             else:
                 embed = discord.Embed(
                     title="⚠️ Server Start Timeout",

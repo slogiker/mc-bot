@@ -128,13 +128,6 @@ class PlayitCog(commands.Cog):
 
         return embed
 
-    @app_commands.command(name="status", description="Show detailed bot and server status")
-    @has_role("status")
-    async def status_combined(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        embed = await self.build_status_embed()
-        await interaction.followup.send(embed=embed)
-
     playit_group = app_commands.Group(name="playit", description="Playit.gg tunnel management")
 
     @playit_group.command(name="claim", description="Generate a new Playit.gg claim link")

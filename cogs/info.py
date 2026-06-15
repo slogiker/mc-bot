@@ -8,7 +8,7 @@ import psutil
 import asyncio
 from datetime import timedelta, datetime
 from src.config import config
-from src.utils import rcon_cmd, has_role, parse_server_version, get_server_mod_folder
+from src.utils import rcon_cmd, has_role, parse_server_version, get_server_mod_folder, get_dir_size_gb
 from src.logger import logger
 from src.server_info_manager import ServerInfoManager
 
@@ -69,6 +69,7 @@ class Info(commands.Cog):
                  # Usually returns "TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0"
                  if success_tps and "TPS from last" in tps_raw:
                      tps = tps_raw.split(":")[-1].strip().split(",")[0].strip()
+                     tps = re.sub(r'§.', '', tps) # Strip Minecraft color codes
                  else:
                      raise ValueError("Not a valid TPS string")
             except Exception:
@@ -212,72 +213,129 @@ class Info(commands.Cog):
             except Exception as send_error:
                 logger.debug(f"Failed to send mods error message: {send_error}")
 
+    async def build_info_embed(self, guild: discord.Guild = None) -> discord.Embed:
+        """Shared method to build the /info embed for broadcasting or command usage."""
+        await self.info_manager.update_info(guild)
+        ver = await parse_server_version()
+        
+        ip = "Unknown (Check /ip)"
+        try:
+            playit_cog = self.bot.get_cog("PlayitCog")
+            if playit_cog and playit_cog.cached_address:
+                ip = playit_cog.cached_address
+            else:
+                bot_cfg = config.load_bot_config()
+                ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
+        except Exception as e:
+            logger.error(f"Failed to fetch IP for info command: {e}")
+        
+        spawn = self.info_manager._get_spawn() or "Not set"
+        
+        # Fetch Seed
+        seed = await self.info_manager._get_seed()
+        if not seed or seed == 'Random/Hidden':
+            if self.bot.server.is_running():
+                try:
+                    success, seed_val = await rcon_cmd("seed")
+                    if success:
+                        seed = seed_val
+                except Exception:
+                    pass
+        if not seed:
+            seed = "Unknown"
+        elif seed.startswith("Seed: "):
+            seed = seed[6:]
+        elif seed.startswith("[") and "]" in seed:
+            # e.g. [12345] -> 12345
+            seed = seed.strip("[]")
+        
+        # World Size
+        world_size = "Unknown"
+        try:
+            world_dir = os.path.join(config.SERVER_DIR, "world")
+            if os.path.exists(world_dir):
+                size_gb = await get_dir_size_gb(world_dir)
+                world_size = f"{size_gb:.2f} GB"
+            else:
+                # Fallback to entire server dir if world isn't found
+                size_gb = await get_dir_size_gb(config.SERVER_DIR)
+                world_size = f"{size_gb:.2f} GB (Total)"
+        except Exception as e:
+            logger.debug(f"Failed to get world size: {e}")
+        
+        # Uptime (Bot)
+        bot_uptime_sec = int(time.time() - self.bot.start_time)
+        bot_uptime = str(timedelta(seconds=bot_uptime_sec))
+        
+        embed = discord.Embed(
+            title="📊 Server Dashboard",
+            description="Real-time performance and status metrics.",
+            color=0x2b2d31 # A sleek dark theme color often used in Discord
+        )
+        if guild and guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        
+        # General Info
+        embed.add_field(name="🌐 IP Address", value=f"`{ip}`", inline=True)
+        embed.add_field(name="🛠️ Version", value=f"`{ver}`", inline=True)
+        embed.add_field(name="🌱 Seed", value=f"`{seed}`", inline=True)
+        
+        # Performance & Resources
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        embed.add_field(name="💻 System CPU", value=f"`{cpu_percent}%`", inline=True)
+        embed.add_field(name="🧠 System RAM", value=f"`{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)`", inline=True)
+        embed.add_field(name="💾 World Size", value=f"`{world_size}`", inline=True)
+        
+        # Server Status
+        if self.bot.server.is_running():
+            server_uptime_str = "Unknown"
+            if hasattr(self.bot.server, 'get_start_time'):
+                start_time = self.bot.server.get_start_time()
+                if start_time:
+                    delta = timedelta(seconds=int(time.time() - start_time))
+                    server_uptime_str = str(delta)
+            
+            tps = await self._get_tps_info()
+            
+            try:
+                # Fix: rcon_cmd returns (success, response)
+                success_list, players_raw = await rcon_cmd("list")
+                players_formatted, current_players, max_players = self._get_player_list_info(players_raw)
+            except Exception as e:
+                logger.error(f"Error fetching player list for info command: {e}")
+                players_formatted, current_players, max_players = self._get_player_list_info("Unable to fetch player list")
+            
+            embed.add_field(name="🟢 Server Status", value="`Online`", inline=True)
+            embed.add_field(name="⏱️ TPS", value=f"`{tps}`", inline=True)
+            embed.add_field(name="👥 Players", value=f"`{current_players}/{max_players}`", inline=True)
+            
+            embed.add_field(name="⏳ Server Uptime", value=f"`{server_uptime_str}`", inline=True)
+            embed.add_field(name="🤖 Bot Uptime", value=f"`{bot_uptime}`", inline=True)
+            embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=True)
+            
+            if current_players != "0" and current_players != "?":
+                embed.add_field(name="Online Players List", value=players_formatted, inline=False)
+        else:
+            embed.add_field(name="🔴 Server Status", value="`Offline`", inline=True)
+            embed.add_field(name="🤖 Bot Uptime", value=f"`{bot_uptime}`", inline=True)
+            embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=True)
+        
+        if self.bot.user and self.bot.user.avatar:
+            embed.set_footer(text="Minecraft Server Manager", icon_url=self.bot.user.avatar.url)
+        else:
+            embed.set_footer(text="Minecraft Server Manager")
+            
+        embed.timestamp = discord.utils.utcnow()
+        return embed
+
     @app_commands.command(name="info", description="Show technical bot information")
     @has_role("server_info")
     async def info(self, interaction: discord.Interaction):
         """Displays detailed server information"""
         await interaction.response.defer(ephemeral=True)
         try:
-            await self.info_manager.update_info(interaction.guild)
-            ver = await parse_server_version()
-            
-            ip = "Unknown (Check /ip)"
-            try:
-                playit_cog = self.bot.get_cog("PlayitCog")
-                if playit_cog and playit_cog.cached_address:
-                    ip = playit_cog.cached_address
-                else:
-                    bot_cfg = config.load_bot_config()
-                    ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
-            except Exception as e:
-                logger.error(f"Failed to fetch IP for info command: {e}")
-            
-            spawn = self.info_manager._get_spawn() or "Not set"
-            
-            embed = discord.Embed(title="🌍 Server Information", color=0x5865F2)
-            embed.add_field(name="IP Address", value=ip, inline=False)
-            embed.add_field(name="Version", value=ver, inline=True)
-            
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-            embed.add_field(name="System CPU", value=f"{cpu_percent}%", inline=True)
-            
-            mem = psutil.virtual_memory()
-            embed.add_field(name="System RAM", value=f"{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)", inline=True)
-            
-            server_path = config.SERVER_DIR
-            try:
-                disk = psutil.disk_usage(server_path)
-                embed.add_field(name="Disk Usage", value=f"{disk.percent}% ({disk.free // 1024**3}GB free)", inline=True)
-            except Exception as disk_error:
-                logger.debug(f"Failed to get disk usage: {disk_error}")
-
-            if self.bot.server.is_running():
-                embed.add_field(name="Status", value="🟢 Online", inline=True)
-                
-                uptime_str = "Unknown"
-                if hasattr(self.bot.server, 'get_start_time'):
-                    start_time = self.bot.server.get_start_time()
-                    if start_time:
-                        delta = timedelta(seconds=int(time.time() - start_time))
-                        uptime_str = str(delta)
-                embed.add_field(name="Uptime", value=uptime_str, inline=True)
-                
-                tps = await self._get_tps_info()
-                embed.add_field(name="TPS", value=tps, inline=True)
-
-                try:
-                    # Fix: rcon_cmd returns (success, response)
-                    success_list, players_raw = await rcon_cmd("list")
-                    players_formatted, current_players, max_players = self._get_player_list_info(players_raw)
-                    embed.add_field(name="Players", value=players_formatted, inline=False)
-                except Exception as e:
-                    logger.error(f"Error fetching player list for info command: {e}")
-                    players_formatted, _, _ = self._get_player_list_info("Unable to fetch player list")
-                    embed.add_field(name="Players", value=players_formatted, inline=False)
-            else:
-                embed.add_field(name="Status", value="🔴 Offline", inline=True)
-            
-            embed.add_field(name="Spawn", value=spawn, inline=False)
+            embed = await self.build_info_embed(interaction.guild)
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
             logger.error(f"Error in info command: {e}", exc_info=True)

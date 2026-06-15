@@ -732,7 +732,7 @@ class SetupView(ui.View):
                 name="Quick Start",
                 value=(
                     f"1. Server is {status_text.lower()}\n"
-                    f"2. Use `/status` to check server status\n"
+                    f"2. Use `/info` to see server details\n"
                     f"3. Use `/control` for the control panel\n"
                     f"4. Check {command_channel.mention if command_channel else '#command'} for commands"
                 ),
@@ -741,6 +741,16 @@ class SetupView(ui.View):
             
             embed.set_footer(text="Use /help to see all available commands")
             await message.edit(embed=embed)
+            
+            # Broadcast readiness to the command channel
+            if server_ready and command_channel:
+                try:
+                    info_cog = interaction.client.get_cog("Info")
+                    if info_cog:
+                        info_embed = await info_cog.build_info_embed(interaction.guild)
+                        await command_channel.send(content="🎉 **Your Minecraft server is ready!**", embed=info_embed)
+                except Exception as e:
+                    logger.error(f"Failed to broadcast server readiness: {e}")
             
             # Trigger control panel update immediately so it shows correct status
             try:
