@@ -696,7 +696,7 @@ class SetupView(ui.View):
                 embed.description = "**Step 5/5:** Server started, waiting for it to be fully ready..."
                 await message.edit(embed=embed)
                 
-                for attempt in range(30):  # Up to 60 seconds (30 * 2s)
+                for attempt in range(90):  # Up to 180 seconds (90 * 2s) for slow hardware like CM4
                     try:
                         success, response = await rcon_cmd("list")
                         if success and "players" in response.lower():
@@ -707,7 +707,7 @@ class SetupView(ui.View):
                     await asyncio.sleep(2)
                 
                 if not server_ready:
-                    logger.warning("Server started but RCON not available after 60s timeout")
+                    logger.warning("Server started but RCON not available after 180s timeout")
             
             # Success embed
             command_channel = interaction.client.get_channel(config.COMMAND_CHANNEL_ID)

@@ -92,6 +92,17 @@ class SetupHelper:
         if guild.owner:
             updates['owner_id'] = guild.owner.id
 
+        # Force control panel to update immediately to show the Welcome/Setup message
+        try:
+            if 'COMMAND_CHANNEL_ID' in updates:
+                control_cog = self.bot.get_cog("ControlPanelCog")
+                if control_cog:
+                    # Temporarily update config in memory so the cog can find the channel
+                    config.COMMAND_CHANNEL_ID = str(updates['COMMAND_CHANNEL_ID'])
+                    await control_cog.update_panel()
+        except Exception as e:
+            logger.error(f"Failed to trigger initial control panel update: {e}")
+
         logger.debug("--- Self-Healing Setup Completed ---")
         return updates
 
