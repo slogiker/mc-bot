@@ -141,7 +141,8 @@ make test  # Runs 48+ unit tests in Docker
 
 | Document | Description |
 |----------|-------------|
-| [`docs/information.md`](docs/information.md) | Full technical reference, architecture, and version history |
+| [`docs/information.md`](docs/information.md) | Full technical reference and architecture |
+| [`docs/version_history.md`](docs/version_history.md) | Detailed changelog and version history |
 | [`docs/commands.md`](docs/commands.md) | Complete command cheatsheet with permissions |
 
 ---
