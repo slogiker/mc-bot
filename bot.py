@@ -16,12 +16,22 @@ from src.join_guard import JoinGuard
 from src.utils import rcon_cmd
 
 # --- Argument Parsing ---
-parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
-parser.add_argument("--simulate", action="store_true", help="Run in Simulation/Ghost Mode (No file/system changes)")
-args = parser.parse_args()
+def parse_args():
+    parser = argparse.ArgumentParser(description="Minecraft Discord Bot")
+    parser.add_argument("--simulate", action="store_true", help="Run in Simulation/Ghost Mode (No file/system changes)")
+    subparsers = parser.add_subparsers(dest="command", help="Subcommands")
+    remove_world_parser = subparsers.add_parser("remove-world", help="Remove the Minecraft world folder")
+    remove_world_parser.add_argument("--simulate", action="store_true", help="Run in Simulation/Ghost Mode (No file/system changes)")
+    
+    if __name__ == "__main__":
+        return parser.parse_args()
+    else:
+        return parser.parse_known_args([])[0]
+
+args = parse_args()
 
 # --- Configuration Setup ---
-is_simulation = args.simulate
+is_simulation = getattr(args, "simulate", False)
 config.set_simulation_mode(is_simulation)
 
 # --- Bot Setup ---
@@ -431,7 +441,147 @@ async def shutdown_handler(bot):
     logger.info("Shutdown complete")
 
 
+async def send_discord_debug_message(message: str):
+    token = config.TOKEN
+    channel_id = config.DEBUG_CHANNEL_ID
+    if not token or not channel_id:
+        print("[WARNING] Discord token or debug channel ID is not configured. Skipping debug channel ping.")
+        return
+    
+    import aiohttp
+    from datetime import datetime
+    url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+    headers = {
+        "Authorization": f"Bot {token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "content": f"[DEBUG] {message}"
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                if resp.status not in (200, 201):
+                    logger.error(f"Failed to send discord message: {resp.status} - {await resp.text()}")
+                else:
+                    print("Debug ping sent to Discord.")
+    except Exception as e:
+        logger.error(f"Failed to send discord message via HTTP: {e}")
+
+async def handle_remove_world():
+    world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
+    
+    # 1. Ping in Discord debug channel
+    msg = "Subcommand remove-world initiated. Stopping Minecraft server and removing the world folder."
+    if is_simulation:
+        msg += " (SIMULATION MODE)"
+    await send_discord_debug_message(msg)
+
+    if not os.path.exists(world_path):
+        print(f"World folder does not exist: {world_path}")
+        print("You can now create a new world with /setup in Discord.")
+        return
+
+    # Check if server is running and stop it peacefully
+    from src.server_tmux import TmuxServerManager
+    from src.server_mock import MockServerManager
+    server = MockServerManager() if is_simulation else TmuxServerManager()
+    
+    if server.is_running():
+        print("Minecraft server is running. Stopping peacefully...")
+        success, stop_msg = await server.stop()
+        if success:
+            print("Minecraft server stopped successfully.")
+        else:
+            print(f"Failed to stop Minecraft server: {stop_msg}")
+            try:
+                proceed = input("Do you want to proceed with world removal anyway? (y/n): ").strip().lower()
+                if proceed not in ('y', 'yes'):
+                    print("Operation cancelled.")
+                    return
+            except KeyboardInterrupt:
+                print("\nOperation cancelled.")
+                return
+
+    # Prompt user for backup
+    try:
+        response = input("Would you like to backup the world before deleting it? (y/n): ").strip().lower()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled.")
+        return
+
+    if response in ('y', 'yes'):
+        backup_dir = os.path.join("backups", "removed_worlds")
+        if not is_simulation:
+            os.makedirs(backup_dir, exist_ok=True)
+        
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_file = os.path.join(backup_dir, f"world_backup_{timestamp}.zip")
+        
+        print(f"Creating backup at {backup_file}...")
+        if not is_simulation:
+            import zipfile
+            try:
+                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for root, dirs, files in os.walk(world_path):
+                        for file in files:
+                            if file == 'session.lock':
+                                continue
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, world_path)
+                            zf.write(file_path, arcname)
+                print(f"Backup created successfully at: {backup_file}")
+            except Exception as e:
+                print(f"Failed to create backup: {e}")
+                try:
+                    proceed = input("Backup failed. Do you want to proceed with removing the world anyway? (y/n): ").strip().lower()
+                    if proceed not in ('y', 'yes'):
+                        print("Operation cancelled.")
+                        return
+                except KeyboardInterrupt:
+                    print("\nOperation cancelled.")
+                    return
+        else:
+            print(f"[SIMULATION] Would write zip to {backup_file}")
+
+    elif response in ('n', 'no'):
+        pass
+    else:
+        print("Invalid input. Operation cancelled.")
+        return
+
+    # Delete the world
+    print(f"Removing world folder: {world_path}...")
+    if not is_simulation:
+        import shutil
+        try:
+            shutil.rmtree(world_path)
+            print("World folder removed successfully.")
+        except Exception as e:
+            print(f"Failed to remove world folder: {e}")
+            return
+    else:
+        print(f"[SIMULATION] Would delete world folder: {world_path}")
+
+    print("You can now create a new world with /setup in Discord.")
+
+    # Peacefully stop docker container
+    if os.path.exists('/.dockerenv'):
+        main_pid = 1
+        if os.getpid() != main_pid:
+            try:
+                print("Peacefully stopping the main docker container process...")
+                import signal
+                os.kill(main_pid, signal.SIGTERM)
+            except Exception as e:
+                print(f"Failed to stop docker container: {e}")
+
 async def main():
+    if args.command == "remove-world":
+        await handle_remove_world()
+        return
+
     bot = MinecraftBot()
     token = config.TOKEN
     

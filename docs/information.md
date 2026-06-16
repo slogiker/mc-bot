@@ -39,6 +39,7 @@ The **"Observability & Polish"** update focused on hardening the system and impr
 ### 🔴 Critical / Active
 - [x] **JoinGuard v2 Implementation**: Migration from DMs to kick-screen codes.
 - [x] **Config Deadlock Resolution**: Re-entrant locking architecture.
+- [x] **Remove World Subcommand**: CLI option to delete the world with a backup prompt.
 - [ ] **Forge API Expansion**: Implementing reliable version fetching for Forge platforms.
 - [ ] **Timeout Implementation**: Adding timeouts to all external API calls (Mojang, Modrinth).
 

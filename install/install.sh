@@ -94,6 +94,23 @@ do_update() {
     echo -e "${GREEN}${ICON_CHECK} Bot updated and restarted.${NC}"
 }
 
+do_remove_world() {
+    if [ "$(docker inspect -f '{{.State.Running}}' mc-bot 2>/dev/null)" = "true" ]; then
+        docker exec -it mc-bot python bot.py remove-world "$@"
+    else
+        echo -e "${YELLOW}${ICON_WARN} Bot container is not running.${NC}"
+        echo -e "Attempting to run world removal locally..."
+        if command -v python &> /dev/null; then
+            python bot.py remove-world "$@"
+        elif command -v python3 &> /dev/null; then
+            python3 bot.py remove-world "$@"
+        else
+            echo -e "${RED}${ICON_CROSS} Python is not installed on the host. Cannot run remove-world.${NC}"
+            return 1
+        fi
+    fi
+}
+
 do_reinstall() {
     echo -e "\n${BLUE}${BOLD}${ICON_GEAR} Reinstalling everything...${NC}"
     SKIP_DETECTION=1
@@ -152,6 +169,7 @@ show_help() {
     echo -e "  ${NC}status${NC}    - Show container status"
     echo -e "  ${BLUE}update${NC}    - Pull latest code and rebuild"
     echo -e "  ${RED}reinstall${NC} - Reconfigure credentials and/or reset world"
+    echo -e "  ${RED}remove-world${NC} - Stop server and delete/backup world folder"
     echo -e ""
     echo -e "Options:"
     echo -e "  ${MAGENTA}--skip-start${NC} - Run setup without starting containers"
@@ -170,6 +188,7 @@ if [ -n "$1" ]; then
         logs) do_logs; exit 0 ;;
         status) do_status; exit 0 ;;
         update) do_update; exit 0 ;;
+        remove-world) shift; do_remove_world "$@"; exit 0 ;;
         reinstall) do_reinstall ;; # Don't exit, continue to setup
         -h|--help) show_help; exit 0 ;;
         *) # If it's a flag like --skip-start, we handle it later

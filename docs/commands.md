@@ -82,6 +82,7 @@ Run these in your `mc-bot` directory (where `docker-compose.yml` is).
 | **Stop Everything**  | `docker compose down`                                      |
 | **Restart Bot**      | `docker compose restart mc-bot`                            |
 | **Update Bot**       | `python install/update.py`                                 |
+| **Remove World**     | `docker exec -it mc-bot python bot.py remove-world`        |
 
 ### Logs & Debugging
 
