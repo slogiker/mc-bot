@@ -519,6 +519,15 @@ Run these in your `mc-bot` directory (where `docker-compose.yml` is).
 | **Stop Everything**  | `docker compose down`                                      |
 | **Restart Bot**      | `docker compose restart mc-bot`                            |
 | **Update Bot**       | `python install/update.py`                                 |
+
+### World Management
+
+```bash
+# Remove/reset the Minecraft world (with optional backup prompt)
+./install/install.sh remove-world
+./install/install.sh remove-world --no-backup
+./install/install.sh remove-world --backup-only
+```
 | **Remove World**     | `docker exec -it mc-bot python bot.py remove-world`        |
 
 ### Logs & Debugging
@@ -702,7 +711,7 @@ Builds dynamic help embed by cross-referencing user's roles against `config.ROLE
 
 ### `cogs/management.py`
 
-Wraps `bot.server.start()`, `stop()`, `restart()`. Each command updates the `#server-information` channel via `ServerInfoManager` on success.
+Wraps `bot.server.start()`, `stop()`, `restart()`. Each command updates the `#server-information` channel via `ServerInfoManager` on success. **v3.1.2 Update:** Now uses event-driven log monitoring instead of hardcoded sleeps for start/stop sequences. The `log_dispatcher` is used to watch for the `"Done"` string during startup rather than a fixed timeout.
 
 ### `cogs/mods.py`
 
@@ -723,6 +732,7 @@ Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`)
 - Empty tunnel list → no tunnels configured
 - No address on tunnel → tunnel still initializing
 - Network error → internet connectivity issue
+- **v3.1.2 Update:** Now uses smart polling (event-driven) instead of hardcoded sleeps for tunnel detection.
 
 #### Playit CLI Reference (v1.0.4)
 
@@ -836,7 +846,7 @@ Background tasks started from `on_ready` (not `__init__`):
 
 `BackupManager` singleton (`backup_manager`).
 
-- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Unnamed calls (`custom_name=None`) route to `auto_dir` — retention cleanup runs after each (DB_005, DB_006). Named calls route to `custom_dir` — never auto-deleted. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`. Validates that the world directory exists before zipping (raises `FileNotFoundError` if missing — fixed in v2.7.1, previously created empty backups silently).
+- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Unnamed calls (`custom_name=None`) route to `auto_dir` — retention cleanup runs after each (DB_005, DB_006). Named calls route to `custom_dir` — never auto-deleted. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`. Validates that the world directory exists before zipping (raises `FileNotFoundError` if missing — fixed in v2.7.1, previously created empty backups silently). **v3.1.2 Update:** Uses smart polling instead of sleeps. The watchdog is disabled during world auto-generation on CM4 hardware to prevent premature restarts.
 - `upload_backup(filepath)` → URL string via `pyonesend.OneSend().upload()`.
 - `_cleanup_auto_backups()` → deletes files older than `BACKUP_RETENTION_DAYS` (DB_006).
 - Backup dirs: `BACKUP_DIR/auto/` and `BACKUP_DIR/custom/` where `BACKUP_DIR = /app/backups`.
@@ -854,7 +864,7 @@ Multi-step UI components for the install wizard:
 
 ### `src/log_dispatcher.py`
 
-`LogDispatcher` singleton (`log_dispatcher`). See [Section 3.2](#32-log-dispatcher).
+`LogDispatcher` singleton (`log_dispatcher`). See [Section 3.2](#32-log-dispatcher). **v3.1.2 Update:** Now supports one-shot log waiting for startup sequences (waiting for specific strings like `"Done"` to appear in logs).
 
 ### `src/logger.py`
 
@@ -888,6 +898,7 @@ After refactoring, this module is now a thin helper containing only `get_server_
 - `update_info(guild)` → posts/edits plain-text message in `#server-information` channel. Shows: address, version, seed, spawn, world spawn.
 - `set_spawn(x, y, z)` → saves to `bot_config`, calls `update_info()`.
 - `_get_version()`, `_get_seed()`, `_get_spawn()`, `_get_world_spawn()` → read from config/server.properties.
+- **v3.1.2 Update:** `_get_address()` is now async and actively fetches the Playit IP from the cache if empty.
 
 ### `src/server_tmux.py`
 
@@ -897,7 +908,7 @@ After refactoring, this module is now a thin helper containing only `get_server_
 - State file: `mc-server/bot_state.json` → `{"intentional_stop": bool, "start_time": float|null}`.
 - `start_time` is set to `time.time()` on every successful server start, cleared to `null` on stop. Persisted across bot restarts.
 - `get_start_time() → float | None` exposes the epoch timestamp for uptime calculation.
-- Start command: `cd /app/mc-server && java -XmsXXX -XmxXXX -jar server.jar nogui` inside tmux.
+- Start command: `cd /app/mc-server && java -XmsXXX -XmxXXX -jar server.jar nogui` inside tmux. **v3.1.2 Update:** The `start()` method now uses event-driven monitoring via `LogDispatcher` — it monitors background output for the `"Done"` string to safely detect when the world generates, which is crucial for slower hardware like CM4.
 - Stop: sends `stop` RCON command, waits 5s, kills tmux session if still alive.
 - `is_running()`: checks `tmux has-session -t minecraft` return code.
 
@@ -907,10 +918,11 @@ After refactoring, this module is now a thin helper containing only `get_server_
 
 - `ensure_setup(guild)` → creates/finds roles (MC Admin, MC Player), category (Minecraft Server), channels (command, log, debug). Returns dict of IDs.
 - `_assign_admin_role(guild, role)` → assigns MC Admin to guild owner and any member with a role named "Owner".
+- **v3.1.2 Update:** Triggers the control panel welcome message instantly after setup completes. RCON polling timeout was increased for CM4 compatibility.
 
 ### `src/setup_views.py`
 
-Modern multi-step Discord form. See [Section 3.6](#36-setup-wizard-flow). Uses `SetupState` dataclass for form state. Fetches version list from Modrinth API on first load.
+Modern multi-step Discord form. See [Section 3.6](#36-setup-wizard-flow). Uses `SetupState` dataclass for form state. Fetches version list from Modrinth API on first load. **v3.1.2 Update:** The EULA generation step is now bypassed (`eula.txt` is created proactively before server start). Also updated to use event-driven log monitoring instead of hardcoded sleeps.
 
 ### `src/rcon_manager.py` _(NEW)_
 
@@ -1055,6 +1067,8 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 
 | #   | File                       | Issue                                                                                                                                                                       |
 | --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ FIXED v3.1.2 | `src/server_info_manager.py` | `_get_address()` was async-fixed to fetch Playit IP if cache is empty. |
+| ✅ FIXED v3.1.2 | `src/backup_manager.py` | Watchdog disabled during world auto-generation on CM4 to prevent restart loops. |
 | 1   | `cogs/admin.py`            | `/logs` runs `docker logs mc-bot` as a subprocess from inside the container. This requires `/var/run/docker.sock` to be mounted (it isn't). Silently falls back to reading `latest.log` which only contains bot logs, not server logs. |
 | ~~2~~   | ~~`src/config.py`~~            | ~~`WORLD_FOLDER` is hardcoded as `"world"`.~~ | ✅ FIXED — `WORLD_FOLDER` is now a `@property` reading `level-name` from `server.properties`. |
 | ~~3~~   | ~~`cogs/control_panel.py`~~    | ~~`add_view(ControlPanelView)` is registered in `on_ready` instead of `setup_hook`.~~ | ✅ FIXED v2.8.1 — moved to `cog_load()`. |
@@ -1068,6 +1082,16 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 ---
 
 ## 11. Version History & Recent Changes
+
+### v3.1.2 — Event-Driven Architecture & CM4 Hardening (2026-06-23)
+- **Event-Driven Startup/Shutdown**: Replaced all hardcoded `sleep()` timeouts in management, setup_views, and server_tmux with real-time log monitoring via LogDispatcher. Server readiness is now detected by watching for the "Done" string in logs.
+- **EULA Bypass**: `eula.txt` is now created proactively before server start, removing a slow generation wait on first boot.
+- **Remove World CLI**: Added `./install/install.sh remove-world` subcommand with optional backup prompt and `--no-backup`/`--backup-only` flags.
+- **CM4 Hardening**: Increased RCON polling timeout and disabled watchdog during world auto-generation for Raspberry Pi CM4 compatibility.
+- **Docker Log Rotation**: Added log rotation limits to `docker-compose.yml` to prevent infinite disk usage.
+- **Playit Smart Polling**: `cogs/playit.py` now uses event-driven polling instead of hardcoded sleeps for tunnel detection.
+- **Async Playit Address**: `server_info_manager._get_address()` is now async and actively fetches Playit IP if cache is empty.
+- **Deep Project Polish**: Fixed 6 failing tests, Python codebase sweep (unused imports, bare except blocks), infrastructure hardening (Java 21 LTS, no-new-privileges, read-only volume mounts).
 
 ### v3.0.0 — Security & Reliability Overhaul (2026-05-22)
 
