@@ -7,13 +7,53 @@ import sys
 import os
 import signal
 import time
+import logging
 from src.config import config
 from src.logger import logger
 from src.server_tmux import TmuxServerManager
 from src.log_dispatcher import log_dispatcher
 from src.log_watcher import LogWatcher
 from src.join_guard import JoinGuard
-from src.utils import rcon_cmd
+from src.utils import rcon_cmd, send_debug
+
+# --- Discord Logging Handler ---
+class DiscordDebugHandler(logging.Handler):
+    """
+    Custom logging handler that dispatches ERROR and CRITICAL logs 
+    to the Discord debug channel asynchronously.
+    """
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+        self.setLevel(logging.ERROR)
+        self._is_sending = False
+
+    def emit(self, record):
+        # Prevent recursion if sending fails
+        if self._is_sending:
+            return
+            
+        # We must use the bot's event loop to send the message
+        try:
+            if not self.bot.loop.is_closed():
+                self.bot.loop.create_task(self._send_to_discord(record))
+        except:
+            pass
+
+    async def _send_to_discord(self, record):
+        self._is_sending = True
+        try:
+            msg = self.format(record)
+            # Truncate if too long for Discord
+            if len(msg) > 1900:
+                msg = msg[:1900] + "..."
+            
+            # Use the existing send_debug utility
+            await send_debug(self.bot, msg)
+        except:
+            pass # Silently fail to avoid loops
+        finally:
+            self._is_sending = False
 
 # --- Argument Parsing ---
 def parse_args():
@@ -71,10 +111,18 @@ class MinecraftBot(commands.Bot):
         self.log_watcher = LogWatcher(self)
         self.presence_task = None
         
+        # Add Discord logging handler
+        self._discord_handler = DiscordDebugHandler(self)
+        if logger.handlers:
+            self._discord_handler.setFormatter(logger.handlers[0].formatter)
+        logger.addHandler(self._discord_handler)
+        
         # Attach event listeners
         self.add_listener(self.on_minecraft_player_login,  'on_minecraft_player_login')
         self.add_listener(self.on_minecraft_player_quit,   'on_minecraft_player_quit')
         self.add_listener(self.on_minecraft_collision,     'on_minecraft_collision')
+        self.add_listener(self.on_minecraft_started,       'on_minecraft_started')
+        self.add_listener(self.on_minecraft_stopping,      'on_minecraft_stopping')
 
     async def update_presence_loop(self):
         """Background task to update bot presence based on server and RCON status."""
@@ -139,6 +187,31 @@ class MinecraftBot(commands.Bot):
     async def on_minecraft_collision(self, username: str):
         """Dispatched custom event from LogWatcher when a collision is detected."""
         await self.join_guard.handle_collision(username)
+
+    async def on_minecraft_started(self):
+        """Dispatched custom event from LogWatcher when 'Done' is detected."""
+        logger.debug("Instant Presence Update: Server is Online")
+        await self.change_presence(
+            activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"),
+            status=discord.Status.online
+        )
+
+    async def on_minecraft_stopping(self):
+        """Dispatched custom event from LogWatcher when 'Stopping server' is detected."""
+        logger.debug("Instant Presence Update: Server is Stopping")
+        await self.change_presence(
+            activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Stopping..."),
+            status=discord.Status.idle
+        )
+
+    async def start_background_tasks(self):
+        """Starts background log monitoring tasks if not already running."""
+        try:
+            await log_dispatcher.start()
+            self.log_watcher.start()
+            logger.debug("Background log monitoring tasks ensured.")
+        except Exception as e:
+            logger.error(f"Failed to start background tasks: {e}")
 
     async def on_tree_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         """
@@ -358,32 +431,28 @@ class MinecraftBot(commands.Bot):
             self.presence_task = asyncio.create_task(self.update_presence_loop())
 
         # Ensure background tasks are running if the server is online
-        try:
-            if self.server.is_running():
-                await log_dispatcher.start()
-                self.log_watcher.start()
-        except Exception as e:
-            logger.error(f"Failed to start background tasks: {e}")
+        if self.server.is_running():
+            await self.start_background_tasks()
         
-        # Send 'System Online' notification
+        # Send 'System Online' notification to debug channel
         if not self._startup_complete:
             self._startup_complete = True
-            cmd_channel_id = config.COMMAND_CHANNEL_ID
-            if cmd_channel_id:
-                channel = self.get_channel(int(cmd_channel_id))
+            debug_channel_id = config.DEBUG_CHANNEL_ID
+            if debug_channel_id:
+                channel = self.get_channel(int(debug_channel_id))
                 if channel:
                     embed = discord.Embed(
-                        title="✅ System Online",
-                        description="Bot is ready! Start with **/setup**",
+                        title="✅ System Ready",
+                        description=f"Bot version {config.installed_version} is online.",
                         color=discord.Color.green(),
                         timestamp=discord.utils.utcnow()
                     )
                     server_status = "Online" if self.server.is_running() else "Offline"
-                    embed.add_field(name="Minecraft Server", value=f"**{server_status}**", inline=True)
-                    embed.add_field(name="Simulation Mode", value="Active 👻" if is_simulation else "Inactive", inline=True)
+                    embed.add_field(name="Minecraft", value=f"**{server_status}**", inline=True)
+                    embed.add_field(name="Mode", value="Ghost 👻" if is_simulation else "Production", inline=True)
                     
                     await channel.send(embed=embed)
-                    logger.debug("Sent 'System Online' notification to command channel.")
+                    logger.debug("Sent 'System Online' notification to debug channel.")
 
         # Check for pending bot restart message
         try:

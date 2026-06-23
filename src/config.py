@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dotenv import load_dotenv
 from filelock import FileLock
 import discord
+from src.logger import logger # Ensure logger is imported at the top
 
 load_dotenv()
 
@@ -35,6 +36,17 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
         if not re.match(r'^\d+[MG]$', data[key]):
             errors.append(f"{key} must be like '4G' or '2048M'")
     
+    # Integer validations
+    for key, min_val, max_val in [
+        ('backup_keep_days', 1, 365),
+        ('max_auto_restarts', 0, 10),
+        ('startup_timeout', 30, 1200)
+    ]:
+        if key not in data:
+            errors.append(f"Missing required field: {key}")
+        elif not isinstance(data[key], int) or not min_val <= data[key] <= max_val:
+            errors.append(f"{key} must be an integer between {min_val} and {max_val}")
+    
     # Check min <= max
     if 'java_ram_min' in data and 'java_ram_max' in data:
         try:
@@ -61,12 +73,6 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
             datetime.strptime(data[key], '%H:%M')
         except ValueError:
             errors.append(f"{key} must be HH:MM format (e.g., '03:00')")
-    
-    # Keep days range
-    if 'backup_keep_days' not in data:
-        errors.append("Missing required field: backup_keep_days")
-    elif not isinstance(data['backup_keep_days'], int) or not 1 <= data['backup_keep_days'] <= 365:
-        errors.append("backup_keep_days must be an integer between 1 and 365")
     
     # Timezone
     if 'timezone' not in data:
@@ -156,6 +162,8 @@ class Config:
         self.BACKUP_TIME = user_cfg['backup_time']
         self.BACKUP_RETENTION_DAYS = user_cfg['backup_keep_days']
         self.RESTART_TIME = user_cfg['restart_time']
+        self.MAX_AUTO_RESTARTS = user_cfg.get('max_auto_restarts', 3)
+        self.STARTUP_TIMEOUT = user_cfg.get('startup_timeout', 300)
         
         user_tz = user_cfg.get('timezone', 'auto')
         if user_tz.lower() == 'auto':
@@ -219,6 +227,8 @@ class Config:
                 "backup_time": old_cfg.get('backup_time', '03:00'),
                 "backup_keep_days": old_cfg.get('backup_retention_days', 7),
                 "restart_time": old_cfg.get('restart_time', '04:00'),
+                "max_auto_restarts": 3,
+                "startup_timeout": 300,
                 "timezone": old_cfg.get('timezone', 'auto'),
                 "permissions": self._convert_old_roles(old_cfg.get('roles', {}))
             }
@@ -258,23 +268,25 @@ class Config:
                 "control", "backup", "backup_now", "backup_list", "backup_download",
                 "logs", "whitelist_add", "set_spawn", "status", "players",
                 "seed", "version", "info", "mods", "stats", "help",
-                "event_create", "event_list", "event_delete", "motd",
-                "trigger_add", "trigger_list", "trigger_remove",
-                "reload_config", "shutdown", "bot_stop", "server_info"
+                "event_manage", "event_list", "trigger_admin", "trigger_list",
+                "reload_config", "admin", "server_info", "uptime"
             ],
             "MC Admin": [
                 "start", "stop", "restart", "cmd", "backup_now",
                 "reload_config", "bot_restart",
                 "logs", "whitelist_add", "seed", "players", "stats",
-                "version", "server_info", "mods", "help", "sync"
+                "version", "server_info", "mods", "help", "sync",
+                "status", "uptime"
             ],
             "MC Player": [
                 "status", "start", "players", "stop", "restart",
                 "logs", "whitelist_add", "seed", "version",
-                "server_info", "mods", "backup_now", "stats", "help"
+                "server_info", "mods", "backup_now", "stats", "help",
+                "uptime"
             ],
             "@everyone": [
-                "status", "help", "players", "seed", "server_info", "mods", "stats"
+                "status", "help", "players", "seed", "server_info", "mods", "stats", "uptime",
+                "link", "verify", "unlink", "linked"
             ]
         }
     
@@ -286,6 +298,8 @@ class Config:
             "backup_time": "03:00",
             "backup_keep_days": 7,
             "restart_time": "04:00",
+            "max_auto_restarts": 3,
+            "startup_timeout": 300,
             "timezone": "auto",
             "permissions": self._convert_old_roles({})
         }
@@ -467,16 +481,11 @@ class Config:
         
         roles_to_reconcile = ["Owner", "MC Admin", "MC Player"]
         roles_in_guild = {r.name: r for r in guild.roles}
-        updates_needed = False
-        updates = {}
 
         for role_name in roles_to_reconcile:
             role = roles_in_guild.get(role_name)
             if not role:
-                from src.logger import logger
-                logger.warning(f"Self-Healer: Role '{role_name}' missing! Recreating...")
-                # Note: We can't easily create roles here because this is sync.
-                # Re-setup logic handled in SetupHelper.ensure_setup()
+                logger.warning(f"Self-Healer: Role '{role_name}' missing! Permissions for this role will not be mapped until it exists.")
             
             # Map permissions
             if role_name in self.ROLE_PERMISSIONS:

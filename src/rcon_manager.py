@@ -41,7 +41,7 @@ class RCONManager:
                 if self._client:
                     try:
                         await self._client.close()
-                    except:
+                    except Exception:
                         pass
                     self._client = None
             

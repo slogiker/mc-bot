@@ -1,10 +1,8 @@
 import discord
-from discord import app_commands, ui
+from discord import ui
 from discord.ext import commands, tasks
 from src.config import config
 from src.logger import logger
-from src.utils import has_role, rcon_cmd
-import asyncio
 
 class ControlPanelView(ui.View):
     def __init__(self, bot):

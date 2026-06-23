@@ -72,7 +72,7 @@ class LogsView(discord.ui.View):
             formatted_lines.insert(0, line)
             current_length += line_len
             
-        return f"```log\n" + "\n".join(formatted_lines) + "\n```"
+        return "```log\n" + "\n".join(formatted_lines) + "\n```"
 
     async def _update_message(self, interaction: discord.Interaction):
         from src.log_dispatcher import log_dispatcher

@@ -1,12 +1,9 @@
 import discord
-from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 import asyncio
 import random
 import re
-import aiofiles
-import os
-from src.utils import rcon_cmd, has_role
+from src.utils import rcon_cmd
 from src.logger import logger
 from src.config import config
 

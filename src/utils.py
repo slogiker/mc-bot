@@ -3,7 +3,6 @@ import json
 import asyncio
 import discord
 from discord import app_commands
-from aiomcrcon import Client
 from src.config import config
 from src.logger import logger
 
@@ -36,26 +35,19 @@ def has_role(cmd_name: str):
         cmd_name (str): The internal name of the command permission to check.
     """
     async def predicate(interaction):
-        # Use config.ROLES which maps Role ID -> [commands]
-        # This is populated by config.resolve_role_permissions(guild)
-        
         # 0. Guild Owner ALWAYS has full access to all commands
         if interaction.user.id == interaction.guild.owner_id:
             return True
         
         # 1. Check Permissions by Role ID (Preferred)
+        # config.ROLES is populated with Role ID -> [commands] in resolve_role_permissions
         for role in interaction.user.roles:
             if cmd_name in config.ROLES.get(str(role.id), []):
                 return True
                 
         # 2. Check Permissions by Role Name (Legacy/Fallback)
-        # This handles cases where ID mapping might be missing or config uses names directly
-        # and resolve_role_permissions hasn't run or missed something.
-        # Although resolve_role_permissions maps names to IDs, we double check config.ROLE_PERMISSIONS
-        # just in case `interaction.user.roles` has a name that matches directly.
-        
-        user_config = config.load_user_config()
-        permissions = user_config.get('permissions', {})
+        # Use in-memory config.ROLE_PERMISSIONS instead of reading from disk
+        permissions = config.ROLE_PERMISSIONS
         
         for role in interaction.user.roles:
             if cmd_name in permissions.get(role.name, []):
@@ -69,11 +61,12 @@ def has_role(cmd_name: str):
 
         await send_debug(interaction.client, f"Check failed: {interaction.user.mention} ({interaction.user.id}) lacks role for '{cmd_name}'.")
         
-        # Helper to list allowed roles (friendly names)
-        # We can reconstruct this from permissions dict
         allowed_roles = [r for r, cmds in permissions.items() if cmd_name in cmds]
         await interaction.response.send_message(f"❌ You need one of these roles: {', '.join(allowed_roles)}", ephemeral=True)
         return False
+
+    # Store the required permission name for help command inspection
+    predicate._required_permission = cmd_name
     return app_commands.check(predicate)
 
 async def rcon_cmd(cmd: str) -> tuple[bool, str]:
@@ -152,16 +145,6 @@ async def get_server_mod_folder() -> str | None:
         return 'mods'
         
     return None
-
-def map_key(key):
-    """Map user input to Minecraft stat key format."""
-    return f"minecraft:{key.lower()}"
-
-def display_key(key):
-    """Remove 'minecraft:' prefix for display."""
-    if key.startswith("minecraft:"):
-        return key[10:]
-    return key
 
 async def get_dir_size_gb(start_path='.') -> float:
     """

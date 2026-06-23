@@ -26,6 +26,8 @@ x-base: &base
   mem_limit: 8g
   tty: true
   stdin_open: true
+  security_opt:
+    - no-new-privileges:true
 
 services:
   # Production — source files baked into the image
@@ -36,7 +38,7 @@ services:
       - ./backups:/app/backups
       - ./logs:/app/logs
       - ./data:/app/data
-      - ./.env:/app/.env
+      - ./.env:/app/.env:ro
 
   # Dev — source files mounted live, no rebuild needed for code changes
   # Usage: docker compose --profile dev up --build
@@ -49,7 +51,7 @@ services:
       - ./backups:/app/backups
       - ./logs:/app/logs
       - ./data:/app/data
-      - ./.env:/app/.env
-      - ./bot.py:/app/bot.py
-      - ./cogs:/app/cogs
-      - ./src:/app/src
+      - ./.env:/app/.env:ro
+      - ./bot.py:/app/bot.py:ro
+      - ./cogs:/app/cogs:ro
+      - ./src:/app/src:ro

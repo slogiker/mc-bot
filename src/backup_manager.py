@@ -1,11 +1,9 @@
 import os
-import shutil
 import asyncio
 import zipfile
 from datetime import datetime
 from src.config import config
 from src.logger import logger
-import aiohttp
 
 class BackupManager:
     def __init__(self):
@@ -41,37 +39,37 @@ class BackupManager:
             
             # Disable auto-save and flush to disk if server is running to prevent corruption
             save_disabled = False
-            if server and server.is_running():
-                from src.utils import rcon_cmd
-                logger.info("Server is running, disabling auto-save for backup...")
-                
-                success_off, _ = await rcon_cmd("save-off")
-                success_all, _ = await rcon_cmd("save-all")
-                
-                if not success_off or not success_all:
-                    logger.warning("RCON save-off or save-all failed. Backup might be inconsistent.")
-                    # Fallback to the old brief wait if RCON failed, just in case
-                    await asyncio.sleep(2)
-                else:
-                    save_disabled = True
-                    from src.log_dispatcher import log_dispatcher
-                    # Wait for the server to confirm it finished saving to disk (can take time on slow drives)
-                    logger.info("Waiting for world flush to complete...")
-                    if not await log_dispatcher.wait_for_pattern("Saved the game", timeout=60):
-                        logger.warning("Timed out waiting for 'Saved the game' confirmation. Proceeding anyway.")
-
-                try:
-                    # Run blocking zip operation in a separate thread
-                    await asyncio.to_thread(self._zip_world, dest_path)
-                    logger.info(f"Backup created successfully: {dest_path}")
+            try:
+                if server and server.is_running():
+                    from src.utils import rcon_cmd
+                    logger.info("Server is running, disabling auto-save for backup...")
                     
-                    if not custom_name:
-                        await self._cleanup_auto_backups()
-                        
-                    return True, filename, dest_path
-                except Exception as e:
-                    logger.error(f"Backup failed: {e}")
-                    return False, str(e), None
+                    success_off, _ = await rcon_cmd("save-off")
+                    success_all, _ = await rcon_cmd("save-all")
+                    
+                    if not success_off or not success_all:
+                        logger.warning("RCON save-off or save-all failed. Backup might be inconsistent.")
+                        # Fallback to the old brief wait if RCON failed, just in case
+                        await asyncio.sleep(2)
+                    else:
+                        save_disabled = True
+                        from src.log_dispatcher import log_dispatcher
+                        # Wait for the server to confirm it finished saving to disk (can take time on slow drives)
+                        logger.info("Waiting for world flush to complete...")
+                        if not await log_dispatcher.wait_for_pattern("Saved the game", timeout=60):
+                            logger.warning("Timed out waiting for 'Saved the game' confirmation. Proceeding anyway.")
+
+                # Run blocking zip operation in a separate thread (always, even if server is offline)
+                await asyncio.to_thread(self._zip_world, dest_path)
+                logger.info(f"Backup created successfully: {dest_path}")
+                
+                if not custom_name:
+                    await self._cleanup_auto_backups()
+                    
+                return True, filename, dest_path
+            except Exception as e:
+                logger.error(f"Backup failed: {e}")
+                return False, str(e), None
             finally:
                 if save_disabled:
                     from src.utils import rcon_cmd

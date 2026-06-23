@@ -1,8 +1,5 @@
 import os
 import psutil
-import asyncio
-import shutil
-import discord
 from pathlib import Path
 from discord.ext import commands, tasks
 from src.config import config

@@ -6,9 +6,14 @@ import os
 import aiohttp
 import nbtlib
 import asyncio
+import uuid # Moved from get_offline_uuid
 from src.config import config
-from src.utils import has_role, map_key, display_key
+from src.discord_utils import has_role # Standardized import
 from src.logger import logger
+
+# --- Constants ---
+TICKS_PER_SECOND = 20
+SECONDS_PER_HOUR = 3600
 
 class StatsCog(commands.Cog):
     """
@@ -56,7 +61,6 @@ class StatsCog(commands.Cog):
         Returns:
             tuple[str, str]: A tuple containing (uuid_string, username).
         """
-        import uuid
         offline_uuid = str(uuid.uuid3(uuid.NAMESPACE_DNS, f"OfflinePlayer:{username}")).replace('-', '')
         return offline_uuid, username
 
@@ -74,8 +78,8 @@ class StatsCog(commands.Cog):
         Returns:
             tuple[dict, dict]: A tuple containing (stats_json, nbt_data).
         """
-        # Formatted UUID (with dashes)
-        formatted_uuid = f"{uuid_str[:8]}-{uuid_str[8:12]}-{uuid_str[12:16]}-{uuid_str[16:20]}-{uuid_str[20:]}"
+        # Format UUID with dashes using uuid.UUID object
+        formatted_uuid = str(uuid.UUID(uuid_str))
         
         # Use config.WORLD_FOLDER which dynamically reads from server.properties
         world_path = os.path.join(server_path, config.WORLD_FOLDER) 
@@ -107,6 +111,7 @@ class StatsCog(commands.Cog):
 
     @app_commands.command(name="stats", description="Get player statistics")
     @app_commands.describe(player="Minecraft username", user="Discord user")
+    @has_role("stats")
     async def stats(self, interaction: discord.Interaction, player: str = None, user: discord.Member = None):
         """
         Displays statistics for a Minecraft player.
@@ -175,7 +180,7 @@ class StatsCog(commands.Cog):
         player_kills = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:player_kills', 0)
         mob_kills = stats_json.get('stats', {}).get('minecraft:custom', {}).get('minecraft:mob_kills', 0)
         
-        hours = play_time_ticks / 20 / 3600
+        hours = play_time_ticks / TICKS_PER_SECOND / SECONDS_PER_HOUR
         
         # Skin
         if is_cracked:

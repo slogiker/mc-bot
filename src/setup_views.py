@@ -5,7 +5,6 @@ Multi-step form using Discord Select menus and Buttons for beautiful UX
 
 import discord
 import asyncio
-import subprocess
 from discord import ui
 from typing import Optional, Dict, Any
 from src.mc_installer import mc_installer
@@ -13,15 +12,16 @@ from src.logger import logger
 from src.config import config
 import aiohttp
 from src.setup_helper import SetupHelper
-from src.mod_updater import ModUpdater
-from src.utils import rcon_cmd
-from src.server_info_manager import ServerInfoManager
+import shutil
+import os
+from src.backup_manager import backup_manager
 
 GLOBAL_VERSIONS = []
 
 async def fetch_versions():
     global GLOBAL_VERSIONS
-    if GLOBAL_VERSIONS: return GLOBAL_VERSIONS
+    if GLOBAL_VERSIONS:
+        return GLOBAL_VERSIONS
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get("https://api.modrinth.com/v2/tag/game_version") as resp:
@@ -33,6 +33,100 @@ async def fetch_versions():
         logger.error(f"Failed to fetch Modrinth versions: {e}")
         GLOBAL_VERSIONS = ["26.1.2", "26.1.1", "26.1", "25.4.1", "25.3"] # Fallback
         return GLOBAL_VERSIONS
+
+
+class WorldManagementView(ui.View):
+    """View to handle world management when running setup again."""
+    def __init__(self, bot, interaction: discord.Interaction):
+        super().__init__(timeout=180)
+        self.bot = bot
+        self.interaction = interaction
+
+    async def _perform_full_reset(self, interaction: discord.Interaction):
+        """Helper to stop server and wipe mc-server folder safely."""
+        try:
+            # 1. Immediate UI Lock
+            await interaction.edit_original_response(content="⏳ **Starting full reset. Please wait...**", embed=None, view=None)
+            
+            # 2. Stop server if running
+            if self.bot.server.is_running():
+                await interaction.edit_original_response(content="⏳ **Stopping Minecraft server...**")
+                await self.bot.server.stop()
+                # Extra safety wait
+                await asyncio.sleep(2)
+            
+            # 3. Wipe folder (Keep EULA)
+            await interaction.edit_original_response(content="⏳ **Wiping server files (Keeping EULA)...**")
+            
+            server_dir = config.SERVER_DIR
+            for item in os.listdir(server_dir):
+                if item == "eula.txt":
+                    continue
+                    
+                item_path = os.path.join(server_dir, item)
+                try:
+                    if os.path.isfile(item_path) or os.path.islink(item_path):
+                        os.unlink(item_path)
+                    elif os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                except Exception as wipe_err:
+                    logger.warning(f"Could not delete {item}: {wipe_err}")
+
+            # 4. Clear state
+            try:
+                # Re-enable intentional stop so auto-restart doesn't kick in
+                self.bot.server._intentional_stop = True
+                await self.bot.server._save_state()
+            except Exception:
+                pass
+            
+            await interaction.edit_original_response(content="✅ **Server wiped successfully!**\n\nStarting fresh setup in 3 seconds...")
+            await asyncio.sleep(3)
+            
+            # 5. Restart Setup
+            view = SetupView(interaction)
+            await view.start()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reset server: {e}", exc_info=True)
+            try:
+                await interaction.followup.send(f"❌ **Reset failed:** {e}\nPlease try running `/setup` again or check logs.", ephemeral=True)
+            except Exception:
+                pass
+            return False
+
+    @ui.button(label="Backup & Reset World", style=discord.ButtonStyle.danger, emoji="💾")
+    async def backup_reset(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        
+        # 1. UI Lock
+        await interaction.edit_original_response(content="⏳ **Preparing emergency backup...**", embed=None, view=None)
+        
+        date_str = discord.utils.utcnow().strftime('%Y-%m-%d_%H-%M')
+        success, filename, path = await backup_manager.create_backup(
+            custom_name=f"setup_full_reset_{date_str}", 
+            server=self.bot.server
+        )
+
+        if not success:
+            await interaction.followup.send(f"⚠️ **Backup failed:** {filename}. Attempting reset anyway...", ephemeral=True)
+        else:
+            await interaction.followup.send(f"✅ **Safety backup created:** `{filename}`", ephemeral=True)
+
+        # 2. Perform Full Wipe
+        await self._perform_full_reset(interaction)
+
+    @ui.button(label="Reset World (No Backup)", style=discord.ButtonStyle.secondary, emoji="🗑️")
+    async def reset_only(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await self._perform_full_reset(interaction)
+
+    @ui.button(label="Keep Existing World", style=discord.ButtonStyle.success, emoji="🌍")
+    async def keep_world(self, interaction: discord.Interaction, button: ui.Button):
+        # Proceed to setup directly without wiping
+        view = SetupView(interaction)
+        await view.start()
 
 class SetupState:
     """Manages the state of the setup process"""
@@ -403,11 +497,28 @@ class SetupView(ui.View):
         for item in view_items:
             self.add_item(item)
 
-        if not self.interaction.response.is_done():
-            await self.interaction.response.send_message(embed=embed, view=self, ephemeral=True)
-            self.message = await self.interaction.original_response()
-        else:
-            self.message = await self.interaction.followup.send(embed=embed, view=self, ephemeral=True, wait=True)
+        try:
+            if not self.interaction.response.is_done():
+                await self.interaction.response.send_message(embed=embed, view=self, ephemeral=True)
+                self.message = await self.interaction.original_response()
+            else:
+                # If already acknowledged (e.g. deferred in the calling cog), 
+                # edit the original message instead of sending a new followup.
+                # This keeps the UI in a single ephemeral window.
+                await self.interaction.edit_original_response(content=None, embed=embed, view=self)
+                # Note: original_response() might fail for some deferred followups, 
+                # but we usually don't need self.message if we use interaction directly.
+                try:
+                    self.message = await self.interaction.original_response()
+                except Exception:
+                    self.message = None
+        except Exception as e:
+            logger.error(f"Failed to start SetupView: {e}")
+            # Fallback to followup if edit fails
+            try:
+                self.message = await self.interaction.followup.send(embed=embed, view=self, ephemeral=True, wait=True)
+            except Exception:
+                pass
     
     async def update_current_step(self, interaction: discord.Interaction):
         """Regenerate items for the current step and update the message."""
@@ -418,8 +529,10 @@ class SetupView(ui.View):
         
         if not interaction.response.is_done():
             await interaction.response.edit_message(embed=embed, view=self)
-        elif self.message:
-            await self.message.edit(embed=embed, view=self)
+        else:
+            # If already acknowledged (e.g. deferred), use edit_original_response
+            # which works better for ephemeral messages than message.edit()
+            await interaction.edit_original_response(embed=embed, view=self)
 
     def _get_step_content(self, step: int) -> tuple[discord.Embed, list]:
         """Get embed and view items for current step"""
@@ -651,7 +764,7 @@ class SetupView(ui.View):
                 embed.description = f"**Step 2/5:** {msg}"
                 try:
                     await message.edit(embed=embed)
-                except:
+                except Exception:
                     pass
             
             success, result = await mc_installer.download_server(

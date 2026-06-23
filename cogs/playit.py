@@ -4,10 +4,7 @@ from discord.ext import commands
 import asyncio
 import aiohttp
 import os
-import re
 import time
-import psutil
-import subprocess
 from src.config import config
 from src.logger import logger
 from src.utils import has_role

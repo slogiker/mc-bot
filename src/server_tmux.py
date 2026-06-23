@@ -34,7 +34,7 @@ class TmuxServerManager(ServerInterface):
             logger.error("Tmux not found in PATH")
             return subprocess.CompletedProcess(args, 1, "", "Tmux not found")
         except Exception as e:
-            logger.error(f"Error running tmux command: {e}")
+            logger.error(f"Error running tmux command: {e}", exc_info=True)
             return subprocess.CompletedProcess(args, 1, "", str(e))
 
     def is_running(self) -> bool:
@@ -49,7 +49,7 @@ class TmuxServerManager(ServerInterface):
             self._last_status_check = now
             return self._cached_is_running
         except Exception as e:
-            logger.error(f"Error checking if server is running: {e}")
+            logger.error(f"Error checking if server is running: {e}", exc_info=True)
             return False
 
     def is_intentionally_stopped(self) -> bool:
@@ -76,7 +76,7 @@ class TmuxServerManager(ServerInterface):
                     logger.info("No state file found, assuming intentional stop")
                     self._intentional_stop = True
             except Exception as e:
-                logger.error(f"Failed to load state: {e}")
+                logger.error(f"Failed to load state: {e}", exc_info=True)
                 self._intentional_stop = True
 
     async def _save_state(self):
@@ -96,7 +96,7 @@ class TmuxServerManager(ServerInterface):
                     await f.write(json.dumps(data, indent=2))
                 logger.info(f"Saved state: intentional_stop={self._intentional_stop}, start_time={self._start_time}")
             except Exception as e:
-                logger.error(f"Failed to save state: {e}")
+                logger.error(f"Failed to save state: {e}", exc_info=True)
 
     async def start(self) -> tuple[bool, str]:
         """Start the Minecraft server"""
@@ -113,59 +113,7 @@ class TmuxServerManager(ServerInterface):
             return False, msg
 
         world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
-        world_exists = await asyncio.to_thread(os.path.exists, world_path)
-
-        # Self-healing: If jar exists but world is missing, try to generate it
-        if jar_exists and not world_exists:
-            logger.warning("World folder missing but server.jar exists. Attempting auto-generation (watching logs for 'Done')...")
-            
-            # Start the process in the background
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    "java", "-Ddisable.watchdog=true", "-jar", config.SERVER_JAR, "nogui",
-                    cwd=config.SERVER_DIR,
-                    stdin=subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                
-                # Watch the output for 'Done' or errors
-                done_detected = False
-                # Max 5 minutes for extremely slow generation
-                try:
-                    async with asyncio.timeout(300.0):
-                        while True:
-                            line = await proc.stdout.readline()
-                            if not line:
-                                break
-                            decoded_line = line.decode('utf-8', errors='ignore').strip()
-                            if "Done" in decoded_line and "For help, type" in decoded_line:
-                                logger.info(f"Auto-generation finished successfully: {decoded_line}")
-                                done_detected = True
-                                # Stop the server gracefully since it generated the files
-                                proc.stdin.write(b"stop\n")
-                                await proc.stdin.drain()
-                                break
-                            elif "Failed to load properties from file" in decoded_line:
-                                logger.warning("First run EULA/properties generation detected.")
-                                # Often it stops itself here, let it finish naturally
-                except asyncio.TimeoutError:
-                    logger.error("Auto-generation timed out after 5 minutes.")
-                
-                # Ensure the process is dead before continuing
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=10.0)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-                    
-            except Exception as e:
-                logger.error(f"Auto-generation of world folder failed: {e}")
-
-            # Re-check
-            world_exists = await asyncio.to_thread(os.path.exists, world_path)
-            if not world_exists:
-                return False, "❌ World folder is missing and auto-generation failed. Please run **/setup** to repair the installation."
+        # Minecraft handles world generation automatically on the first boot in tmux.
 
         server_dir_exists = await asyncio.to_thread(os.path.exists, config.SERVER_DIR)
         if not server_dir_exists:
@@ -207,9 +155,9 @@ class TmuxServerManager(ServerInterface):
         await asyncio.sleep(10)
         if not self.is_running():
             logger.error("Server process died immediately after starting.")
-            self._intentional_stop = True # Reset state on failure
-            await self._save_state()
-
+            # We do NOT set _intentional_stop = True here, so that the auto-restart loop
+            # in Management cog can attempt retries up to the limit.
+            
             # Check for world folder
             world_path = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
             world_exists = await asyncio.to_thread(os.path.exists, world_path)
@@ -289,4 +237,4 @@ class TmuxServerManager(ServerInterface):
             self._run_tmux_cmd(["send-keys", "-t", self.session_name, "--", cmd, "C-m"])
             logger.info(f"Sent command to server: {cmd}")
         except Exception as e:
-            logger.error(f"Failed to send command: {e}")
+            logger.error(f"Failed to send command: {e}", exc_info=True)

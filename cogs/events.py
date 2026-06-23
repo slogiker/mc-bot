@@ -29,8 +29,10 @@ class EventsCog(commands.Cog):
                         event_time = datetime.fromisoformat(event['time'])
                         
                         # Reminders (24h and 1h)
-                        if 'reminded_24h' not in event: event['reminded_24h'] = False
-                        if 'reminded_1h' not in event: event['reminded_1h'] = False
+                        if 'reminded_24h' not in event:
+                            event['reminded_24h'] = False
+                        if 'reminded_1h' not in event:
+                            event['reminded_1h'] = False
 
                         time_left = event_time - now
                         
@@ -63,7 +65,8 @@ class EventsCog(commands.Cog):
     async def send_reminder(self, event, time_left_str):
         channel_id = config.LOG_CHANNEL_ID # Dynamically assigned during setup
         channel = self.bot.get_channel(channel_id)
-        if not channel: return
+        if not channel:
+            return
         
         mentions = event.get('mentions', '')
         embed = discord.Embed(title=f"📅 Event Reminder: {event['name']}", color=discord.Color.blue())

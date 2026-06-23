@@ -6,7 +6,7 @@ import re
 import time
 import psutil
 import asyncio
-from datetime import timedelta, datetime
+from datetime import timedelta
 from src.config import config
 from src.utils import rcon_cmd, has_role, parse_server_version, get_server_mod_folder, get_dir_size_gb
 from src.logger import logger
@@ -148,13 +148,14 @@ class Info(commands.Cog):
     @app_commands.command(name="version", description="Show server version")
     @has_role("version")
     async def version(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         try:
             ver = await parse_server_version()
-            await interaction.response.send_message(f"🛠️ Server version: {ver}", ephemeral=True)
+            await interaction.followup.send(f"🛠️ Server version: {ver}", ephemeral=True)
         except Exception as e:
             logger.error(f"Error in version command: {e}", exc_info=True)
             try:
-                await interaction.response.send_message("❌ Failed to get server version.", ephemeral=True)
+                await interaction.followup.send("❌ Failed to get server version.", ephemeral=True)
             except Exception as send_error:
                 logger.debug(f"Failed to send version error message: {send_error}")
 
@@ -181,7 +182,7 @@ class Info(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error in seed command: {e}", exc_info=True)
-            await interaction.followup.send(f"❌ Failed to get seed.", ephemeral=True)
+            await interaction.followup.send("❌ Failed to get seed.", ephemeral=True)
 
     @app_commands.command(name="mods", description="Lists installed mods")
     @has_role("mods")
@@ -339,7 +340,7 @@ class Info(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
             logger.error(f"Error in info command: {e}", exc_info=True)
-            await interaction.followup.send(f"❌ Failed to get info.", ephemeral=True)
+            await interaction.followup.send("❌ Failed to get info.", ephemeral=True)
 
     @app_commands.command(name="set_spawn", description="Set spawn coordinates for server info")
     @app_commands.describe(x="X coordinate", y="Y coordinate", z="Z coordinate")

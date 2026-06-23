@@ -1,7 +1,7 @@
 import os
 import json
+from collections import deque
 import aiohttp
-import asyncio
 import aiofiles
 from src.config import config
 from src.logger import logger

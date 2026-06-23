@@ -150,6 +150,7 @@ class PlayersCog(commands.Cog):
     @app_commands.command(name="players_manage", description="Interactive GUI to manage Bans, Whitelists, and Ops")
     @has_role("players") # Owner/Admin
     async def players_manage(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         # Build cache
         data_cache = {
             'whitelist': self._read_json_safe('whitelist.json'),
@@ -157,11 +158,11 @@ class PlayersCog(commands.Cog):
             'banned': self._read_json_safe('banned-players.json'),
             'usercache': self._read_json_safe('usercache.json') # Master list of known players
         }
-        
+
         wl_count = len(data_cache['whitelist'])
         op_count = len(data_cache['ops'])
         ban_count = len(data_cache['banned'])
-        
+
         embed = discord.Embed(
             title="👥 Player Management",
             description="Use the buttons below to moderate your server.\n"
@@ -171,8 +172,8 @@ class PlayersCog(commands.Cog):
         embed.add_field(name="Whitelisted", value=f"{wl_count} players", inline=True)
         embed.add_field(name="Operators", value=f"{op_count} players", inline=True)
         embed.add_field(name="Banned", value=f"{ban_count} players", inline=True)
-        
-        await interaction.response.send_message(embed=embed, view=MainPlayerView(data_cache), ephemeral=True)
+
+        await interaction.followup.send(embed=embed, view=MainPlayerView(data_cache), ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(PlayersCog(bot))

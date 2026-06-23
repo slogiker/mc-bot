@@ -1,7 +1,6 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import json
 import logging
 from src.config import config
 from src.utils import has_role, send_debug
@@ -172,8 +171,8 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
         
         # We can't fit all arrays perfectly into TextInputs, so we use a comma-separated format
         owner_cmds = ", ".join(perms.get("Owner", []))
-        admin_cmds = ", ".join(perms.get("Admin", []))
-        player_cmds = ", ".join(perms.get("Player", []))
+        admin_cmds = ", ".join(perms.get("MC Admin", perms.get("Admin", [])))
+        player_cmds = ", ".join(perms.get("MC Player", perms.get("Player", [])))
         everyone_cmds = ", ".join(perms.get("@everyone", []))
         
         self.owner_input = discord.ui.TextInput(
@@ -183,13 +182,13 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
             required=True
         )
         self.admin_input = discord.ui.TextInput(
-            label='Admin Commands',
+            label='MC Admin Commands',
             style=discord.TextStyle.paragraph,
             default=admin_cmds,
             required=True
         )
         self.player_input = discord.ui.TextInput(
-            label='Player Commands',
+            label='MC Player Commands',
             style=discord.TextStyle.paragraph,
             default=player_cmds,
             required=True
@@ -213,8 +212,8 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
             
         new_perms = {
             "Owner": parse_cmds(self.owner_input.value),
-            "Admin": parse_cmds(self.admin_input.value),
-            "Player": parse_cmds(self.player_input.value),
+            "MC Admin": parse_cmds(self.admin_input.value),
+            "MC Player": parse_cmds(self.player_input.value),
             "@everyone": parse_cmds(self.everyone_input.value)
         }
         
@@ -229,7 +228,7 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
             if interaction.guild:
                 config.resolve_role_permissions(interaction.guild)
                 
-            await interaction.response.send_message(f"✅ Permissions mapped and updated in memory.", ephemeral=True)
+            await interaction.response.send_message("✅ Permissions mapped and updated in memory.", ephemeral=True)
             await send_debug(interaction.client, f"Settings updated by {interaction.user}: Role Permissions adjusted")
         except Exception as e:
             logger.error(f"Failed to update permissions: {e}")

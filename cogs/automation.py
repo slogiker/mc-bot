@@ -1,10 +1,8 @@
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 import asyncio
-import os
 import time
-from datetime import datetime
 from src.utils import rcon_cmd, has_role
 from src.config import config
 from src.logger import logger

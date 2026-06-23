@@ -6,16 +6,13 @@ Creates roles, channels, and maps IDs to config automatically during installatio
 
 import discord
 import asyncio
-import os
 import sys
-import json
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import config
-from src.logger import logger
 
 async def auto_setup(bot_token: str, guild_id: int):
     """

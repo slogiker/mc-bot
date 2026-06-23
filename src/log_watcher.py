@@ -39,6 +39,10 @@ class LogWatcher:
             r'\[(?:[0-9:]+)\] \[.*?/INFO\].*?(?P<username>[A-Za-z0-9_]+) lost connection: You logged in from another location'
         )
 
+        # Lifecycle patterns
+        self.started_pattern = re.compile(r'\[(?:[0-9:]+)\] \[Server thread/INFO\].*?Done \(')
+        self.stopping_pattern = re.compile(r'\[(?:[0-9:]+)\] \[Server thread/INFO\].*?Stopping (?:the )?server')
+
 
     def start(self):
         if self._task is None or self._task.done():
@@ -90,4 +94,14 @@ class LogWatcher:
         if collision_match:
             username = collision_match.group('username')
             self.bot.dispatch('minecraft_collision', username)
+            return
+
+        # 4. Started match
+        if self.started_pattern.search(line):
+            self.bot.dispatch('minecraft_started')
+            return
+
+        # 5. Stopping match
+        if self.stopping_pattern.search(line):
+            self.bot.dispatch('minecraft_stopping')
             return

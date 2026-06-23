@@ -38,7 +38,8 @@ class ModUpdater:
                 pass
 
     async def _get_project_from_id(self, session, project_id):
-        if not project_id: return None
+        if not project_id:
+            return None
         url = f"{self.api_base}/project/{project_id}"
         try:
             async with session.get(url) as resp:
@@ -49,7 +50,8 @@ class ModUpdater:
         return None
 
     async def _search_project_by_name(self, session, query):
-        if not query: return None
+        if not query:
+            return None
         url = f"{self.api_base}/search"
         params = {"query": query, "limit": 1}
         try:
@@ -206,7 +208,6 @@ class ModUpdater:
             updated_count = 0
             while mods_to_process:
                 slug = mods_to_process.popleft()
-                project_title = summary[slug]["title"]
                 
                 versions = await self._get_mod_versions(session, slug)
                 candidates = self._filter_versions(versions, game_version, loader)

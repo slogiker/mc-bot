@@ -29,53 +29,32 @@ async def test_rcon_manager_get_client_connection_refused():
         mock_client_instance.connect.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_tmux_server_manager_start_auto_generation():
+async def test_tmux_server_manager_start_crash_missing_world():
     manager = TmuxServerManager()
     
-    # Mock dependencies
     with patch('src.server_tmux.os.path.exists') as mock_exists, \
-         patch('src.server_tmux.asyncio.create_subprocess_exec') as mock_create_subprocess, \
-         patch('src.server_tmux.asyncio.timeout') as mock_timeout, \
-         patch.object(manager, 'is_running', return_value=False), \
+         patch('src.server_tmux.asyncio.to_thread') as mock_to_thread, \
+         patch.object(manager, 'is_running', side_effect=[False, False]), \
          patch.object(manager, '_run_tmux_cmd') as mock_run_tmux, \
-         patch.object(manager, '_save_state', new_callable=AsyncMock):
+         patch.object(manager, '_save_state', new_callable=AsyncMock), \
+         patch('src.server_tmux.asyncio.sleep', new_callable=AsyncMock):
          
-        # Setup os.path.exists to return True for jar, False for world initially, then True for world after generation
+        # We need to handle asyncio.to_thread correctly by making it an AsyncMock that calls the target function
+        async def mock_to_thread_impl(func, *args, **kwargs):
+            return func(*args, **kwargs)
+        mock_to_thread.side_effect = mock_to_thread_impl
+        
+        # Setup os.path.exists
         def exists_side_effect(path):
             if path == os.path.join(config.SERVER_DIR, config.SERVER_JAR):
                 return True
-            if path == os.path.join(config.SERVER_DIR, config.WORLD_FOLDER):
-                # Return False the first time, True the second time
-                if not hasattr(exists_side_effect, 'world_checked'):
-                    exists_side_effect.world_checked = True
-                    return False
-                return True
             if path == config.SERVER_DIR:
                 return True
+            if path == os.path.join(config.SERVER_DIR, config.WORLD_FOLDER):
+                return False
             return True
             
         mock_exists.side_effect = exists_side_effect
-        
-        # Setup mock process
-        mock_proc = MagicMock()
-        mock_proc.stdout = AsyncMock()
-        # Simulate reading lines: first a random line, then the "Done" line, then EOF
-        mock_proc.stdout.readline.side_effect = [
-            b"Starting minecraft server version 1.20.4\n",
-            b"[Server thread/INFO]: Done (10.123s)! For help, type \"help\"\n",
-            b""
-        ]
-        mock_proc.stdin = MagicMock()
-        mock_proc.stdin.drain = AsyncMock()
-        mock_proc.wait = AsyncMock()
-        
-        mock_create_subprocess.return_value = mock_proc
-        
-        # Setup mock timeout context manager
-        mock_timeout_ctx = MagicMock()
-        mock_timeout_ctx.__aenter__ = AsyncMock()
-        mock_timeout_ctx.__aexit__ = AsyncMock()
-        mock_timeout.return_value = mock_timeout_ctx
         
         # Setup tmux command to succeed
         mock_run_tmux_res = MagicMock()
@@ -83,34 +62,8 @@ async def test_tmux_server_manager_start_auto_generation():
         mock_run_tmux.return_value = mock_run_tmux_res
         
         # Run start()
-        # We need to mock asyncio.sleep so it doesn't actually wait 10 seconds
-        # Also mock is_running to return True after sleep so it doesn't think it crashed
-        with patch('src.server_tmux.asyncio.sleep', new_callable=AsyncMock):
-            with patch.object(manager, 'is_running', side_effect=[False, True]):
-                success, msg = await manager.start()
+        success, msg = await manager.start()
             
         # Assertions
-        assert success is True
-        assert msg == "Server started successfully"
-        
-        # Verify create_subprocess_exec was called with correct arguments
-        mock_create_subprocess.assert_called_once()
-        args, kwargs = mock_create_subprocess.call_args
-        assert args[0] == "java"
-        assert "-jar" in args
-        
-        # Verify stop command was sent to stdin
-        mock_proc.stdin.write.assert_called_with(b"stop\n")
-        mock_proc.stdin.drain.assert_called_once()
-        
-        # Verify tmux new-session was called
-        mock_run_tmux.assert_any_call(["kill-session", "-t", manager.session_name])
-        
-        # Find the new-session call
-        new_session_called = False
-        for call in mock_run_tmux.call_args_list:
-            args, _ = call
-            if args[0][0] == "new-session":
-                new_session_called = True
-                break
-        assert new_session_called
+        assert success is False
+        assert "Server crashed before creating the world folder" in msg

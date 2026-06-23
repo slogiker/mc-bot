@@ -6,7 +6,7 @@ import subprocess
 import os
 from src.config import config
 from src.logger import logger
-from src.utils import send_debug, rcon_cmd
+from src.utils import send_debug
 
 class Tasks(commands.Cog):
     def __init__(self, bot):

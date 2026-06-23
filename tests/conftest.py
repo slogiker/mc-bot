@@ -21,6 +21,8 @@ def valid_user_config():
         "backup_time": "03:00",
         "backup_keep_days": 7,
         "restart_time": "04:00",
+        "max_auto_restarts": 3,
+        "startup_timeout": 300,
         "timezone": "UTC",
         "permissions": {
             "Owner": ["start", "stop", "restart"],

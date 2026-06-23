@@ -7,6 +7,11 @@ from datetime import datetime
 from src.config import config
 from src.logger import logger
 from src.backup_manager import backup_manager
+from src.discord_utils import has_role
+
+# --- Constants ---
+BACKUP_LIST_LIMIT = 5  # Number of backups to show in the list command
+BACKUP_VIEW_TIMEOUT = 120 # Timeout for the backup download view in seconds
 
 class BackupCog(commands.Cog):
     """
@@ -85,7 +90,7 @@ class BackupCog(commands.Cog):
 
     @app_commands.command(name="backup", description="Create a backup of the world")
     @app_commands.describe(name="Optional custom name for the backup")
-    @app_commands.checks.has_permissions(administrator=True)
+    @has_role("backup")
     async def backup(self, interaction: discord.Interaction, name: str = None):
         """
         Creates a manual backup of the world.
@@ -107,7 +112,7 @@ class BackupCog(commands.Cog):
             await interaction.followup.send(f"❌ Backup failed: {filename}", ephemeral=True)
 
     @app_commands.command(name="backup_list", description="List available backups")
-    @app_commands.checks.has_permissions(administrator=True)
+    @has_role("backup")
     async def backup_list(self, interaction: discord.Interaction):
         """
         Lists available world backups, grouped by type (Custom/Auto).
@@ -118,7 +123,7 @@ class BackupCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         # Helper to get files
-        def get_backups(directory):
+        def get_backups(directory: str) -> list[str]:
             """
             Lists zip files in the specified directory.
 
@@ -145,17 +150,17 @@ class BackupCog(commands.Cog):
         
         msg = "📂 **Available Backups**\n\n**Custom**:\n"
         if custom_backups:
-            msg += "\n".join([f"- `{f}`" for f in custom_backups[:5]])
-            if len(custom_backups) > 5:
-                msg += f"\n... and {len(custom_backups)-5} more"
+            msg += "\n".join([f"- `{f}`" for f in custom_backups[:BACKUP_LIST_LIMIT]])
+            if len(custom_backups) > BACKUP_LIST_LIMIT:
+                msg += f"\n... and {len(custom_backups)-BACKUP_LIST_LIMIT} more"
         else:
             msg += "*None*"
             
         msg += "\n\n**Auto**:\n"
         if auto_backups:
-            msg += "\n".join([f"- `{f}`" for f in auto_backups[:5]])
-            if len(auto_backups) > 5:
-                msg += f"\n... and {len(auto_backups)-5} more"
+            msg += "\n".join([f"- `{f}`" for f in auto_backups[:BACKUP_LIST_LIMIT]])
+            if len(auto_backups) > BACKUP_LIST_LIMIT:
+                msg += f"\n... and {len(auto_backups)-BACKUP_LIST_LIMIT} more"
         else:
             msg += "*None*"
             
@@ -163,7 +168,7 @@ class BackupCog(commands.Cog):
 
     @app_commands.command(name="backup_download", description="Download a specific backup directly")
     @app_commands.describe(filename="The backup file to download")
-    @app_commands.checks.has_permissions(administrator=True)
+    @has_role("backup")
     async def backup_download(self, interaction: discord.Interaction, filename: str):
         """
         Sends a specific backup file to the user.
@@ -193,7 +198,7 @@ class BackupCog(commands.Cog):
             await interaction.followup.send("❌ Failed to send the file.", ephemeral=True)
 
     @backup_download.autocomplete("filename")
-    async def backup_download_autocomplete(self, interaction: discord.Interaction, current: str):
+    async def backup_download_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice]:
         """
         Provides autocomplete suggestions for backup filenames.
 
@@ -229,7 +234,7 @@ class BackupDownloadView(discord.ui.View):
     """
     def __init__(self, filepath):
         """Initializes the view with the specified filepath."""
-        super().__init__(timeout=120)
+        super().__init__(timeout=BACKUP_VIEW_TIMEOUT)
         self.filepath = filepath
         self.uploaded = False
 

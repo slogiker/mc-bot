@@ -6,8 +6,14 @@ from src.utils import send_debug, has_role
 import os
 import time
 from src.logger import logger
+from src.log_dispatcher import log_dispatcher
+from src.server_info_manager import ServerInfoManager
+from src.rcon_manager import rcon_manager
+from cogs.control_panel import ControlPanelView
 
 class Management(commands.Cog):
+
+
     """
     Handles server lifecycle management and control commands.
 
@@ -29,27 +35,27 @@ class Management(commands.Cog):
         try:
             if not self.bot.server.is_running() and not self.bot.server.is_intentionally_stopped():
                 self.consecutive_restarts += 1
-                logger.warning(f"⚠️ Server crash detected! Attempting auto-restart {self.consecutive_restarts}/3")
+                logger.warning(f"⚠️ Server crash detected! Attempting auto-restart {self.consecutive_restarts}/{config.MAX_AUTO_RESTARTS}")
                 
-                if self.consecutive_restarts > 3:
+                if self.consecutive_restarts > config.MAX_AUTO_RESTARTS:
                     logger.error("❌ Max auto-restart attempts reached. Server will remain offline.")
                     await self._notify_owner_of_failure()
                     return
 
-                # Perform smart analysis for attempts 1 and 2
+                # Perform smart analysis
                 crash_reason = await self._analyze_crash()
                 logger.info(f"Crash Analysis: {crash_reason}")
 
                 # Send debug alert
-                debug_msg = f"⚠️ Server crashed! Auto-restart attempt {self.consecutive_restarts}/3\n**Analysis:** {crash_reason}"
+                debug_msg = f"⚠️ Server crashed! Auto-restart attempt {self.consecutive_restarts}/{config.MAX_AUTO_RESTARTS}\n**Analysis:** {crash_reason}"
                 await send_debug(self.bot, debug_msg)
 
                 # Attempt start
                 success, msg = await self.bot.server.start()
                 if success:
                     logger.info("✅ Auto-restart initiated. Waiting for boot...")
-                    from src.log_dispatcher import log_dispatcher
-                    if await log_dispatcher.wait_for_pattern('Done (', timeout=300):
+
+                    if await log_dispatcher.wait_for_pattern('Done (', timeout=config.STARTUP_TIMEOUT):
                         logger.info("✅ Auto-restart successful and server is online.")
                         try:
                             cmd_channel = self.bot.get_channel(int(config.COMMAND_CHANNEL_ID))
@@ -59,9 +65,9 @@ class Management(commands.Cog):
                                     info_embed = await info_cog.build_info_embed(cmd_channel.guild)
                                     await cmd_channel.send(content="🔄 **Server recovered from crash and is back online!**", embed=info_embed)
                         except Exception as e:
-                            logger.error(f"Failed to broadcast recovery: {e}")
+                            logger.error(f"Failed to broadcast recovery: {e}", exc_info=True)
                     else:
-                        logger.warning("Auto-restart timed out waiting for 'Done'.")
+                        logger.warning(f"Auto-restart timed out waiting for 'Done' after {config.STARTUP_TIMEOUT}s.")
                 else:
                     logger.error(f"❌ Auto-restart failed: {msg}")
 
@@ -100,6 +106,7 @@ class Management(commands.Cog):
             
             return "Unknown cause. Check logs/latest.log"
         except Exception as e:
+            logger.error(f"Error reading logs in _analyze_crash: {e}", exc_info=True)
             return f"Error reading logs: {e}"
 
     async def _notify_owner_of_failure(self):
@@ -112,14 +119,14 @@ class Management(commands.Cog):
         if not channel:
             try:
                 channel = await self.bot.fetch_channel(int(debug_channel_id))
-            except:
+            except Exception:
                 return
 
         owner_ping = f"<@{config.OWNER_ID}>" if config.OWNER_ID else "@here"
         
         embed = discord.Embed(
             title="🛑 Server Persistent Crash",
-            description="The Minecraft server has failed to start after 3 consecutive attempts and has been halted.",
+            description=f"The Minecraft server has failed to start after {config.MAX_AUTO_RESTARTS} consecutive attempts and has been halted.",
             color=discord.Color.red(),
             timestamp=discord.utils.utcnow()
         )
@@ -130,6 +137,77 @@ class Management(commands.Cog):
 
     # --- Server Control Commands ---
 
+    @app_commands.command(name="status", description="Check the server's current status and IP")
+    @has_role("status")
+    async def status(self, interaction: discord.Interaction):
+        """Displays the current status and connection information for the server."""
+        await interaction.response.defer(ephemeral=False)
+        
+        is_running = self.bot.server.is_running()
+        
+        # Build base embed
+        if is_running:
+            embed = discord.Embed(
+                title="🟢 Minecraft Server: Online", 
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.description = "The server is currently running and accepting connections."
+        elif self.bot.server.is_intentionally_stopped():
+            embed = discord.Embed(
+                title="🟡 Minecraft Server: Stopped", 
+                color=discord.Color.gold(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.description = "The server was intentionally stopped by an administrator."
+        else:
+            embed = discord.Embed(
+                title="🔴 Minecraft Server: Offline / Crashed", 
+                color=discord.Color.red(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.description = "The server is offline. Check the debug logs if this was unexpected."
+            
+        # Add core info
+        embed.add_field(name="Process Status", value="`Running`" if is_running else "`Stopped`", inline=True)
+        
+        # Add Uptime if online
+        if is_running and hasattr(self.bot.server, 'get_start_time'):
+            start_time = self.bot.server.get_start_time()
+            if start_time:
+                uptime_sec = int(time.time() - start_time)
+                uptime_str = time.strftime('%H:%M:%S', time.gmtime(uptime_sec))
+                embed.add_field(name="Uptime", value=f"`{uptime_str}`", inline=True)
+        
+        # Connection Details
+        address_found = False
+        playit_cog = self.bot.get_cog("PlayitCog")
+        if playit_cog:
+            if playit_cog._is_cache_valid():
+                embed.add_field(name="Server Address", value=f"```\n{playit_cog.cached_address}\n```", inline=False)
+                address_found = True
+            else:
+                address, _ = await playit_cog.fetch_playit_address()
+                if address:
+                    embed.add_field(name="Server Address", value=f"```\n{address}\n```", inline=False)
+                    address_found = True
+
+        if not address_found:
+             embed.add_field(name="Server Address", value="`IP not available (Playit tunnel offline?)`", inline=False)
+
+        # Player List
+        if is_running:
+            try:
+                success, response = await rcon_manager.send_command("list")
+                if success:
+                    # RCON list format is usually: "There are X of a max Y players online: player1, player2..."
+                    embed.add_field(name="Players Online", value=f"```\n{response}\n```", inline=False)
+            except Exception as e:
+                logger.error(f"Error fetching player list via RCON: {e}", exc_info=True)
+
+        embed.set_footer(text="Last updated")
+        await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="control", description="Spawn the Control Panel")
     @has_role("control")
     async def control(self, interaction: discord.Interaction):
@@ -139,14 +217,15 @@ class Management(commands.Cog):
         Args:
             interaction (discord.Interaction): The interaction that triggered the command.
         """
-        from cogs.control_panel import ControlPanelView
+        await interaction.response.defer(ephemeral=True)
+        
         embed = discord.Embed(
             title="🎛️ Minecraft Server Control", 
             description="Manage the server using the buttons below.", 
-            color=0x5865F2
+            color=discord.Color.blurple()
         )
         embed.add_field(name="Status", value="🟢 Online" if self.bot.server.is_running() else "🔴 Offline")
-        await interaction.response.send_message(embed=embed, view=ControlPanelView(self.bot))
+        await interaction.followup.send(embed=embed, view=ControlPanelView(self.bot), ephemeral=True)
 
     @app_commands.command(name="start", description="Start the server")
     @app_commands.checks.cooldown(1, 30)  # 1 use per 30 seconds
@@ -162,10 +241,13 @@ class Management(commands.Cog):
         
         success, message = await self.bot.server.start()
         if success:
+            # Ensure background tasks (LogWatcher) are running to detect 'Done' and update presence
+            await self.bot.start_background_tasks()
+
             embed = discord.Embed(
                 title="🚀 Server Starting...",
                 description="Waiting for the server to finish booting. This may take a minute.",
-                color=0xFEE75C # Yellow
+                color=discord.Color.yellow()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -175,17 +257,16 @@ class Management(commands.Cog):
                 status=discord.Status.idle
             )
             
-            from src.log_dispatcher import log_dispatcher
-            if await log_dispatcher.wait_for_pattern('Done (', timeout=300):
+
+            if await log_dispatcher.wait_for_pattern('Done (', timeout=config.STARTUP_TIMEOUT):
                 embed = discord.Embed(
                     title="✅ Server is Online!",
                     description="The server has fully booted and is ready for players.",
-                    color=0x57F287 # Green
+                    color=discord.Color.green()
                 )
                 await interaction.edit_original_response(embed=embed)
                 
-                # Update info channel
-                from src.server_info_manager import ServerInfoManager
+
                 await ServerInfoManager(self.bot).update_info(interaction.guild)
                 
                 # Broadcast readiness to the command channel
@@ -197,20 +278,20 @@ class Management(commands.Cog):
                             info_embed = await info_cog.build_info_embed(interaction.guild)
                             await cmd_channel.send(content="🎉 **Your Minecraft server is ready!**", embed=info_embed)
                 except Exception as e:
-                    logger.error(f"Failed to broadcast server readiness: {e}")
+                    logger.error(f"Failed to broadcast server readiness: {e}", exc_info=True)
                     
             else:
                 embed = discord.Embed(
                     title="⚠️ Server Start Timeout",
-                    description="The server started but took too long to report 'Done'. It might still be booting.",
-                    color=0xED4245 # Red
+                    description=f"The server started but took too long to report 'Done' (>{config.STARTUP_TIMEOUT}s). It might still be booting.",
+                    color=discord.Color.red()
                 )
                 await interaction.edit_original_response(embed=embed)
         else:
             embed = discord.Embed(
                 title="❌ Failed to Start Server",
                 description=f"**Error:** {message}",
-                color=0xED4245
+                color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -226,7 +307,7 @@ class Management(commands.Cog):
         """
         await interaction.response.defer(ephemeral=True)
 
-        embed = discord.Embed(description="🛑 Stopping server...", color=0xFEE75C)
+        embed = discord.Embed(description="🛑 Stopping server...", color=discord.Color.yellow())
         await interaction.followup.send(embed=embed, ephemeral=True)
         
         await self.bot.change_presence(
@@ -239,7 +320,7 @@ class Management(commands.Cog):
             embed = discord.Embed(
                 title="🛑 Server Stopped",
                 description=message,
-                color=0xED4245
+                color=discord.Color.red()
             )
             # Clear player list — stop doesn't fire individual "left the game" events
             try:
@@ -247,11 +328,9 @@ class Management(commands.Cog):
                     if bot_cfg.get('online_players'):
                         bot_cfg['online_players'] = []
             except Exception as e:
-                from src.logger import logger
-                logger.error(f"Failed to clear online players in stop: {e}")
+                logger.error(f"Failed to clear online players in stop: {e}", exc_info=True)
 
             # Update info channel
-            from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
             
             # Update explicit presence
@@ -263,7 +342,7 @@ class Management(commands.Cog):
             embed = discord.Embed(
                 title="❌ Failed to Stop Server",
                 description=f"**Error:** {message}",
-                color=0xED4245
+                color=discord.Color.red()
             )
         
         await interaction.edit_original_response(embed=embed)
@@ -280,7 +359,7 @@ class Management(commands.Cog):
         """
         await interaction.response.defer(ephemeral=True)
         
-        embed = discord.Embed(description="🔄 Restarting server...", color=0xFEE75C)
+        embed = discord.Embed(description="🔄 Restarting server...", color=discord.Color.yellow())
         await interaction.followup.send(embed=embed, ephemeral=True)
         
         await self.bot.change_presence(
@@ -288,17 +367,12 @@ class Management(commands.Cog):
             status=discord.Status.idle
         )
         
-        # For a manual restart, we want to ensure it's not marked as intentional stop
-        # so crash check doesn't ignore it if it takes too long to come up.
-        if hasattr(self.bot.server, '_intentional_stop'):
-            self.bot.server._intentional_stop = False
-
         success, message = await self.bot.server.restart()
         if success:
             embed = discord.Embed(
                 title="🚀 Server Restarted",
                 description=message,
-                color=0x57F287
+                color=discord.Color.green()
             )
             # Clear player list — restart doesn't fire individual "left the game" events immediately
             try:
@@ -306,13 +380,10 @@ class Management(commands.Cog):
                     if bot_cfg.get('online_players'):
                         bot_cfg['online_players'] = []
             except Exception as e:
-                from src.logger import logger
-                logger.error(f"Failed to clear online players in restart: {e}")
+                logger.error(f"Failed to clear online players in restart: {e}", exc_info=True)
 
             # Update info channel
-            from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
-            
             # Update explicit presence (will be eventually overidden by the log monitor but good for instant feedback)
             await self.bot.change_presence(
                 activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
@@ -322,7 +393,7 @@ class Management(commands.Cog):
             embed = discord.Embed(
                 title="❌ Failed to Restart Server",
                 description=f"**Error:** {message}",
-                color=0xED4245
+                color=discord.Color.red()
             )
         
         await interaction.edit_original_response(embed=embed)
@@ -335,7 +406,7 @@ class Management(commands.Cog):
         """Forcefully kills the Minecraft server process."""
         await interaction.response.defer(ephemeral=True)
         
-        embed = discord.Embed(description="⚠️ Attempting emergency stop...", color=0xFEE75C)
+        embed = discord.Embed(description="⚠️ Attempting emergency stop...", color=discord.Color.yellow())
         await interaction.followup.send(embed=embed, ephemeral=True)
         
         success, message = await self.bot.server.emergency_stop()
@@ -344,18 +415,17 @@ class Management(commands.Cog):
             embed = discord.Embed(
                 title="💀 Server Force-Stopped",
                 description="The server process was forcefully terminated.",
-                color=0xED4245
+                color=discord.Color.red()
             )
             # Clear player list
             try:
                 with config.update_bot_config() as bot_cfg:
                     if bot_cfg.get('online_players'):
                         bot_cfg['online_players'] = []
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Error clearing online players in kill: {e}", exc_info=True)
                 
             # Update info channel
-            from src.server_info_manager import ServerInfoManager
             await ServerInfoManager(self.bot).update_info(interaction.guild)
             
             # Update presence
@@ -367,7 +437,7 @@ class Management(commands.Cog):
             embed = discord.Embed(
                 title="❌ Failed to Force-Stop",
                 description=f"**Error:** {message}",
-                color=0xED4245
+                color=discord.Color.red()
             )
             
         await interaction.edit_original_response(embed=embed)

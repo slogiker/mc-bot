@@ -3,43 +3,7 @@ Tests for src/utils.py — pure utility functions
 """
 import os
 import pytest
-from src.utils import map_key, display_key, parse_server_version
-
-
-class TestMapKey:
-    def test_basic(self):
-        assert map_key("diamonds") == "minecraft:diamonds"
-
-    def test_uppercase_lowered(self):
-        assert map_key("DIAMONDS") == "minecraft:diamonds"
-
-    def test_mixed_case(self):
-        assert map_key("DiAmOnDs") == "minecraft:diamonds"
-
-    def test_already_prefixed(self):
-        # Should double-prefix — map_key just prepends blindly
-        result = map_key("minecraft:diamonds")
-        assert result == "minecraft:minecraft:diamonds"
-
-    def test_empty_string(self):
-        assert map_key("") == "minecraft:"
-
-
-class TestDisplayKey:
-    def test_removes_prefix(self):
-        assert display_key("minecraft:diamonds") == "diamonds"
-
-    def test_no_prefix(self):
-        assert display_key("diamonds") == "diamonds"
-
-    def test_partial_prefix(self):
-        assert display_key("mine:diamonds") == "mine:diamonds"
-
-    def test_empty_string(self):
-        assert display_key("") == ""
-
-    def test_only_prefix(self):
-        assert display_key("minecraft:") == ""
+from src.utils import parse_server_version
 
 
 class TestParseServerVersion:

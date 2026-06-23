@@ -62,7 +62,9 @@ This section walks you through every step from nothing to a running server.
 4. Copy the URL, open it in your browser, and authorize it for your server.
 
 ### Step 5 — Prepare Your Machine
-- **OS:** Linux (Ubuntu/Debian recommended) or Windows with WSL2.
+- **Linux:** Fully supported (Ubuntu/Debian recommended).
+- **Windows (WSL2):** Configured but untested.
+- **Native Windows / macOS:** Unsupported/untested.
 - **RAM:** 4 GB+ recommended.
 - **Disk:** 5 GB+ free.
 
@@ -144,6 +146,12 @@ make test  # Runs 48+ unit tests in Docker
 | [`docs/information.md`](docs/information.md) | Full technical reference and architecture |
 | [`docs/version_history.md`](docs/version_history.md) | Detailed changelog and version history |
 | [`docs/commands.md`](docs/commands.md) | Complete command cheatsheet with permissions |
+
+---
+
+## 🤝 Contributing & Ideas
+
+Open an issue for ideas, submit a PR for fixes. Any help is appreciated! We use standard Python formatting.
 
 ---
 

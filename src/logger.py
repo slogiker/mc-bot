@@ -2,7 +2,6 @@ import logging
 import sys
 import os
 import zipfile
-import shutil
 from datetime import datetime
 from pathlib import Path
 from logging.handlers import TimedRotatingFileHandler
@@ -68,7 +67,7 @@ class MonthlyLogZipper:
             # Don't let logging errors break the application
             try:
                 logging.getLogger().error(f"Error in monthly log zipper: {e}")
-            except:
+            except Exception:
                 pass
     
     def _zip_month_directory(self, month_str):
@@ -99,7 +98,7 @@ class MonthlyLogZipper:
                     except Exception as e:
                         try:
                             logging.getLogger().error(f"Failed to add {log_file} to zip: {e}")
-                        except:
+                        except Exception:
                             pass
             
             # Remove empty month directory
@@ -111,7 +110,7 @@ class MonthlyLogZipper:
         except Exception as e:
             try:
                 logging.getLogger().error(f"Failed to zip month {month_str}: {e}")
-            except:
+            except Exception:
                 pass
 
 # Global zipper instance
@@ -147,7 +146,7 @@ def namer(name):
     except Exception as e:
         try:
             logging.getLogger().error(f"Error in log namer: {e}")
-        except:
+        except Exception:
             pass
     
     # Fallback: return original name
@@ -167,7 +166,7 @@ def rotator(source, dest):
         # If zipping fails, just keep the file
         try:
             logging.getLogger().error(f"Failed to zip rotated log: {e}")
-        except:
+        except Exception:
             pass
 
 def setup_logging():

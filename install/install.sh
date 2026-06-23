@@ -9,7 +9,7 @@
 # 4. Docker container deployment
 # 5. Playit.gg tunnel setup (optional)
 
-set -e
+set -eo pipefail
 
 # Colors & Styles
 NC='\033[0m'
@@ -43,6 +43,79 @@ handle_error() {
 }
 trap 'handle_error $LINENO' ERR
 
+# --- Discord Notification Helper ---
+
+send_discord_notice() {
+    local message="$1"
+    local container_name="mc-bot"
+    
+    # Check if container is running
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container_name}$"; then
+        return 0
+    fi
+
+    echo -e "${BLUE}${ICON_INFO} Sending Discord notification...${NC}"
+    
+    # Use docker exec to run a small python snippet inside the container
+    # We pass the message via an environment variable to avoid shell escaping issues
+    docker exec -e NOTICE_MSG="$message" "$container_name" python3 -c "
+import asyncio
+import discord
+import json
+import os
+import sys
+
+async def send():
+    try:
+        if not os.path.exists('data/bot_config.json'):
+            return
+        with open('data/bot_config.json', 'r') as f:
+            cfg = json.load(f)
+        
+        channel_id = cfg.get('debug_channel_id')
+        token = os.getenv('BOT_TOKEN')
+        msg = os.getenv('NOTICE_MSG')
+        
+        # Reliability: Fallback to reading .env if token is missing in environment
+        if not token and os.path.exists('.env'):
+            with open('.env', 'r') as f:
+                for line in f:
+                    if line.startswith('BOT_TOKEN='):
+                        token = line.split('=', 1)[1].strip().strip('\"').strip('\'')
+                        break
+        
+        if not channel_id or not token or not msg:
+            return
+        
+        client = discord.Client(intents=discord.Intents.default())
+
+        @client.event
+        async def on_ready():
+            try:
+                channel = await client.fetch_channel(int(channel_id))
+                if channel:
+                    await channel.send(f"🔔 **System Notice:** {msg}")
+            except Exception as e:
+                pass
+            finally:
+                await client.close()
+
+        try:
+            await client.start(token)
+        except Exception as e:
+            pass
+    except Exception as e:
+        pass
+
+if __name__ == '__main__':
+    try:
+        # Run with a 15-second timeout to prevent hanging the install script
+        asyncio.run(asyncio.wait_for(send(), timeout=15.0))
+    except:
+        pass
+" || echo "Warning: Could not send Discord notification."
+}
+
 # --- Subcommand Functions ---
 
 get_compose_cmd() {
@@ -62,12 +135,14 @@ do_start() {
 }
 
 do_stop() {
+    send_discord_notice "Bot is shutting down for maintenance. Be right back! 🛠️"
     local cmd=$(get_compose_cmd)
     if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
     $cmd stop
 }
 
 do_restart() {
+    send_discord_notice "Bot is restarting. Be right back! 🔄"
     local cmd=$(get_compose_cmd)
     if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
     $cmd restart
@@ -86,6 +161,7 @@ do_status() {
 }
 
 do_update() {
+    send_discord_notice "Bot is updating to the latest version. Be right back! 🚀"
     echo -e "${BLUE}${ICON_GEAR} Updating MC-Bot...${NC}"
     git pull origin main || true
     local cmd=$(get_compose_cmd)
@@ -94,24 +170,51 @@ do_update() {
     echo -e "${GREEN}${ICON_CHECK} Bot updated and restarted.${NC}"
 }
 
-do_remove_world() {
-    if [ "$(docker inspect -f '{{.State.Running}}' mc-bot 2>/dev/null)" = "true" ]; then
-        docker exec -it mc-bot python bot.py remove-world "$@"
-    else
-        echo -e "${YELLOW}${ICON_WARN} Bot container is not running.${NC}"
-        echo -e "Attempting to run world removal locally..."
-        if command -v python &> /dev/null; then
-            python bot.py remove-world "$@"
-        elif command -v python3 &> /dev/null; then
-            python3 bot.py remove-world "$@"
-        else
-            echo -e "${RED}${ICON_CROSS} Python is not installed on the host. Cannot run remove-world.${NC}"
-            return 1
-        fi
+do_delete_world() {
+    echo -e "\n${RED}${BOLD}${ICON_WARN} WARNING: This will PERMANENTLY delete the Minecraft world!${NC}"
+    echo -ne "${YELLOW}Are you absolutely sure? (y/N): ${NC}"
+    read confirm
+    if [[ ! $confirm =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        return 0
+    fi
+
+    send_discord_notice "The Minecraft world is being deleted/reset. Bot will be offline briefly. 💾"
+    
+    # Detect world name from server.properties
+    WORLD_NAME="world"
+    if [ -f "mc-server/server.properties" ]; then
+        PROP_NAME=$(grep "level-name=" mc-server/server.properties | cut -d'=' -f2 | tr -d '\r\n ')
+        if [ -n "$PROP_NAME" ]; then WORLD_NAME="$PROP_NAME"; fi
+    fi
+
+    echo -ne "Do you want to create a backup first? [Y/n] "
+    read do_backup
+    if [[ -z "$do_backup" || $do_backup =~ ^[Yy]$ ]]; then
+        DATE_STR=$(date +%Y-%m-%d_%H-%M-%S)
+        mkdir -p backups
+        BACKUP_FILE="backups/world-before-delete-${DATE_STR}.tar.gz"
+        echo -e "Creating safety backup: $BACKUP_FILE ..."
+        tar -czf "$BACKUP_FILE" "mc-server/$WORLD_NAME" &>/dev/null || true
+        echo -e "Backup created: $BACKUP_FILE"
+    fi
+
+    echo -e "Deleting world folder: mc-server/$WORLD_NAME ..."
+    rm -rf "mc-server/$WORLD_NAME"
+    # Also remove session.lock if it exists
+    rm -f "mc-server/session.lock"
+    
+    echo -e "${GREEN}${ICON_CHECK} World deleted successfully.${NC}"
+    
+    echo -ne "\nRestart the bot now? [Y/n] "
+    read restart_now
+    if [[ -z "$restart_now" || $restart_now =~ ^[Yy]$ ]]; then
+        do_restart
     fi
 }
 
 do_reinstall() {
+    send_discord_notice "Bot is entering Reinstall Mode. Full reset in progress. 🛠️"
     echo -e "\n${BLUE}${BOLD}${ICON_GEAR} Reinstalling everything...${NC}"
     SKIP_DETECTION=1
     # 1. Credentials
@@ -131,6 +234,13 @@ do_reinstall() {
     echo -ne "\n${ICON_WARN} ${YELLOW}Do you want to delete the current world save? (y/N) ${NC}"
     read del_world
     if [[ $del_world =~ ^[Yy]$ ]]; then
+        # Detect world name from server.properties
+        WORLD_NAME="world"
+        if [ -f "mc-server/server.properties" ]; then
+            PROP_NAME=$(grep "level-name=" mc-server/server.properties | cut -d'=' -f2 | tr -d '\r\n ')
+            if [ -n "$PROP_NAME" ]; then WORLD_NAME="$PROP_NAME"; fi
+        fi
+
         echo -ne "Do you want to create a backup first? [Y/n] "
         read do_backup
         if [[ -z "$do_backup" || $do_backup =~ ^[Yy]$ ]]; then
@@ -140,16 +250,17 @@ do_reinstall() {
             mkdir -p backups
             # Check if zip is installed
             if command -v zip &> /dev/null; then
-                zip -r "$BACKUP_FILE" mc-server/world &>/dev/null || true
+                zip -r "$BACKUP_FILE" "mc-server/$WORLD_NAME" &>/dev/null || true
             else
-                tar -czf "${BACKUP_FILE}.tar.gz" mc-server/world &>/dev/null || true
+                tar -czf "${BACKUP_FILE}.tar.gz" "mc-server/$WORLD_NAME" &>/dev/null || true
                 BACKUP_FILE="${BACKUP_FILE}.tar.gz"
             fi
             echo -e "Backup created: $BACKUP_FILE"
         fi
         echo -e "Deleting world and associated files..."
-        rm -rf mc-server/world
-        rm -f mc-server/server.properties
+        rm -rf "mc-server/$WORLD_NAME"
+        rm -f "mc-server/server.properties"
+        rm -f "mc-server/session.lock"
     else
          echo -e "Keeping world files. You can always restart fresh if you use /setup again in Discord."
     fi
@@ -162,14 +273,14 @@ show_help() {
     echo -e "Usage: ./install.sh [command] [options]"
     echo -e ""
     echo -e "Commands:"
-    echo -e "  ${GREEN}start${NC}     - Start the bot containers"
-    echo -e "  ${YELLOW}stop${NC}      - Stop the bot containers"
-    echo -e "  ${BLUE}restart${NC}   - Restart the bot containers"
-    echo -e "  ${CYAN}logs${NC}      - View live bot logs"
-    echo -e "  ${NC}status${NC}    - Show container status"
-    echo -e "  ${BLUE}update${NC}    - Pull latest code and rebuild"
-    echo -e "  ${RED}reinstall${NC} - Reconfigure credentials and/or reset world"
-    echo -e "  ${RED}remove-world${NC} - Stop server and delete/backup world folder"
+    echo -e "  ${GREEN}start${NC}        - Start the bot containers"
+    echo -e "  ${YELLOW}stop${NC}         - Stop the bot containers"
+    echo -e "  ${BLUE}restart${NC}      - Restart the bot containers"
+    echo -e "  ${CYAN}logs${NC}         - View live bot logs"
+    echo -e "  ${NC}status${NC}       - Show container status"
+    echo -e "  ${BLUE}update${NC}       - Pull latest code and rebuild"
+    echo -e "  ${RED}reinstall${NC}    - Reconfigure credentials and/or reset world"
+    echo -e "  ${RED}delete-world${NC} - Permanently delete the current Minecraft world"
     echo -e ""
     echo -e "Options:"
     echo -e "  ${MAGENTA}--skip-start${NC} - Run setup without starting containers"
@@ -188,9 +299,9 @@ if [ -n "$1" ]; then
         logs) do_logs; exit 0 ;;
         status) do_status; exit 0 ;;
         update) do_update; exit 0 ;;
-        remove-world) shift; do_remove_world "$@"; exit 0 ;;
+        delete-world) do_delete_world; exit 0 ;;
         reinstall) do_reinstall ;; # Don't exit, continue to setup
-        -h|--help) show_help; exit 0 ;;
+        -h|--help|help) show_help; exit 0 ;;
         *) # If it's a flag like --skip-start, we handle it later
            if [[ ! "$1" =~ ^-- ]]; then
                # Not a flag, maybe a mistyped command? 
@@ -497,8 +608,9 @@ if [ -z "$SKIP_CONFIG" ]; then
             
             if [ -n "$PLAYIT_KEY" ]; then
                 mkdir -p data
-                echo "$PLAYIT_KEY" > data/playit_secret.key
+                touch data/playit_secret.key
                 chmod 600 data/playit_secret.key
+                echo "$PLAYIT_KEY" > data/playit_secret.key
                 echo -e "    ${ICON_CHECK} ${GREEN}Secret key saved.${NC}"
             fi
         else
@@ -519,6 +631,8 @@ if [ -z "$SKIP_CONFIG" ]; then
     PUID=$(id -u "$TARGET_USER")
     PGID=$(id -g "$TARGET_USER")
 
+    touch .env
+    chmod 600 .env
     cat > .env <<EOF
 # Generated by install.sh
 BOT_TOKEN=$BOT_TOKEN
@@ -528,7 +642,6 @@ PUID=$PUID
 PGID=$PGID
 EOF
     $SUDO chown "$TARGET_USER:$TARGET_USER" .env
-    $SUDO chmod 600 .env
     echo -e "\n  ${ICON_CHECK} ${GREEN}Configuration saved to .env${NC}"
 fi
 
@@ -618,6 +731,8 @@ else
                 if [ -z "$SECRET_KEY" ]; then
                     echo -e "  ${ICON_CROSS} ${RED}Did not receive a secret key from Playit.${NC}"
                 else
+                    touch data/playit_secret.key
+                    chmod 600 data/playit_secret.key
                     echo "$SECRET_KEY" > data/playit_secret.key
 
                     # Fetch and save IP to bot_config.json immediately
@@ -631,7 +746,7 @@ else
                         echo "$TEMP_CONFIG" > data/bot_config.json
                     fi
                     
-                    chmod 600 data/playit_secret.key
+
                     echo -e "    ${ICON_CHECK} ${GREEN}Agent claimed successfully.${NC}"
                 fi
         fi

@@ -9,9 +9,9 @@ LABEL description="Minecraft Discord Bot with Java 21 and Playit.gg"
 # Create directory for man pages (required for openjdk in slim images)
 RUN mkdir -p /usr/share/man/man1
 
-# Install Java 25, tmux, curl and jq
+# Install Java 21, tmux, curl and jq
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-25-jre-headless \
+    openjdk-21-jre-headless \
     tmux \
     curl \
     jq \
