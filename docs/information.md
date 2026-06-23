@@ -1,73 +1,1465 @@
-# MC-Bot v3.1.1 — Documentation Hub
+<!-- 
+AI NAVIGATION GUIDE:
+This is the single source of truth for the MC-Bot project. 
+It contains 15 numbered sections covering Architecture, Configuration, Commands, Code references, Bugs, and Version History.
+Read the Table of Contents first to find the relevant section. 
+Do not hallucinate files or commands, refer to the tables below.
+-->
 
-Welcome to the MC-Bot technical documentation. This project provides an all-in-one Dockerized solution for managing Minecraft servers via Discord, with a focus on security, observability, and ease of use.
+# MC-Bot — Complete Developer Reference
 
-## 🗺️ Documentation Map
+_(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-### 🚀 Getting Started
-- **[Installation & Setup](./setup/installation.md)**: Detailed requirements, universal installer, and the 8-step resumable Windows setup.
-- **[Commands Reference](./commands.md)**: A comprehensive list of all slash commands, terminal commands, and permission mappings.
+**Version:** `v3.1.2`  
+**Last Updated:** 2026-06-23  
+**Author:** slogiker - Daniel Pliberšek  
+**License:** MIT
 
-### 🛡️ Features
-- **[Security (JoinGuard v2)](./features/security.md)**: Deep dive into the offline-mode protection, identity verification, anti-collision logic, and MD5 UUID "Lore".
-- **[I18n (Internationalization)](./implementations/i18n-implementation.md)**: Details on the Slovenian localization and translation system.
+> This document is the single source of truth for architecture, commands, configuration, version history, bugs, todos, and internal notes. It is intentionally verbose and designed to be fed directly to LLMs or read by developers onboarding to the project.
+---
 
-### ⚙️ Technical Deep Dives
-- **[Internal Architecture](./technical/architecture.md)**: How the bot uses tmux isolation, the LogDispatcher fan-out system, and reactive observability.
-- **[Configuration System](./technical/configuration.md)**: Details on the atomic context managers, deadlock-free locking, and dual-file strategy.
-- **[Offline Protection Logic](./implementations/offline-protection.md)**: Theoretical background on the authentication challenges.
+## Table of Contents
 
-### 🛠️ Maintenance & Troubleshooting
-- **[Error Codes Index](./troubleshooting/errors.md)**: A comprehensive list of `BOT_XXX` and `Agent-XXX` error codes.
-- **[Agent State](./internal/AGENT_STATE.md)**: Internal developer notes on the current project status and remediation phases.
+1. [Project Overview](#1-project-overview)
+2. [Repository Structure](#2-repository-structure)
+3. [Architecture Deep Dive](#3-architecture-deep-dive)
+4. [Configuration System](#4-configuration-system)
+5. [All Discord Commands](#5-all-discord-commands)
+6. [All Terminal / Docker Commands](#6-all-terminal--docker-commands)
+7. [Installation & Setup](#7-installation--setup)
+8. [Cog Reference](#8-cog-reference)
+9. [Source Module Reference](#9-source-module-reference)
+10. [Known Bugs & Technical Debt](#10-known-bugs--technical-debt)
+11. [Version History & Recent Changes](#11-version-history--recent-changes)
+12. [Completed Features](#12-completed-features)
+13. [TODO — Active Roadmap](#13-todo--active-roadmap)
+14. [Development Workflow & Rules](#14-development-workflow--rules)
+15. [Deployment Notes](#15-deployment-notes)
 
 ---
 
-## 🆕 What's New in v3.1.1?
+## 1. Project Overview
 
-The **"Observability & Polish"** update focused on hardening the system and improving the user experience:
-- **Kick-Screen Codes**: Security verification codes are now shown directly in Minecraft, removing the dependency on Discord DMs.
-- **Deadlock Fix**: The configuration engine was rebuilt from the ground up to be re-entrant and thread-safe.
-- **Playit v1.0.10**: Standardized on the latest tunneling binary and legacy API for maximum reliability.
-- **Slovenian Localization**: Added support for Slovenian translations in core interaction flows.
-- **Multi-Distro Installer**: `install.sh` now supports a wider range of Linux families (RHEL, Arch, Alpine).
+MC-Bot is a self-hosted Discord bot that manages a Minecraft Java server running inside Docker. The bot runs as a Python process inside a Docker container alongside the Minecraft server process (managed via `tmux`) and an optional Playit.gg agent (also managed via `tmux`).
+
+**Core stack:**
+
+- Python 3.11 + discord.py 2.x
+- Docker + Docker Compose
+- Java 21 (OpenJDK headless, inside the same container)
+- tmux (process management for the MC server inside the container)
+- RCON (bot→server command bridge)
+- Playit.gg (optional NAT traversal / public IP tunnel) running via `apt` inside the container
+
+**Design philosophy:**
+
+- Everything runs in one Docker container (bot + MC process via `tmux` + playit via `tmux`) to keep networking simple — RCON connects to `127.0.0.1` and is never exposed to the host.
+- Config is split: `bot_config.json` is machine state (channel IDs, player lists, session data), `user_config.json` is human preferences (RAM, schedules, role permissions).
+- **Atomic Config System:** Uses `FileLock` + Context Managers for race-condition-free Read-Modify-Write cycles.
+- Log streaming is centralized through `LogDispatcher` — one `tail -F` subprocess fans out to all subscribers via `asyncio.Queue`.
+- **Command Isolation:** The bot enforces slash commands to only be run in the designated `#command` channel (with ephemeral warnings for violations) to keep the main chat clean.
+- **Dynamic Presence:** The Bot's status natively reflects the RCON status (verified via handshake). It stays in DND/Idle until RCON responds.
 
 ---
 
-## 📝 Project Status & Roadmap
+## 2. Repository Structure
 
-### 🔴 Critical / Active
-- [x] **JoinGuard v2 Implementation**: Migration from DMs to kick-screen codes.
-- [x] **Config Deadlock Resolution**: Re-entrant locking architecture.
-- [x] **Remove World Subcommand**: CLI option to delete the world with a backup prompt.
-- [ ] **Forge API Expansion**: Implementing reliable version fetching for Forge platforms.
-- [ ] **Timeout Implementation**: Adding timeouts to all external API calls (Mojang, Modrinth).
+```
+mc-bot/
+├── bot.py                      # Main entry point. Bot class, startup, shutdown
+├── Dockerfile                  # Python 3.11 + Java 21 + tmux + playit agent (no git in apt; data/ volume-mounted at runtime, config creates defaults)
+├── Dockerfile.test             # Test-only Docker image (pytest, no runtime deps)
+├── docker-compose.yml          # mc-bot service
+├── docker-compose.test.yml     # Isolated test-runner compose file
+├── Makefile                    # make test / test-verbose / test-single / up / down
+├── requirements.txt            # Python dependencies
+├── .env.example                # Environment variable template
+├── .gitignore
+├── .dockerignore
+├── LICENSE                     # MIT
+│
+├── cogs/                       # Discord command modules (loaded dynamically)
+│   ├── __init__.py
+│   ├── admin.py                # /sync, /backup_now, /reload_config, /whitelist_add
+│   ├── automation.py           # /trigger_* — chat triggers
+│   ├── backup.py               # /backup, /backup_list, /backup_download + scheduled
+│   ├── console.py              # /logs (redesigned v3), /cmd
+│   ├── control_panel.py        # Sticky interactive control panel embed
+│   ├── _economy.py             # [DISABLED] Economy module
+│   ├── events.py               # /event_create, /event_list, /event_delete
+│   ├── help.py                 # /help — dynamic, permission-filtered
+│   ├── info.py                 # /status, /version, /seed, /info, /players (v3 fallback)
+│   ├── link.py                 # /link, /unlink, /unlink_admin, /verify (v3)
+│   ├── management.py           # /start, /stop, /kill (v3), /restart, /bot_restart
+│   ├── mods.py                 # /mods (v3 platform-aware), /mod_search
+│   ├── players.py              # /players (GUI selection for management)
+│   ├── player_tracker.py       # Background player tracking
+│   ├── playit.py               # /ip — Playit.gg address fetcher
+│   ├── settings.py             # Interactive /settings
+│   ├── setup.py                # /setup — install wizard
+│   ├── stats.py                # /stats — player statistics
+│   └── tasks.py                # Background tasks (v3 RCON presence task)
+│
+├── src/                        # Core logic (non-Discord)
+│   ├── __init__.py
+│   ├── auto_setup.py           # Standalone fallback: creates Discord roles/channels via API
+│   ├── backup_manager.py       # Zip world, upload via pyonesend, retention cleanup
+│   ├── config.py               # Singleton Config class, JSON r/w with FileLock
+│   ├── join_guard.py           # UUID-based session tracking (v3), /verify logic
+│   ├── log_dispatcher.py       # Singleton — tail -F fan-out
+│   ├── log_watcher.py          # Subscribes to LogDispatcher, parses auth lines
+│   ├── logger.py               # Daily rotation, monthly zip, custom format
+│   ├── mc_installer.py         # Platform-aware JAR downloader (v3 fresh fetch)
+│   ├── mc_link_manager.py      # CRUD for Discord↔MC username linkage (data/mc_links.json)
+│   ├── mc_manager.py           # Helper: get_server_properties() reader
+│   ├── mod_updater.py          # Modrinth plugin/mod fetcher
+│   ├── mojang.py               # Mojang API lookup — hardened v3 (fail-closed)
+│   ├── server_info_manager.py  # Manages #server-information channel embed
+│   ├── server_interface.py     # Base class with emergency_stop (v3)
+│   ├── server_mock.py          # MockServerManager for --simulate mode
+│   ├── server_tmux.py          # TmuxServerManager (real server control)
+│   ├── setup_helper.py         # Creates Discord roles/channels/categories
+│   ├── setup_views.py          # Multi-step setup form UI (v3 vanilla support)
+│   ├── utils.py                # rcon_cmd(), has_role(), get_server_mod_folder() (v3)
+│   ├── version_fetcher.py      # Cached API calls with force_fresh (v3)
+│   └── views.py                # Shared generic UI views
+│
+├── data/                       # Persistent config (mounted as volume)
+│   ├── bot_config.json         # Machine state
+│   ├── user_config.json        # User preferences
+│   ├── mc_links.json           # [gitignored] Discord↔MC account linkage DB
+│   └── playit_secret.key       # [gitignored] Playit agent authentication key
+│
+├── docs/                       # Documentation
+│   ├── information.md          # (this file)
+│   ├── commands.md             # Complete command cheatsheet
+│   ├── error_codes.md          # Error lookup table
+│   └── implementations/        # Internal design specs
+│
+├── tests/                      # Unit & Integration Tests
+│   ├── infra/                  # Test infrastructure
+│   ├── conftest.py             # Shared fixtures
+│   └── test_*.py               # Pytest test files
+│
+├── install/                    # Installation helpers
+│   ├── install.sh              # Linux/WSL installer
+│   ├── install.bat             # Windows setup guide (re-architected v3)
+│   ├── install.ps1             # NEW: WSL2 architecture installer for Windows (v3)
+│   ├── .env.example            # Environment template
+│   ├── simulate.py             # Launches bot with --simulate flag
+│   └── update.py               # update script
+│
+├── mc-server/                  # Minecraft server files (gitignored, Docker volume)
+│   ├── server.jar
+│   ├── server.properties
+│   ├── eula.txt
+│   ├── world/
+│   ├── logs/
+│   └── ...
+│
+├── backups/                    # World backups (gitignored, Docker volume)
+│   ├── auto/                   # Scheduled backups (7-day retention)
+│   └── custom/                 # Manual backups (never auto-deleted)
+│
+└── logs/                       # Application logs (gitignored, Docker volume)
+    ├── bot.log                 # Current bot log
+    ├── playit.log              # Agent tunnel logs (NEW v2.9.0)
+    ├── install-log.txt         # Installer history (MOVED from root)
+    └── YYYY-MM/                # Rotated logs
+```
+
+---
+
+## 3. Architecture Deep Dive
+
+### 3.1 Bot Startup Sequence
+
+```
+bot.py main()
+  └─ MinecraftBot.__init__()
+       ├─ config.set_simulation_mode(is_simulation)
+       ├─ TmuxServerManager() or MockServerManager()
+       ├─ JoinGuard(bot)               — login interceptor
+       ├─ LogWatcher(bot)              — subscribes to LogDispatcher
+       ├─ add_listener(on_minecraft_player_login)
+       └─ setup_hook()
+            ├─ Load all cogs from ./cogs/*.py
+            └─ (sync happens in on_ready, not here)
+
+  └─ on_ready()
+       ├─ Resolve guild (GUILD_ID or first guild)
+       ├─ SetupHelper.ensure_setup(guild)
+       │    ├─ Create/find roles: MC Admin, MC Player
+       │    ├─ Create/find category: Minecraft Server
+       │    └─ Create/find channels: command, log, debug
+       ├─ config.update_dynamic_config(updates)
+       ├─ tree.copy_global_to(guild) + tree.sync(guild)
+       ├─ update_presence_loop()        — NEW v3 (verified RCON status handshake)
+       └─ If server is_running() → log_dispatcher.start() + log_watcher.start()
+```
+
+### 3.2 Log Dispatcher
+
+**Problem solved:** Multiple cogs (console, automation, economy) all need the Minecraft server logs in real-time. Naively, each cog would spawn its own `tail -F` process, wasting resources.
+
+**Solution:** `LogDispatcher` is a singleton that:
+
+1. Spawns exactly ONE `tail -F mc-server/logs/latest.log` subprocess (high-performance fan-out).
+2. Reads stdout line-by-line.
+3. Broadcasts each line to all subscriber `asyncio.Queue` instances.
+
+```python
+# Any cog that needs logs:
+from src.log_dispatcher import log_dispatcher
+
+async def cog_load(self):
+    self.log_queue = log_dispatcher.subscribe()
+    await log_dispatcher.start()   # idempotent — only starts once
+
+# Then in a task:
+line = await asyncio.wait_for(self.log_queue.get(), timeout=1.0)
+```
+
+**Subscribers currently:**
+
+- `console.py` — streams to Discord log channel
+- `automation.py` — scans for trigger phrases
+- `log_watcher.py` — scans for User Authenticator login events (join guard)
+
+Note: `_economy.py` is excluded by the bot.py cog auto-loader (leading underscore) and is never a subscriber at runtime.
+
+### 3.3 Server Manager Hierarchy (v3 Update)
+
+```
+ServerInterface (ABC)           src/server_interface.py
+  ├─ TmuxServerManager          src/server_tmux.py      (added emergency_stop)
+  └─ MockServerManager          src/server_mock.py      (--simulate mode)
+```
+
+`TmuxServerManager` manages a named tmux session (`minecraft`) inside the Docker container. The bot sends commands to the MC process by running `tmux send-keys`. Server start/stop persists intentional-stop state to `mc-server/bot_state.json` to distinguish crashes from intentional stops.
+
+**Emergency Stop (/kill):** If a graceful RCON stop hangs, `emergency_stop()` forcefully terminates the tmux session (`kill-session`).
+
+`MockServerManager` mimics all operations with fake delays and no file I/O. Useful for testing Discord commands without running a real server.
+
+### 3.4 Config System & Atomicity (NEW v2.9.0)
+
+Config management now uses atomic context managers to prevent race conditions during concurrent Discord interactions:
+
+```python
+# Atomic update to user_config.json
+with config.update_user_config() as data:
+    data['some_setting'] = 'new_value'
+    # File is locked, data is re-read from disk, then written back.
+    # Memory cache is refreshed automatically after 'with' block.
+```
+
+Methods available:
+- `config.update_bot_config()`
+- `config.update_user_config()`
+
+### 3.5 RCON Communication (NEW v2.9.0)
+
+`rcon_cmd(cmd)` now returns a `tuple[bool, str]` instead of just a string.
+- `bool`: Success flag (`True` if server responded, `False` if RCON failed/timed out).
+- `str`: The server's response or an error message.
+
+### 3.6 Permission System
+
+Permissions are role-name based in `user_config.json`:
+
+```json
+{
+  "permissions": {
+    "Owner": ["cmd", "sync", "start", "stop", ...],
+    "Admin": ["start", "stop", "restart", ...],
+    "Player": ["status", "balance", "pay", ...],
+    "@everyone": ["status", "players", "help"]
+  }
+}
+```
+
+At runtime, `config.resolve_role_permissions(guild)` maps role names → IDs into `config.ROLES`. The `has_role(cmd_name)` decorator in `utils.py` checks this map first (by ID), then falls back to checking role names directly against `user_config.permissions`.
+
+### 3.7 Control Panel
+
+`cogs/control_panel.py` maintains a single sticky embed in the `#command` channel. A `tasks.loop(minutes=2)` task refreshes it. The embed has a persistent `ControlPanelView` with buttons: Start, Stop, Restart, Status. The view is re-registered on every bot start so buttons survive restarts (`bot.add_view(ControlPanelView(bot))` in `on_ready`).
+
+### 3.8 Setup Wizard Flow
+
+`/setup` → `cogs/setup.py` → `src/setup_views.py (SetupView)`:
+
+```
+Step 1: Platform     (Paper / Vanilla / Fabric)
+Step 2: Version      (dropdown from Modrinth API or fallback list)
+Step 3: Difficulty
+Step 4: Seed         (optional custom or random)
+Step 5: Max Players
+Step 6: Advanced     (RAM, view distance, whitelist, online mode)
+Step 7: Plugins/Mods (Modrinth project slugs to auto-download)
+Step 8: Confirm → Install
+
+Install flow:
+  1. SetupHelper.ensure_setup()     → Discord roles & channels
+  2. mc_installer.download_server() → Download JAR
+  3. mc_installer.accept_eula()     → Write eula.txt
+  4. mc_installer.configure_server_properties()
+  5. ModUpdater                     → Fetches specific plugins, updates existing
+  6. server.start()
+  7. ServerInfoManager.update_info()
+```
+
+---
+
+## 4. Configuration System
+
+### 4.1 Environment Variables (`.env`)
+
+| Variable            | Required | Description                                 |
+| ------------------- | -------- | ------------------------------------------- |
+| `BOT_TOKEN`         | ✅       | Discord bot token                           |
+| `RCON_PASSWORD`     | ✅       | RCON password (auto-generated by installer) |
+| `PLAYIT_SECRET_KEY` | ❌       | Optional. Auto-generated via claim flow or read from `data/playit_secret.key` |
+
+### 4.2 `data/bot_config.json` — Machine State
+
+Managed by the bot. Do not edit manually while the bot is running.
+
+```json
+{
+  "server_directory": "/app/mc-server",
+  "guild_id": null,
+  "command_channel_id": null,
+  "log_channel_id": null,
+  "debug_channel_id": null,
+  "info_channel_id": null,
+  "backup_channel_id": null,
+  "owner_id": null,
+  "admin_role_id": null,
+  "player_role_id": null,
+  "spawn_x": null,
+  "spawn_y": null,
+  "spawn_z": null,
+  "online_players": [],
+  "economy": {},
+  "events": [],
+  "mappings": {},
+  "last_auto_backup": "",
+  "installed_version": ""
+}
+```
+
+### 4.3 `data/user_config.json` — User Preferences
+
+Edit this freely between restarts.
+
+```json
+{
+  "java_ram_min": "2G",
+  "java_ram_max": "4G",
+  "backup_time": "03:00",
+  "backup_keep_days": 7,
+  "restart_time": "04:00",
+  "timezone": "Europe/Ljubljana",
+  "permissions": {
+    "Owner":     ["cmd", "sync", "start", "stop", "restart", ...],
+    "Admin":     ["start", "stop", "restart", ...],
+    "Player":    ["status", "balance", "pay", ...],
+    "@everyone": ["status", "players", "help"]
+  },
+  "log_blacklist": [],
+  "triggers": {}
+}
+```
+
+**Validation rules** (enforced on load by `validate_user_config()`):
+
+- `java_ram_min` / `java_ram_max`: must match `^\d+[MG]$`, min ≤ max
+- `backup_time` / `restart_time`: must be `HH:MM` format
+- `backup_keep_days`: integer 1–365
+- `timezone`: any string (validated by pytz at use)
+- `permissions`: must be a dict
+
+### 4.4 Config Class — Key Methods
+
+```python
+config.load_bot_config()       → dict   (thread-safe FileLock read)
+config.save_bot_config(data)   → None   (thread-safe FileLock write)
+config.load_user_config()      → dict
+config.save_user_config(data)  → None
+config.update_dynamic_config(updates: dict)   → updates memory attrs
+config.resolve_role_permissions(guild)         → populates config.ROLES
+config.set_simulation_mode(bool)               → sets dry_run flag
+config.get(key, default=None)                  → safe attribute getter
+```
+
+### 4.5 Config Attributes at Runtime
+
+| Attribute                      | Source               | Description      |
+| ------------------------------ | -------------------- | ---------------- |
+| `config.TOKEN`                 | env                  | Bot token        |
+| `config.RCON_PASSWORD`         | env                  | RCON password    |
+| `config.RCON_HOST`             | env/hardcoded        | `127.0.0.1` (overridable via `RCON_HOST` env var) |
+| `config.RCON_PORT`             | hardcoded            | `25575`          |
+| `config.SERVER_DIR`            | bot_config           | `/app/mc-server` |
+| `config.GUILD_ID`              | bot_config           | Discord guild ID |
+| `config.COMMAND_CHANNEL_ID`    | bot_config           |                  |
+| `config.LOG_CHANNEL_ID`        | bot_config           |                  |
+| `config.DEBUG_CHANNEL_ID`      | bot_config           |                  |
+| `config.OWNER_ID`              | bot_config           | Discord user ID  |
+| `config.JAVA_XMX`              | user_config          | Max JVM heap     |
+| `config.JAVA_XMS`              | user_config          | Min JVM heap     |
+| `config.BACKUP_TIME`           | user_config          | `HH:MM`          |
+| `config.BACKUP_RETENTION_DAYS` | user_config          | Integer          |
+| `config.TIMEZONE`              | user_config / ip-api | pytz string      |
+| `config.ROLE_PERMISSIONS`      | user_config          | Dict name→cmds   |
+| `config.ROLES`                 | runtime              | Dict ID→cmds     |
+| `config.CRASH_CHECK_INTERVAL`  | hardcoded            | 30 (seconds)     |
+| `config.WORLD_FOLDER`          | `@property`          | Reads `level-name` from `server.properties`; falls back to `"world"` if file missing (CFG_002) |
+
+---
+
+## 5. All Discord Commands
+
+### Control
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/start` | Start the Minecraft server from an offline state. | Default |
+| `/stop` | Gracefully shut down the server by sending the `stop` command via RCON. | Default |
+| `/restart` | Safely stop and immediately restart the Minecraft server process. | Default |
+| `/control` | Open an interactive control panel featuring Start, Stop, Restart, and Status buttons. | Default |
+| `/cmd <command>` | Execute a raw console command (e.g., `/cmd op Player`) directly as the server console. | Admin / Owner |
+| `/bot_restart` | Perform a hot-restart of the Discord bot Python process without bringing down the Docker container. | Admin |
+
+### Information
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/status` | Display the current server state (Online/Offline) along with the active player count. | Default |
+| `/ip` | Show the public connection address generated by the integrated Playit.gg tunnel. | Default |
+| `/players` | List all currently online players. Uses RCON if online, logs as fallback. | Default |
+| `/version` | Show the specific version of Minecraft the server is running. | Default |
+| `/seed` | Display the world generation seed. | Default |
+| `/mods` | List all installed mods or plugins found in the respective directories. | Default |
+| `/info` | Provide a comprehensive server embed including IP, version, CPU/RAM usage, Disk space, players, and spawn location. | Default |
+| `/stats [player]` | Show detailed statistics including playtime, death count, and join dates. | Default |
+| `/set_spawn <x> <y> <z>` | Save custom spawn coordinates to the configuration. | Admin |
+
+### Management
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/setup` | Launch the interactive server setup wizard to configure version, platform, and basic settings. | Admin |
+| `/sync` | Force a manual re-sync of slash commands to the Discord guild. | Admin |
+| `/settings` | Open an interactive panel to adjust RAM allocation, scheduling, timezones, and role permissions. | Admin |
+| `/backup [name]` | Create a world backup. If a name is provided, it is a custom backup; otherwise, it is treated as an auto-backup. | Default |
+| `/backup_now [name]` | Trigger an immediate manual backup, bypassing schedules. Enforces a 5-minute cooldown. | Default |
+| `/backup_list` | Display a paginated list of the most recent automated and custom backups. | Default |
+| `/backup_download <filename>` | Request a backup archive as a direct Discord file attachment. Features autocomplete for filenames. | Default |
+| `/logs [lines]` | Retrieve a specified number of recent lines from the active server console log. | Default |
+| `/whitelist_add <player>` | Add a specific player's username to the server whitelist. | Default |
+| `/players_manage` | Open an interactive GUI to manage Bans, Whitelists, and OP statuses. | Admin |
+| `/reload_config` | Perform a hot-reload of the bot's configuration from disk into memory. | Admin |
+
+### Events
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/event_create <name> <time> [description] [mentions]` | Schedule a future server event that will trigger automatic Discord reminders. | Default |
+| `/event_list` | Display a list of all upcoming scheduled events. | Default |
+| `/event_delete <index>` | Remove a scheduled event using its numeric list index. | Admin |
+
+### Automation
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/trigger_add <phrase> <command>` | Create a trigger that listens for a specific chat phrase and executes a corresponding RCON command. | Admin |
+| `/trigger_list` | Display all currently configured chat triggers. | Default |
+| `/trigger_remove <phrase>` | Delete an existing chat trigger. | Admin |
+
+### Economy _(currently disabled)_
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/balance [user]` | Check the current coin balance of a user. | Default |
+| `/pay <user> <amount>` | Transfer a specified amount of coins to another user. | Default |
+| `/economy_set <user> <amount>` | Override a user's current coin balance. | Admin |
+
+### Account Linking
+*Note: These commands support Slovenian localization in Discord.*
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/link <username>` | Initiate a link between your Discord account and a Minecraft username, protecting offline servers. | Default |
+| `/verify <code>` | Input the 6-character verification code displayed on your Minecraft kick screen to complete identity linking. | Default |
+| `/unlink` | Sever the connection between your Discord and Minecraft accounts. | Default |
+| `/unlink_admin [user] [username]` | Forcibly unlink a specific user via Discord mention or Minecraft username. | Admin |
+| `/linked` | Check which Discord user is associated with a specific Minecraft username, or vice-versa. | Default |
+
+### Misc
+
+| Command | Description | Permission Level |
+|---------|-------------|------------------|
+| `/help` | Display a dynamic, paginated help embed that only shows commands the caller has permission to use. | Default |
+
+---
+
+---
+
+## 6. All Terminal / Docker Commands
+
+Run these in your `mc-bot` directory (where `docker-compose.yml` is).
+
+### Basics
+
+| Action               | Command                                                    |
+| :------------------- | :--------------------------------------------------------- |
+| **Start Everything** | `docker compose up -d`                                     |
+| **Stop Everything**  | `docker compose down`                                      |
+| **Restart Bot**      | `docker compose restart mc-bot`                            |
+| **Update Bot**       | `python install/update.py`                                 |
+| **Remove World**     | `docker exec -it mc-bot python bot.py remove-world`        |
+
+### Logs & Debugging
+
+| Action                       | Command                                         |
+| :--------------------------- | :---------------------------------------------- |
+| **View Bot Logs**            | `docker compose logs -f mc-bot`                 |
+| **Check CPU/RAM**            | `docker stats`                                  |
+
+### Container Access
+
+Use **read-only** attach (`-r`) to watch a session safely — key input is ignored, so nothing can be accidentally killed. Detach with `Ctrl+B` then `D`.
+
+| Action                              | Command                                                       |
+| :---------------------------------- | :------------------------------------------------------------ |
+| **Watch MC console (read-only)**    | `docker exec -it mc-bot tmux attach -t minecraft -r`          |
+| **Watch Playit agent (read-only)**  | `docker exec -it mc-bot tmux attach -t playit -r`             |
+| **Control MC console (admin)**      | `docker exec -it mc-bot tmux attach -t minecraft`             |
+| **Control Playit session (admin)**  | `docker exec -it mc-bot tmux attach -t playit`                |
+| **Enter mc-bot shell**              | `docker exec -it mc-bot /bin/bash`                            |
+| **View Playit logs file**           | `docker exec mc-bot cat /app/logs/playit.log`                 |
+
+### Troubleshooting
+
+- **Bot not starting?** Check logs: `docker compose logs mc-bot`
+- **Tunnel not working?** Watch the Playit session (read-only): `docker exec -it mc-bot tmux attach -t playit -r`
+- **Permission errors?** Ensure you are running as a user in the `docker` group.
+- **Setup wizard stuck?** Try `/sync` first, then run `/setup` again.
+
+---
+
+## 7. Installation & Setup
+
+### 7.1 Linux / macOS / Standard WSL
+
+```bash
+git clone https://github.com/slogiker/mc-bot.git
+cd mc-bot
+chmod +x install/install.sh
+./install/install.sh
+```
+
+The script:
+
+1. Checks if an installation already exists (prompts Reconfigure, Update Code, or Cancel)
+2. Checks/installs Docker and Git
+3. Prompts for `BOT_TOKEN`, optional Playit setup (Yes/No flow)
+4. Auto-generates `RCON_PASSWORD`
+5. Writes `.env`
+6. Creates `mc-server/`, `backups/`, `logs/` directories
+7. Runs `docker compose up -d --build`
+
+After startup, run `/setup` in Discord to create channels and install the Minecraft server.
+
+### 7.2 Windows (install.bat)
+
+`install/install.bat` is a fully automated 8-step installer that handles everything from scratch:
+
+| Step | What Happens                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | Admin elevation check. Validates Windows build ≥ 19041, virtualization enabled, ≥5GB disk. 3× YES confirmation if already installed. |
+| 2    | Detects Docker Desktop → uses it if found and running. Otherwise offers choice: Docker Desktop download link OR WSL + Docker Engine. |
+| 3    | If WSL needed: installs WSL2 components, registers `RunOnce` key for auto-resume after mandatory reboot.                             |
+| 4    | Downloads Ubuntu 22.04 minimal rootfs (~50MB) and imports it as a dedicated `MCBot` WSL distro (isolated from any existing Ubuntu).  |
+| 5    | Creates `mc-bot` user non-interactively inside WSL, generates random password, saves to registry and `wsl_credentials.txt`.          |
+| 6    | Runs `wsl_docker_setup.sh` inside the MCBot instance to install Docker Engine + Compose plugin.                                      |
+| 7    | Prompts for Discord token, RCON password (auto-generate option), Playit key. Writes `.env`.                                          |
+| 8    | Runs `docker compose up -d --build` via Docker Desktop or WSL. Prints summary.                                                       |
+
+**Resume logic:** Every completed step is saved to `HKCU\Software\MCBot\Step`. If the process is interrupted (e.g., reboot after WSL install), running `install.bat` again resumes from the exact step it stopped at. Registry is cleaned on success.
+
+**Re-installation protection:** If `Installed=1` is found in registry, the script requires the user to type `YES` exactly three times before proceeding. Any deviation cancels immediately.
+
+### 7.3 `wsl_docker_setup.sh`
+
+Called internally by `install.bat`. Run inside the MCBot WSL instance. Steps:
+
+1. Remove old Docker versions
+2. Install prerequisites (ca-certs, curl, gnupg)
+3. Add Docker GPG key
+4. Add Docker apt repository
+5. Install docker-ce, docker-ce-cli, containerd.io, buildx, compose plugin
+6. Add `mc-bot` to `docker` group
+7. Configure `/etc/docker/daemon.json` (iptables-legacy for WSL, DNS, log limits)
+8. Start Docker via `service docker start`
+9. Configure `/etc/wsl.conf [boot]` for auto-start on WSL launch
+10. Verify `docker --version` + `docker compose version`
+
+### 7.4 `auto_setup.py`
+
+Standalone script that creates Discord structure (roles + channels) without running the full bot. Used as a fallback if `/setup` fails.
+
+```bash
+python src/auto_setup.py <BOT_TOKEN> <GUILD_ID>
+```
+
+Creates: `Owner`, `Admin`, `Player` roles + `commands`, `console`, `debug`, `server-information`, `backups` channels.
+
+### 7.5 First-Run Discord Setup
+
+After the bot is online:
+
+1. Run `/setup` in any channel (requires `Administrator` permission)
+2. Follow the 7-step wizard: platform → version → difficulty → seed → max players → advanced → install
+3. Bot creates all channels, downloads server JAR, writes `server.properties`, starts the MC server
+4. `/status` should show 🟢 Online after ~30 seconds
+
+---
+
+## 8. Cog Reference
+
+### `cogs/admin.py`
+
+Commands: `/sync`, `/backup_now`, `/logs`, `/whitelist_add`
+
+`/logs` uses `docker logs --tail N mc-bot`, falls back to reading `mc-server/logs/latest.log` via `aiofiles` if Docker call fails. Output sent to log channel.
+
+### `cogs/ai.py`
+
+Optional. Requires `xai-sdk` and `XAI_API_KEY`. Wraps xAI Grok API. System prompt makes it "fully unhinged Minecraft assistant." Responses truncated at 2000 chars.
+
+### `cogs/automation.py`
+
+Two systems:
+
+- **Weekly MOTD**: `tasks.loop(hours=168)` generates AI MOTD via Grok → RCON `setmotd`. Requires a server plugin (Essentials/CMI) for runtime MOTD changes.
+- **Trigger scanner**: Subscribes to `LogDispatcher`, scans each log line for phrases defined in `user_config['triggers']`. On match, fires the mapped RCON command.
+
+### `cogs/backup.py`
+
+- **Scheduled**: `tasks.loop(minutes=1)` checks every minute if `now.strftime("%H:%M") == backup_time`. Prevents double-fires by checking `bot_config['last_auto_backup']` against today's date. Calls `create_backup()` with no name → routes to `auto_dir` → retention cleanup applies (DB_005, DB_006, BOT_041).
+- **Manual**: `/backup` command → `backup_manager.create_backup()` → shows `BackupDownloadView` button (BOT_038).
+- **Retention**: Auto backups in `backups/auto/` are deleted after `backup_keep_days` days. Custom backups in `backups/custom/` are never auto-deleted.
+
+### `cogs/console.py`
+
+Subscribes to `LogDispatcher`. Parses MC log format `[HH:MM:SS] [Thread/LEVEL]: Message`. Features:
+
+- Batches messages (max 10 or 2 second interval) before sending to Discord to reduce API calls
+- Strips blacklisted messages (`user_config['log_blacklist']`)
+- Detects join/leave events → updates `bot_config['online_players']`, updates presence, sends event notification to debug channel
+- Detects death events (checks 20+ death keywords) → sends to debug channel
+- `/cmd` command: owner-only RCON execution, audit-logs user + command to debug channel
+
+### `cogs/control_panel.py`
+
+Sticky control panel in `COMMAND_CHANNEL_ID`. Refreshes every 2 minutes. Tries to `fetch_message` by cached ID and edit; if not found, cleans old bot messages and posts new one. Permission check in `_check_perm()` mirrors `has_role()` logic for button interactions.
+
+### `cogs/_economy.py`
+
+The leading underscore causes `bot.py`'s cog auto-loader to skip this file; it is never loaded at runtime and is not a `LogDispatcher` subscriber. Preserved for future use.
+
+- **Balance/Pay**: Stored in `bot_config['economy']` as `{discord_user_id: balance}`. Pay is guarded by `asyncio.Lock`.
+- **Word Hunt**: Random interval (30–90 min), requires ≥1 online player. Announces target word via `tellraw`, subscribes temp queue to `LogDispatcher`, first player to type the word in chat wins 100 coins. Winner lookup via `bot_config['mappings']` (MC name → Discord ID). If not mapped, no coins awarded.
+
+### `cogs/events.py`
+
+Events stored in `bot_config['events']` as list of dicts. `tasks.loop(minutes=1)` checks all events. Sends reminders at 24h and 1h before event time. Tracks `reminded_24h` and `reminded_1h` flags per event. Cleans events >24h past.
+
+### `cogs/link.py`
+
+Commands: `/link <username>`, `/unlink`, `/unlink_admin`
+
+The account linking cog for protecting offline-mode servers against impersonation. On `/link`:
+
+1. Checks if that MC username is already bound to another Discord ID.
+2. Calls Mojang API (`src/mojang.py`) to detect premium vs cracked accounts.
+3. Stores the result in `data/mc_links.json` via `src/mc_link_manager.py`.
+
+Premium-detected accounts get a `🟢` note (no DM challenge required on reconnect). Cracked accounts get a `🟡` note indicating they'll need periodic re-verification via DM.
+
+`/unlink_admin` accepts either a Discord `Member` or a raw MC username string and supports force-removal for Admin use.
+
+### `cogs/help.py`
+
+Builds dynamic help embed by cross-referencing user's roles against `config.ROLE_PERMISSIONS`. Only shows commands the user has permission to use. Categorizes commands into sections. Uses `bot.tree.walk_commands()` for dynamic iteration — auto-includes new commands without hardcoding.
+
+### `cogs/info.py`
+
+`/info` uses `psutil` for system metrics (CPU %, RAM %, Disk %). Tries to get IP from `PlayitCog.tunnels`. Gets seed from `server.properties`. Gets spawn from `bot_config`. **Uptime** is read from `bot.server.get_start_time()` (added in v2.8.0-dev) and displayed as `H:MM:SS`. **TPS** first attempts RCON `tps` (Paper/Forge only), then falls back to `/debug start` + 1s sleep + `/debug stop` parsing the tick count for Vanilla servers. Also triggers `ServerInfoManager.update_info()` to refresh the info channel.
+
+### `cogs/management.py`
+
+Wraps `bot.server.start()`, `stop()`, `restart()`. Each command updates the `#server-information` channel via `ServerInfoManager` on success.
+
+### `cogs/mods.py`
+
+`/mods` traverses `mc-server/mods/` or `mc-server/plugins/` (based on platform) and lists `.jar` files in a Discord embed.
+
+### `cogs/players.py`
+
+`/players` sends the `list` command via RCON, parses the online players, and builds a formatted embed. Handles "0 players online" gracefully.
+
+### `cogs/playit.py`
+
+Fetches the tunnel address from the Playit API (`api.playit.gg/account/tunnels`) via HTTP using the agent's authentication key stored in `/app/data/playit_secret.key` or `.env`. Caches the address with a **2-hour TTL** (`CACHE_TTL = 7200`). After 2 hours, the next `/ip` call re-fetches from the API. Exposed via `self.tunnels` list for other cogs (used by `/info`).
+
+`fetch_playit_address()` returns a `(address, error_message)` tuple. On failure, specific error messages are returned:
+- No secret key → instructs user to run installer or add key file
+- 401 Unauthorized → key may be expired or invalid
+- Non-200 status → tunnel may not be claimed
+- Empty tunnel list → no tunnels configured
+- No address on tunnel → tunnel still initializing
+- Network error → internet connectivity issue
+
+#### Playit CLI Reference (v1.0.4)
+
+The bot uses the `playit` (daemon) and `playit-cli` (management) binaries. Logs are written to `/app/logs/playit.log`. It uses a custom socket path at `/app/data/playit.sock` to avoid permission issues.
+
+```
+Usage: playit-cli [OPTIONS] [COMMAND]
+
+Commands:
+  version      Print version information
+  status       Show the status of the installed playitd service
+  reset        Removes the secret key on your system so the playit agent can be re-claimed
+  setup        Setup playit by provisioning a new secret to playitd
+  account      Account management commands
+  claim        Setting up a new playit agent
+  help         Print this message or the help of the given subcommand(s)
+```
+
+Options:
+  --secret <SECRET>     Secret code for the agent (pass directly)
+  --secret_path <PATH>  Path to file containing the secret key
+  -w, --secret_wait     Wait for secret_path file to become available
+  -s, --stdout          Force all logs to stdout (IMPORTANT: required for tmux capture)
+  -l, --log_path <PATH> Write logs to a file instead of stdout
+  --platform_docker     Override platform version string to "docker"
+  -h, --help            Print help
+```
+
+**`claim` subcommand:**
+```
+playit claim generate                    # Prints a random claim code (stdout, scriptable)
+playit claim url <CODE>                  # Prints the full https://playit.gg/claim/<CODE> URL
+playit claim exchange [--wait N] <CODE>  # Blocks until user claims in browser, prints secret key
+                                         # --wait 0 = wait forever (default), N = timeout in seconds
+```
+
+**`tunnels` subcommand:**
+```
+playit --secret <KEY> tunnels list                                     # Prints: [id] [type] [count] [public-address]
+playit --secret <KEY> tunnels prepare <PORT_TYPE> <PORT_COUNT>         # Create tunnel if it doesn't exist
+        --type [TUNNEL_TYPE]   e.g. minecraft-java
+        --name [NAME]          tunnel name
+        --exact                require exact match
+        --ignore_name          ignore name when matching
+```
+
+**`account` subcommand:**
+```
+playit account login-url   # Generate a browser login link
+```
+
+**Correct first-time claim flow (used in `install.sh`):**
+```bash
+# 1. Generate a claim code (scriptable, instant)
+CLAIM_CODE=$(docker exec mc-bot playit claim generate)
+
+# 2. Show the URL to the user
+echo "https://playit.gg/claim/${CLAIM_CODE}"
+
+# 3. Wait for browser claim — returns the secret key when done
+SECRET_KEY=$(docker exec mc-bot playit claim exchange --wait 0 "$CLAIM_CODE")
+
+# 4. Save secret and create the minecraft tunnel
+echo "$SECRET_KEY" > data/playit_secret.key
+docker exec mc-bot playit --secret "$SECRET_KEY" tunnels prepare both 1 --type minecraft-java --name minecraft
+
+# 5. Get the public address
+docker exec mc-bot playit --secret "$SECRET_KEY" tunnels list | awk '{print $4}'
+
+# 6. Start persistent agent (use -s so logs go to stdout, visible in tmux)
+docker exec -d mc-bot tmux new-session -d -s playit "playit --secret $SECRET_KEY -s"
+```
+
+**Key lessons learned (2026-05-03 investigation):**
+- Without `-s`, playit logs to a **file** by default — tmux `capture-pane` sees nothing
+- Old approach (grep tmux for claim URL) was fundamentally broken for this reason
+- `playit claim generate` + `claim exchange` is the correct scriptable API — no polling or tmux needed
+- Secret key config path (`/root/.config/playit_gg/playit.toml`) was also wrong; `claim exchange` returns the key directly via stdout
+- `tunnels list` output format: `[tunnel-id] [port-type] [port-count] [public-address]` → `awk '{print $4}'` extracts the address
+
+### `cogs/settings.py`
+
+Implements the interactive `/settings` command utilizing multiple Modals (`RamModal`, `ScheduleModal`, `TimezoneModal`, `PermissionsModal`). Directly modifies `user_config.json` via the `config` singleton and hot-reloads running state variables (Java heap, logic intervals, timezone lookups) without requiring a restart.
+
+### `cogs/setup.py`
+
+Entry point for `/setup`. Checks for `server.jar` existence — if found, shows reinstall warning with Confirm/Cancel. Calls `fetch_versions()` from `setup_views.py` to pre-fetch version list, then launches the zero-emoji, real-time reactive `SetupView`. Temporarily ignores Forge API.
+
+### `cogs/stats.py`
+
+Stats flow:
+
+1. Resolve player → UUID (check `bot_config['mappings']` → Mojang API → offline UUID generation)
+2. Read `world/stats/<uuid>.json` for playtime, deaths, kills
+3. Read `world/playerdata/<uuid>.dat` via `nbtlib` for NBT data
+4. Display with skin thumbnail from `crafatar.com` (premium) or placeholder (offline)
+
+### `cogs/tasks.py`
+
+Background tasks started from `on_ready` (not `__init__`):
+
+- `crash_check` (every 30s): Guards against fresh-install by checking `server.jar` exists before attempting recovery — skips silently if absent (MC_012). If server not running and not intentionally stopped → attempts restart. `start()` return value is unpacked as `success, _ =` so crash retry counter increments correctly (MC_010). After 2 failed restarts, pings server owner and aborts. `online_players` is cleared on crash detection, intentional stop, and bot startup (MC_011). Also monitors the Playit tmux session: tracks `playit_restart_attempts`, restart uses `bash -c` wrapper in `create_subprocess_exec` (PT_012), verifies restart success after 3s delay (PT_013), notifies owner after 2 failures (PT_014).
+- `monitor_server_log` (every 1s): Reads `mc-server/logs/latest.log` incrementally (file position tracking). Detects join/leave/done/stopping events. Sends to log channel. Updates info channel.
+- `daily_backup` (commented out): `tasks.loop(time=...)` using pytz timezone. Disabled — `backup.py` handles scheduling more robustly.
+
+---
+
+## 9. Source Module Reference
+
+### `src/backup_manager.py`
+
+`BackupManager` singleton (`backup_manager`).
+
+- `create_backup(custom_name=None)` → `(success, filename, filepath)`. Unnamed calls (`custom_name=None`) route to `auto_dir` — retention cleanup runs after each (DB_005, DB_006). Named calls route to `custom_dir` — never auto-deleted. Zips world folder asynchronously via `asyncio.to_thread`. Skips `session.lock`. Validates that the world directory exists before zipping (raises `FileNotFoundError` if missing — fixed in v2.7.1, previously created empty backups silently).
+- `upload_backup(filepath)` → URL string via `pyonesend.OneSend().upload()`.
+- `_cleanup_auto_backups()` → deletes files older than `BACKUP_RETENTION_DAYS` (DB_006).
+- Backup dirs: `BACKUP_DIR/auto/` and `BACKUP_DIR/custom/` where `BACKUP_DIR = /app/backups`.
+
+### `src/config.py`
+
+Singleton `Config` class. See [Section 4](#4-configuration-system). Also contains `validate_user_config(data)` standalone function.
+
+### `src/installer_views.py`
+
+Multi-step UI components for the install wizard:
+
+- `PlatformSelectView`, `VersionSelectView`, `ServerSettingsView`, `AdvancedSettingsModal`, `WhitelistInputModal`, `InstallationManager`
+- These are the older views. `src/setup_views.py` is the modern replacement with full Select menus.
+
+### `src/log_dispatcher.py`
+
+`LogDispatcher` singleton (`log_dispatcher`). See [Section 3.2](#32-log-dispatcher).
+
+### `src/logger.py`
+
+Custom logger with:
+
+- Daily rotation (TimedRotatingFileHandler, `when='midnight'`)
+- Custom namer: organizes rotated logs into `logs/YYYY-MM/` subdirectories
+- Monthly auto-zip: previous month's directory zipped to `logs/YYYY-MM_logs.zip`
+- `StreamToLogger`: redirects `sys.stderr` to logger at ERROR level
+- Format: `[HH:MM:SS - DD.MM.YYYY] LEVEL    message`
+
+### `src/mc_installer.py`
+
+`MinecraftInstaller` singleton (`mc_installer`).
+
+- `get_latest_version(platform)` → string. **v3 Update:** forces cache bypass to ensure fresh API fetch at install time.
+- `download_server(platform, version, callback)` → `(bool, str)` with progress callback
+- `_download_paper()`, `_download_vanilla()`, `_download_fabric()`, `_download_forge()` (forge: stub, returns error)
+- `accept_eula()` → writes `eula.txt`
+- `configure_server_properties(settings)` → writes/merges `server.properties`
+- `add_to_whitelist(username)` → Mojang API for online mode, MD5 UUID for offline mode
+
+### `src/mc_manager.py`
+
+After refactoring, this module is now a thin helper containing only `get_server_properties() → dict | None` which reads and parses `server.properties`. The old `mc_manager` server instance was removed.
+
+### `src/server_info_manager.py`
+
+`ServerInfoManager(bot)`:
+
+- `update_info(guild)` → posts/edits plain-text message in `#server-information` channel. Shows: address, version, seed, spawn, world spawn.
+- `set_spawn(x, y, z)` → saves to `bot_config`, calls `update_info()`.
+- `_get_version()`, `_get_seed()`, `_get_spawn()`, `_get_world_spawn()` → read from config/server.properties.
+
+### `src/server_tmux.py`
+
+`TmuxServerManager`:
+
+- All tmux operations use `subprocess.run` (synchronous) wrapped in `asyncio.to_thread` or `loop.run_in_executor`.
+- State file: `mc-server/bot_state.json` → `{"intentional_stop": bool, "start_time": float|null}`.
+- `start_time` is set to `time.time()` on every successful server start, cleared to `null` on stop. Persisted across bot restarts.
+- `get_start_time() → float | None` exposes the epoch timestamp for uptime calculation.
+- Start command: `cd /app/mc-server && java -XmsXXX -XmxXXX -jar server.jar nogui` inside tmux.
+- Stop: sends `stop` RCON command, waits 5s, kills tmux session if still alive.
+- `is_running()`: checks `tmux has-session -t minecraft` return code.
+
+### `src/setup_helper.py`
+
+`SetupHelper(bot)`:
+
+- `ensure_setup(guild)` → creates/finds roles (MC Admin, MC Player), category (Minecraft Server), channels (command, log, debug). Returns dict of IDs.
+- `_assign_admin_role(guild, role)` → assigns MC Admin to guild owner and any member with a role named "Owner".
+
+### `src/setup_views.py`
+
+Modern multi-step Discord form. See [Section 3.6](#36-setup-wizard-flow). Uses `SetupState` dataclass for form state. Fetches version list from Modrinth API on first load.
+
+### `src/rcon_manager.py` _(NEW)_
+
+`RCONManager`
+- Manages connection and client state to the Minecraft server's RCON port.
+- Fixed in v3.1.2: Failed initial connection attempts no longer cache a broken client state, allowing RCON to recover and connect successfully once the server boots.
+
+### `src/utils.py`
+
+Key functions:
+
+- `has_role(cmd_name)` → `app_commands.check` decorator. 3-step check: ID map → name map → @everyone.
+- `rcon_cmd(cmd)` → async RCON via `aiomcrcon.Client`. Returns response string or error.
+- `send_debug(bot, msg)` → send to debug channel + log.
+- `get_uuid(username)` → looks up in `usercache.json`.
+- `parse_server_version()` → reads `latest.log` line by line for "Starting minecraft server version".
+
+
+### `src/mc_link_manager.py` _(NEW)_
+
+`MCLinkManager` class (not a singleton — instantiated per-use in cogs).
+
+- `link_account(discord_id, mc_username, is_premium)` → writes to `data/mc_links.json`. Automatically removes any previous link for that MC username (prevents two accounts sharing one username).
+- `unlink_account(discord_id)` → returns `bool`.
+- `get_link_by_discord(discord_id)` → `dict | None`.
+- `get_link_by_mc(mc_username)` → `dict | None` (includes `discord_id` key).
+- All file I/O is async via `asyncio.to_thread`, protected by an internal `asyncio.Lock`.
+- Schema per record: `{"mc_username": str, "is_premium": bool, "linked_at": ISO_TIMESTAMP}`
+
+### `src/mojang.py` _(NEW)_
+
+`verify_premium_mc_account(username: str) → bool`
+
+- Queries `https://api.mojang.com/users/profiles/minecraft/<username>`.
+- Returns `True` if 200 OK + UUID present (real Mojang account).
+- Returns `False` if 404 (cracked / nonexistent).
+- **Fail-closed (v3):** on rate limit (429), server error (5xx), or network failure → returns `False` to prevent unauthorized access.
+
+### `src/log_watcher.py` _(NEW)_
+
+`LogWatcher(bot)`
+
+- Subscribes to the centralized `log_dispatcher` queue (re-uses the same `tail -F` process, no extra subprocess).
+- Scans each line with two regex patterns:
+  - `User Authenticator #N/INFO` — Vanilla/Paper/Fabric format
+  - `Netty.*/INFO` — Forge/NeoForge format
+- On match, dispatches `bot.dispatch('minecraft_player_login', username, uuid)`.
+- `start()` / `stop()` manage subscription lifecycle.
+
+### `src/join_guard.py` _(NEW)_
+
+`JoinGuard(bot)` — security gatekeeper called via `on_minecraft_player_login` event. **Overhauled in v3 to be mascan-proof.**
+
+Login decision tree:
+1. No link found → Kick with message. (Auto-Mojang bypass disabled in v3 for safety).
+2. Link found, `is_premium=True` → allow immediately.
+3. Link found, `is_premium=False` (cracked account):
+   - Check `verified_sessions` for the specific MC UUID.
+   - Within 30-minute verified session window → allow.
+   - Outside window → kick + DM/notify Discord user a 6-char alphanumeric Challenge code.
+4. `verify_code(discord_id, code)` handles the `/verify` command.
+   - Multi-account support: aggregates all active challenges for the user.
+   - Brute-force protection: 3 attempts allowed per 5 minutes.
+5. `complete_challenge(username)` is called on successful verification → grants 30-minute UUID-based session.
+6. Challenges expire after 300 seconds (5 minutes); DM embed is edited to show ❌.
+
+### `src/utils_views.py` _(DELETED v3)_
+
+Obsolete view file. Legacy DM button flow removed in favor of the production-ready `/verify` command.
+
+### `src/version_fetcher.py`
+
+`VersionFetcher` singleton with 1-hour cache per platform. Methods: `get_versions(platform, limit)`, `get_latest_version(platform)`. Fallback to hardcoded list if API fails.
+
+---
+
+## 10. Known Bugs & Technical Debt
+
+### 10.1 Previously Fixed Critical / Security Issues — ✅ RESOLVED
+
+| #   | Bug / Issue                                       | Resolution                                                                                                                                     |
+| --- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Exposed RCON port 25575 on Host                   | `docker-compose.yml` updated to ensure port is only accessible inside container at `127.0.0.1`.                                                |
+| 2   | Duplicate Log Instances per Cog                   | Replaced scattered `docker logs -f` calls with centralized `src/log_dispatcher.py` instance to handle streams efficiently via `asyncio.Queue`. |
+| 3   | Duplicate Server Manager Instance                 | Removed the extra `mc_manager.py` ghost instance. Forced everything to query `bot.server`.                                                     |
+| 4   | `config.py` Silently Overwriting Simulation State | `load()` and `save_bot_config()` were locked together, overwriting `--simulate` flags. Now state resets are preserved correctly.               |
+| 5   | JSON Economy Race Condition                       | Wrapped JSON reads/writes with `asyncio.Lock` since all bot reads/writes happen sequentially in the same Thread.                               |
+| 6   | missing `OWNER_ID` population                     | Defined logic in `setup_helper.py` to identify Guild owner.                                                                                    |
+| 7   | Playit systemd dependency in Docker               | Replaced PPA installer with direct binary download of v0.17.1 in `Dockerfile` (NEW v2.9.0).                                                    |
+| 8   | Playit agent crash on startup                     | Removed conflicting `-s` and `-l` flags. Agent now correctly logs to `/app/logs/playit.log` (NEW v2.9.0).                                      |
+| 9   | World corruption during backup                    | Implemented RCON save-off / save-all / save-on sequence in `BackupManager` (NEW v2.9.0).                                                       |
+| 10  | Config race conditions                            | Implemented atomic context managers for all JSON Read-Modify-Write operations (NEW v2.9.0).                                                    |
+
+### 10.2 Logic Bugs — Fixed / Pending
+
+| #   | File                    | Bug                                                                                                                                      | Status               |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1   | `src/backup_manager.py` | Backup dir mismatch: Docker volume mounts `./backups:/app/backups`. Absolute path resolution added via `os.path.abspath`.                | ✅ FIXED v2.8.0-dev  |
+| ~~2~~   | ~~`src/backup_manager.py`~~ | ~~`_zip_world()` silently created empty backups when world directory didn't exist.~~ | ✅ FIXED v2.7.1 |
+| 2   | `cogs/automation.py`    | `cog_unload()` references `self.log_task` but also `self.log_scan_task` -- inconsistent naming. One is never cancelled.                  | ✅ FIXED v2.6.0      |
+| 3   | `cogs/info.py`          | Vanilla MC has no `/tps` RCON command — TPS section falls back to `/debug start` + `/debug stop` method, then `N/A (Vanilla)`.           | ✅ FIXED v2.8.0-dev  |
+| 4   | `cogs/console.py`       | If `LOG_CHANNEL_ID` is None on startup, tail loop busy-waits with `asyncio.sleep(10)` without exponential backoff.                       | ✅ FIXED v2.6.0      |
+| 5   | `cogs/stats.py`         | `get_uuid_online` uses `aiohttp` but no explicit timeout -- hangs if Mojang API goes down completely.                                    | ✅ FIXED v2.6.0      |
+| 6   | `cogs/tasks.py`         | `create_backup()` returns 3 values `(success, filename, filepath)` but the daily backup task only unpacked 2 — raises `ValueError` every scheduled backup run. | ✅ FIXED v2.8.0-dev |
+| 7   | `src/setup_views.py`    | `asyncio` was imported locally inside `_start_installation()` only, making it unavailable in `_save_config_to_file()` — `NameError` at runtime after setup. | ✅ FIXED v2.8.0-dev |
+| 8   | `docker-compose.yml`    | `data/` directory not mounted as a Docker volume — `bot_config.json` and `user_config.json` were wiped on every `docker compose up --build`. | ✅ FIXED v2.8.0-dev |
+| 9   | `src/setup_views.py`    | Server platform (`paper`, `vanilla`, `fabric`) was used during install but never saved to `bot_config.json` — features like TPS monitor had no way to detect server type. | ✅ FIXED v2.8.0-dev |
+| 10  | `cogs/management.py`    | `/restart` used `os.execv` which replaces the process image; inside Docker (PID 1) this causes an unclean container exit instead of a clean restart. | ✅ FIXED v2.8.0-dev (now uses `bot.close()` + `sys.exit(0)`) |
+| 11  | `cogs/automation.py`    | `cog_unload()` never called `log_dispatcher.unsubscribe()` — orphaned queues accumulated in `_subscribers` on every hot-reload. | ✅ FIXED v2.8.0-dev |
+| 12  | `src/config.py`         | Blocking HTTP call to ip-api.com at import time delays bot startup. Replaced with background thread async fetch.                       | ✅ FIXED v2.8.0-dev  |
+| 13  | `cogs/automation.py`    | Heavy disk I/O on every log line from `load_user_config()`. Added 30s cache interval.                                                    | ✅ FIXED v2.8.0-dev  |
+| 14  | Multiple Files          | Bare `except:` handlers in players.py, admin.py, mod_updater.py swallowing system exits. Replaced with context-specific exceptions.     | ✅ FIXED v2.8.0-dev  |
+| 15  | `cogs/control_panel.py` | Potential `IndexError` on index 0 of `embeds` list. Wrapped with bounds and attribute checks.                                            | ✅ FIXED v2.8.0-dev  |
+| 16  | `cogs/console.py`       | Variable shadowing on `match` loop variable overwriting regex scope. Renamed to `join_match`.                                            | ✅ FIXED v2.8.0-dev  |
+
+### 10.3 Bugs Found During Manual Testing (2026-03-16 CM4 Live Test)
+
+> All items below were discovered during hands-on testing on a Raspberry Pi CM4 running a fresh Docker install. Fixes applied in v2.8.0-dev.
+
+| #   | File                    | Bug                                                                                                                                      | Status               |
+| --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 19  | `cogs/automation.py`    | `AttributeError` on cog load — `motd_loop.start()` called before the loop was defined. Bot failed to load the entire automation cog.    | ✅ FIXED v2.8.0-dev — removed the premature `start()` call; loop starts only when explicitly triggered. |
+| 20  | `bot.py`                | `interaction_check` coroutine never awaited in `setup_hook`, producing `RuntimeWarning` and silently skipping all interaction permission checks. | ✅ FIXED v2.8.0-dev — wired `await` correctly. |
+| 21  | RCON / `src/setup_views.py` | RCON connection refused for ~60s after server start. Root cause: `rcon.enable=true` was not written to `server.properties` before the server launched, so RCON was never enabled. | ✅ FIXED v2.8.0-dev — `configure_server_properties()` now runs and EULA is accepted before the server process starts, ensuring RCON config is present on first boot. |
+| 22a | `install/install.sh`    | Misleading completion message told users to run `docker compose logs -f playit` to "start the tunnel" — that command views logs, not starts a process, and `playit` is not a separate Docker service (it runs inside `mc-bot` via tmux). | ✅ FIXED v2.8.0-dev — footer instructions corrected. |
+| 22b | `install/install.sh`    | Playit secret key extraction fails silently after the claim flow. Playit binary may exit before writing its config file, so `data/playit_secret.key` is never populated. | 🔴 Still open — tracked in section 10.4 #8. |
+| 23  | `src/mod_updater.py`    | `'ModUpdater' object has no attribute 'client'` crash when fetching any explicitly named plugin/mod on fresh install. `aiohttp.ClientSession` was never initialised on the object. | ✅ FIXED v2.8.0-dev — switched to creating a fresh `aiohttp.ClientSession()` per request instead of relying on a shared instance. |
+| 24  | `src/mod_updater.py`    | On a fresh install with no mods, ModUpdater described the operation as an "update", said it "analyzed N local files" (were defaults bundled in the image), and created a timestamped `old_mods_*` backup folder for files that were not user-placed. | ✅ FIXED v2.8.0-dev — added `is_setup` flag; fresh installs skip the backup step and use "Installing" framing instead of "Updating". |
+| 25  | `docker-compose.yml`    | No `playit` Docker service defined. By design — Playit agent runs inside the `mc-bot` container via a dedicated `tmux` session named `playit`, not as a separate compose service. Not a bug; noted here for clarity. | ℹ️ By design — use `docker exec -it mc-bot tmux attach -t playit` to inspect. |
+
+
+### 10.3 Code Quality — Low Priority
+
+- ~~`cogs/console.py` has duplicate `from datetime import datetime` imports.~~ FIXED v2.6.0
+- ~~`src/server_info_manager.py` has leading whitespace on line 1.~~ FIXED v2.6.0
+- ~~`cogs/help.py` categories list hardcodes command names — won't auto-update when commands are added.~~ FIXED v2.8.0-dev (uses `bot.tree.walk_commands()`).
+- ~~`requirements.txt` listed `mcrcon` package which was never imported anywhere; `aio-mc-rcon` is the only RCON library used.~~ FIXED v2.8.0-dev (removed)
+- ~~`src/installer_views.py` entire file was dead code, fully replaced by `src/setup_views.py`, nothing imported it.~~ FIXED v2.8.0-dev (deleted)
+- Startup logs from `bot.py` were excessively verbose at INFO level for individual cog loads. Changed to DEBUG. FIXED v2.8.0-dev.
+
+### 10.4 Open Issues — Pending Fix
+
+| #   | File                       | Issue                                                                                                                                                                       |
+| --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `cogs/admin.py`            | `/logs` runs `docker logs mc-bot` as a subprocess from inside the container. This requires `/var/run/docker.sock` to be mounted (it isn't). Silently falls back to reading `latest.log` which only contains bot logs, not server logs. |
+| ~~2~~   | ~~`src/config.py`~~            | ~~`WORLD_FOLDER` is hardcoded as `"world"`.~~ | ✅ FIXED — `WORLD_FOLDER` is now a `@property` reading `level-name` from `server.properties`. |
+| ~~3~~   | ~~`cogs/control_panel.py`~~    | ~~`add_view(ControlPanelView)` is registered in `on_ready` instead of `setup_hook`.~~ | ✅ FIXED v2.8.1 — moved to `cog_load()`. |
+| 4   | `src/setup_views.py`       | Confirmation step shows `Version: latest (Latest available will be used)`. The actual resolved version is only fetched during download. Could be resolved on navigate-to-confirmation step. P3/cosmetic. |
+| 5   | `cogs/automation.py`       | 30-second trigger cache means new `/trigger_add` commands don't fire for up to 30s. Expected behavior but worth noting to users. P3/cosmetic. |
+| 6   | `cogs/backup.py`           | `/backup_download` Discord CDN attachment URLs expire. If user saves the link and tries later, it won't work. Discord limitation, no code fix possible — worth noting in `/help` text. |
+| 7   | `Dockerfile` / `docker-compose.yml` | `docker compose up --build` takes 400+ seconds. Java 21 + Playit apt layers are re-run on every rebuild. Goal: split into stable base image + thin app layer so code changes rebuild in <10s. |
+| ~~8~~   | ~~`install/install.sh`~~       | ~~Playit secret key extraction may fail silently after fresh install. Playit binary may exit before writing `/root/.config/playit_gg/playit.toml`.~~ | ✅ FIXED 2026-05-03 — See v2.8.2 below. |
+| 9   | `src/setup_views.py`       | Mod selection UX: free-text slug textarea has no validation, no autocomplete, no live search. Needs redesign using slash command autocomplete (`@app_commands.autocomplete`) reusing `/mod_search` Modrinth logic. Modal inputs do not support autocomplete — this requires moving mod selection out of the modal. |
+
+---
+
+## 11. Version History & Recent Changes
+
+### v3.0.0 — Security & Reliability Overhaul (2026-05-22)
+
+**Major Changes:**
+- **UUID Verification:** Overhauled JoinGuard to use UUID-based session tracking, preventing impersonation via name-spoofing in offline mode.
+- **Interactive Logs:** Redesigned `/logs` with categorized filtering buttons (Chat, Joins, Errors, Raw) and RCON noise reduction.
+- **Emergency Controls:** Added `/kill` command and underlying `emergency_stop` method for hard-killing the Minecraft process.
+- **Native Vanilla Support:** Setup wizard and `/mods` command now intelligently detect Vanilla platforms and skip mods/plugins logic.
+- **RCON Handshake:** Bot presence now accurately reflects server readiness by waiting for a successful RCON command before going "Online".
+- **Windows Architecture:** Re-architected Windows installation to run inside a dedicated WSL2 Ubuntu environment for maximum stability.
+
+---
+
+### v2.9.0 — Infrastructure & Architectural Hardening (2026-05-21)
+
+**Major Changes:**
+- **Atomic Config:** Replaced loose JSON R/W with context-managed atomic operations (`update_bot_config`, `update_user_config`). This prevents data loss during concurrent settings changes.
+- **Robust RCON:** `rcon_cmd` now returns a `(success, response)` tuple. All call sites updated to handle RCON failures gracefully.
+- **Root Cleanup:** Reorganized root folder; moved internal docs to `docs/internal/`, test infra to `tests/infra/`, and templates to `install/`.
+- **Playit Fix:** Pinned Playit to v0.17.1 (direct binary) to bypass systemd dependency in v1.0.0+. Resolved agent startup crash loop and fixed log persistence.
+- **Safe Backups:** Added RCON-based auto-save management (`/save-off`, `/save-all`) during backups to ensure data integrity.
+- **Dynamic UID/GID:** Added `${PUID}` and `${PGID}` support to `docker-compose.yml` for seamless host permission matching.
+
+**New Commands:**
+- `/reload_config`: Hot-reloads configuration files from disk to memory without restarting the bot.
+
+---
+
+### v2.8.3 — Permission & Installer Hardening (2026-05-14)
+
+**Fixes:**
+- **Bug 1 (Permission Error):** Added `user: "1000:1000"` to `docker-compose.yml` to resolve UID mismatch on volume-mounted `data/` and `logs/` directories.
+- **Bug 2 (Playit Claim Flow):**
+  - Added a health-check wait loop in `install/install.sh` to ensure the container is fully running before attempting to generate a Playit claim code.
+  - Added validation for the `CLAIM_CODE` to prevent "running" error messages from being misinterpreted as valid tokens.
+- **Bug 3 (Log Persistence):** Restored log writing capabilities by resolving the early-stage permission crash.
+
+---
+
+### v2.8.2 — Playit Claim Flow Rewrite (2026-05-03)
+
+**Root cause investigation:**
+- `playit` binary (v0.17.1) writes logs to a **file by default**, not stdout. The old `install.sh` ran `playit` inside a detached tmux session and polled `tmux capture-pane` for the claim URL — this always returned empty output because nothing reached stdout.
+- The old approach also looked for the secret key at `/root/.config/playit_gg/playit.toml` which is incorrect — the key is not written there by default.
+- Old `tunnel add` subcommand does not exist in v0.17; it was renamed to `tunnels prepare`.
+
+**Fix (`install/install.sh`):**
+- Replaced entire tmux-polling claim flow with the correct scriptable CLI:
+  - `playit claim generate` → prints a claim code to stdout instantly
+  - `playit claim exchange --wait 0 <code>` → blocks until user claims in browser, prints secret key to stdout directly — no polling, no grep, no timeout loops
+  - `playit tunnels prepare both 1 --type minecraft-java --name minecraft` → correct tunnel creation command
+  - `playit --secret KEY tunnels list | awk '{print $4}'` → extracts public address after setup
+  - Agent started with `-s` flag to force stdout logging (visible in tmux if needed for debugging)
+- Removed all retry loops, tmux polling, and the incorrect config file path extraction
+- Both the "already have a key" and "existing key on disk" paths also updated to use `-s` flag
+
+---
+
+### v2.8.1 — Bug Fix & Hardening Pass
+
+**Join Guard — DM Fallback (`src/join_guard.py`):**
+- Added `from src.config import config` import (was missing, would have crashed on DM failure).
+- `_issue_challenge()` now catches `discord.Forbidden` separately from generic exceptions. When a player's Discord DMs are disabled, the verification embed + button is posted in `COMMAND_CHANNEL_ID` as a public mention instead. Previously the player was permanently locked out — kicked with no way to complete verification.
+- Challenge is stored in `active_challenges` only after a message is successfully sent (prevents ghost entries that block the player's next login attempt).
+- Kick reason updated to mention both DMs and the Discord channel.
+
+**Setup Wizard Timeout (`src/setup_views.py`):**
+- Added `async def on_timeout(self)` to `SetupView`. When the 10-minute idle timeout fires, the dead ephemeral embed is replaced with `"Setup timed out — run /setup again."` Previously buttons went dead with no explanation.
+
+**Plugin Install Failure Surfacing (`src/setup_views.py`):**
+- Plugin download loop now collects all failed slugs into `failed_slugs = []`. Bad slugs (Modrinth 404, no compatible version, network error) are appended to the list.
+- After all plugins are processed, if any failed, a "⚠️ Plugin Install Failures" field is added to the success embed with the list of bad slugs and a suggestion to use `/mod_search` to find the correct slug. Previously failures were logged only and the user thought everything installed.
+- Improved error detection: non-200 status codes and empty version lists now explicitly raise before the `except` block rather than silently succeeding.
+
+**Backup Downloads — Replace transfer.sh with Discord Attachment (`cogs/backup.py`):**
+- `backup_download` command and `BackupDownloadView.download_button` now send `discord.File(filepath)` directly as a Discord attachment. `backup_manager.upload_backup()` is no longer called from either location. Minecraft world zips are always well under the 25MB Discord limit.
+- Added `@backup_download.autocomplete("filename")` handler. Reads both `backup_manager.auto_dir` and `backup_manager.custom_dir`, lists `.zip` files filtered by the user's current input, returns up to 25 choices sorted newest-first. Users no longer need to type the full timestamped filename.
+
+**Real World Seed (`src/server_info_manager.py`):**
+- `_get_seed()` is now `async` and implements a two-step lookup:
+  1. If server is running: RCON `seed` command, parses `Seed: [N]` with regex `r'Seed: \[(-?\d+)\]'`.
+  2. Otherwise: loads `mc-server/world/level.dat` via `nbtlib` in a thread (`asyncio.to_thread`). Tries 1.18+ path `Data.WorldGenSettings.seed` first, then pre-1.18 `Data.RandomSeed`.
+  3. Returns `'Unknown'` only if both fail.
+- `update_info()` now awaits `_get_seed()`. Previously the method read `level-seed` from `server.properties`, which is empty when Minecraft generates a random seed — so it always showed `'Random'`.
+- Added `import os, re` at module level; removed unused `import logging`.
+
+**Playit API Debug Logging (`cogs/playit.py`):**
+- Added `logger.debug(f"Playit API raw response: {data}")` after parsing the API response JSON, before the tunnel-type filter. Makes field-name mismatches diagnosable in the log file without changing behavior.
+
+**Control Panel Persistent View Registration (`cogs/control_panel.py`):**
+- Added `async def cog_load(self)` to `ControlPanelCog` that calls `self.bot.add_view(ControlPanelView(self.bot))`. Removed the `@commands.Cog.listener() on_ready()` method that previously did this. The persistent view is now registered during `setup_hook` (before `on_ready`), eliminating the race window where button clicks could return "Unknown interaction".
+
+---
+
+### v2.8.0-dev — Security, Uptime & Code Hardening _(Current dev)_
+
+> ⚠️ Pre-release development branch. Not yet promoted to stable.
+
+**Player Linking System (Offline-Mode Impersonation Protection):**
+- Added `cogs/link.py` — `/link`, `/unlink`, `/unlink_admin` slash commands.
+- Added `src/mc_link_manager.py` — async JSON CRUD for Discord↔MC username relations.
+- Added `src/mojang.py` — Mojang API wrapper for premium account detection (fail-open on outages).
+- Added `src/log_watcher.py` — subscribes to `LogDispatcher`, emits `on_minecraft_player_login` bot events by parsing `User Authenticator` log lines.
+- Added `src/join_guard.py` — full login decision engine: allows premium, kicks unlinked cracked, DM-challenges linked cracked accounts outside 30-minute grace window.
+- Added `src/utils_views.py` — `ChallengeView` + `CodeModal` for interactive 4-digit DM verification.
+- Wired `JoinGuard` and `LogWatcher` into `bot.py` startup; background tasks auto-start when server is online.
+- Added 4 unit tests for `MCLinkManager` covering link, unlink, replace, and username-theft cases.
+
+**Server Uptime Statistics:**
+- `src/server_tmux.py` now persists `start_time` (epoch float) to `bot_state.json` on every server start; clears it on intentional stop.
+- `cogs/info.py` reads `bot.server.get_start_time()` and displays a human-readable uptime delta in the `/info` embed.
+
+**Bug Fixes:**
+- `src/backup_manager.py` — resolved Docker backup directory mismatch by using `os.path.abspath` relative to project root.
+- `cogs/info.py` — Vanilla TPS fallback: tries `/debug start` + 1s sleep + `/debug stop`, parses tick count from output. Falls back to `N/A (Vanilla)` if not matched.
+- `src/config.py` — `RCON_HOST` is now configurable via `RCON_HOST` environment variable (defaults to `127.0.0.1`).
+- `cogs/help.py` — replaced hardcoded command categories with `bot.tree.walk_commands()` for dynamic help generation.
+- `bot.py` — startup log verbosity reduced; individual cog loading messages moved to `DEBUG` level.
+- `bot.py` — Fixed dangling coroutine `RuntimeWarning` on `@tree.interaction_check`.
+- `install/install.sh` — Playit tunnel key extraction fixed to use the explicit `mc-bot` static container name.
+- `src/mc_installer.py` — Server EULA acceptance and RCON `.properties` injection correctly sequenced so RCON doesn't timeout for 60s during initial setup.
+- `cogs/tasks.py` — Replaced blocking `os.system` tmux commands with `asyncio.create_subprocess_exec` to keep the event loop responsive.
+- `bot.py` — Signal handler changed from `signal.signal()` to `loop.add_signal_handler()` for async-safe SIGINT/SIGTERM handling; avoids `NotImplementedError` on non-Unix platforms (SYS_001).
+- `requirements.txt` — All dependencies pinned to exact versions. `git+https://...aio-mc-rcon` replaced with `aio-mc-rcon==3.4.2` from PyPI for reproducible builds.
+- `src/mc_link_manager.py` — Fixed concurrent access race conditions by wrapping read-modify-write cycles with `asyncio.Lock()`.
+- `src/join_guard.py` — Implemented strict input sanitation (stripping `\n` and `\r`) from RCON messages to prevent command injection, and utilized secure `secrets.randbelow` for auth code generation.
+- `cogs/automation.py` — Removed undefined `self.motd_loop.start()` on initialization to prevent cog crash.
+- `src/mod_updater.py` — Added missing `aiohttp.ClientSession()` on initial load to prevent crash fetching explicit mods, and fixed log framing UI so fresh installs don't pretend to be "updates" and skip empty backup folder creation.
+
+**Documentation & Infrastructure:**
+- Added `docs/i18n-implementation.md` — deferred i18n implementation plan.
+- Added `implementations/offline-protection.md` — full technical spec for the mascan-proof join guard.
+- Tests expanded: `tests/test_mc_link_manager.py` with 4 async tests.
+- `.gitignore` updated: `data/mc_links.json`, `data/playit_secret.key`, `data/test_*.json` now correctly excluded.
+
+### v2.7.2 — Setup Flow & Polishing Update
+
+**Setup UX Improvements:**
+- Removed all emojis from the `/setup` flow (dropdowns, buttons, titles) for a cleaner, professional look.
+- Version dropdown now correctly displays the resolved version alongside `(latest)` (e.g., `1.21.4 (latest)`).
+- Complete UI reactivity: All Selects and Modals in `setup_views.py` now instantly edit the embed to show the "Current Selection", eliminating visual input lag.
+- After server startup during installation, the bot now polls RCON readiness for up to 60 seconds. This ensures the embedded Control Panel perfectly synchronizes and shows "Online" immediately upon completion.
+
+**Log Latency & Bug Fixes:**
+- Re-architected `src/log_dispatcher.py` to use a `tail -F` subprocess instead of Python sleep polling, reducing Discord log channel latency from 1s to ~instant.
+- Reduced `console.py` log batch dispatch interval from 1.0s to 0.5s for faster log visualization.
+- Fixed a logic bug in `cogs/tasks.py` crash checker where variables were accessed before assignment.
+- Upgraded `install.sh` to intelligently detect existing installations, prompting the user to either fully Reconfigure, Update Code (git pull + rebuild), or Cancel.
+
+### v2.7.1 -- Playit Reliability & Testing Release
+
+**Playit.gg Improvements:**
+
+- Upgraded Playit crash recovery in `cogs/tasks.py` to match MC server pattern: attempt counter (`playit_restart_attempts`), owner notification after 2 failures, 3-second restart verification, counter reset when healthy.
+- Added 2-hour cache TTL to `/ip` command in `cogs/playit.py` (`CACHE_TTL = 7200`). Previously cached forever.
+- Added specific error messages to `/ip` for all failure modes (no key, 401, no tunnels, network error, initializing).
+- Simplified `install.sh` Playit prompt: now asks Yes/No "Do you have a key?" instead of confusing "paste your key or leave blank".
+
+**Bug Fixes:**
+
+- Fixed `backup_manager._zip_world()` silently creating empty backups when world directory didn't exist. Now raises `FileNotFoundError`.
+
+**Testing:**
+
+- Added Docker-based test suite: `Dockerfile.test`, `docker-compose.test.yml`, 48 tests across 4 modules (config validation, backup manager, version fetcher, utilities).
+- Added `Makefile` with `make test`, `make test-verbose`, `make test-single` targets.
+
+### v2.6.0 -- Bug Fix & Hardening Release
+
+28-issue comprehensive bug fix and code hardening pass based on senior code review (`overview.md`).
+
+**Critical Fixes:**
+
+- Fixed tuple unpack crash in `cogs/tasks.py` `daily_backup` (was unpacking 2 values, `create_backup()` returns 3).
+- Added `import asyncio` at module scope in `src/setup_views.py` (was imported locally, causing `NameError` in `_save_config_to_file`).
+- Fixed `cogs/automation.py` attribute mismatch (`log_scan_task` vs `log_task`), added `log_dispatcher.unsubscribe()` to prevent memory leak.
+- Added `./data:/app/data` volume mount in `docker-compose.yml` -- config was being lost on every rebuild.
+
+**Significant Fixes:**
+
+- Added `aiohttp.ClientTimeout` to all API calls in `stats.py` (10s) and `mc_installer.py` (30s class constant).
+- Replaced deprecated `bot.loop.create_task()` with `asyncio.create_task()` in `economy.py`.
+- Removed empty `word_hunt_task` loop in `economy.py` (loop body was `pass`).
+- Fixed `GUILD_ID` type inconsistency in `setup_helper.py` (was stored as string, now int).
+- Added `installed_platform` saving to config during setup in `setup_views.py`.
+- Replaced unsafe `os.execv` bot restart with `sys.exit(0)` + Docker restart policy in `management.py`.
+- Added exponential backoff (10s-120s) to `console.py` channel wait loop.
+- Replaced deprecated `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in `console.py`.
+
+**Code Quality:**
+
+- Removed duplicate `datetime` import in `console.py`.
+- Fixed AI error typo in `ai.py` ("efficient" -> "No valid API key or SDK found.").
+- Removed leading whitespace in `server_info_manager.py`.
+- Removed dead `mcrcon` package from `requirements.txt` (only `aio-mc-rcon` is used).
+- Added `mem_limit: 256m` to playit service in Docker Compose.
+- Commented out Forge references with documentation for Modrinth and Forge Maven APIs.
+
+**Dead Code Removal (~500 lines):**
+
+- Deleted `src/installer_views.py` (~400 lines, fully replaced by `setup_views.py`).
+- Removed `monitor_server_log` + `_process_log_line` + `send_log` from `tasks.py` (~90 lines, duplicated by `console.py`).
+- Removed orphaned imports (`time`, `pytz`, `dt_time`, `aiofiles`, `random`) from `tasks.py` and `automation.py`.
+
+**Crash-Proofing:**
+
+- Enhanced `bot.py` `__main__` block with formatted crash message and `Press Enter to close` on both crash and normal shutdown.
+- All cog `cog_unload` methods now guard with `hasattr` against missing attributes.
+
+**Infrastructure:**
+
+- `install.bat` replaced with friendly "Windows not supported yet" fallback + pseudocode for future WSL flow.
+
+### v2.5.5 -- Core Capabilities & Control Panel Update
+
+_(Cumulative architectural adjustments addressing Phases 1-7 refactoring sessions)_
+
+- **Control Panel**: Deployed sticky, interactive `#command` channel Discord UI (`cogs/control_panel.py`) serving Start, Stop, Restart, Status buttons.
+- **Dynamic Integration**: Connected `cogs/info.py` to seamlessly read active Playit.gg domains from `cogs/playit.py`. Removed IP hardcoding.
+- **Dynamic Versions**: Swapped hardcoded fallback version dropdowns for live Modrinth API fetching targeting both Vanilla and Paper platforms (`src/setup_views.py`).
+- **Setup Reliability**: Supported offline-mode whitelist implementation by generating consistent local MD5 UUID hashes in `mc_installer.py`. Temporarily muted buggy Forge downloads until their API standardizes.
+- **Code Sweeping**: All files swept for redundant conversational comments. Forced data files strictly inside the `data/` path to avoid root pollution. Replaced `--dry-run` flag with proper `--simulate` parameter. Completed unification of logs through the centralized `LogDispatcher`.
+- **Install Improvements**: Upgraded `install.sh` to apply docker group permissions seamlessly without requiring user logouts, and ensured Docker service starts immediately upon download.
+
+### v2.5.4 — Stability & Windows Support
+
+- Enhanced `install.bat` to verify Docker before attempting WSL setup.
+- Added numbered step indicators in all installers.
+- Fixed unbuffered output (`PYTHONUNBUFFERED=1`) preventing hanging installations.
+
+### v2.5.3 — Cleanup Update
+
+- Initial code cleanups: `config_generator.py` (dead code) and duplicate configurations deleted.
+
+### v2.5.2 — Automation Update
+
+- Added `cogs/events.py` for `/event_create`, `/event_list`.
+- Added weekly MOTD generation via Grok (`cogs/automation.py`).
+- Added Regex chat trigger system.
+
+### v2.5.1 — Security & Architecture
+
+- Centralized read-write concurrency via `FileLock`.
+- Deprecated loose legacy structures. Added Healthcheck validation.
+
+### v2.5.0 — Advanced Features
+
+- Released full `/stats` mapping with NBT Parsing + `/playit` bindings + Economy Word Hunt games.
+
+### v2.0.0 — Migrated to discord.py v2.0
+
+- Replaced classic `@commands.command` with full `/` app slash commands + Ghost mode `--simulate` parameters.
+
+---
+
+## 12. Completed Features
+
+- ✅ Process Management (Start/Stop/Restart) via tmux
+- ✅ RCON Communication (`src/utils.rcon_cmd`)
+- ✅ Thread-safe Config System (`filelock`)
+- ✅ Unified Installer: Linux `install.sh` (with Reconfigure/Update detection) + Windows `install.bat`
+- ✅ Modrinth API Integration + Progress tracking in setup wizard
+- ✅ **Setup Flow UI**: Emoji-less, instantaneous UI reactivity with RCON readiness synchronization
+- ✅ **Live Log Tailing**: Zero-latency `tail -F` subprocess → Discord channel (batched 0.5s)
+- ✅ Hardware Info (CPU/RAM/Disk via `psutil`)
+- ✅ NBT Data Parsing (Offline/Cracked accounts via `nbtlib`)
+- ✅ World Backup (zip, scheduled, manual, retention cleanup)
+- ✅ Owner-only `/cmd` with audit logging
+- ✅ Event Scheduling with 24h + 1h reminders + Automations + Trigger Tracking
+- ✅ Offline mode whitelist (MD5 UUID generation, no Mojang dependency)
+- ✅ Simulation / Ghost Mode for local CI/CD tests without MC Servers
+- ✅ RCON Port protection + Docker container isolation
+- ✅ **Server Uptime Statistics** — tracked from `start_time` in `bot_state.json`, displayed in `/info`
+- ✅ **Player Linking System** — `/link` command, Mojang premium detection, 30-min grace window, Discord DM challenge for cracked accounts
+- ✅ **Vanilla TPS Fallback** — `/debug start`+`/debug stop` RCON method for non-Paper servers
+- ✅ **Dynamic `/help`** — permission-filtered using `bot.tree.walk_commands()`, no hardcoded lists
+- ✅ **Direct Backup Downloads** — `/backup_download` sends Discord file attachments directly; autocomplete handler lists available `.zip` files as you type
+- ✅ **Real World Seed Display** — `/info` reads actual seed via RCON when server is online; falls back to `level.dat` nbtlib parsing when offline
+- ✅ **Setup Wizard Timeout Message** — `SetupView.on_timeout()` replaces dead buttons with a helpful "run /setup again" message after 10 minutes of inactivity
+- ✅ **Emergency Stop (/kill)** — Force-kill tmux session for emergency hard-stops
+- ✅ **Interactive /logs** — Categorized filtering (Chat, Errors, Joins, etc.) with noise reduction
+- ✅ **System Online Notification** — "✅ System Online" embed sent to command channel after startup (v3.1)
+- ✅ **UUID Sessions** — Secure offline-mode protection via production-ready /verify command
+- ✅ **Vanilla Detection** — Automated mods/plugins skipping and folder detection
+- ✅ **Fresh Setup** — "Latest" version always queries API at install time
+- ✅ **RCON Presence** — Online status verified via real handshake
+- ✅ **WSL2 Installer** — Production-ready Windows setup via dedicated Ubuntu distro
+- ✅ **Fail-Closed Mojang API** — hardened security during Mojang outages
+- ✅ **Smart Bounded Restarts** — Log### 🔴 Critical / Active
+
+- [ ] **Forge API Expansion** — Implementing reliable version fetching for Forge platforms.
+- [ ] **Timeout Implementation** — Adding timeouts to all external API calls (Mojang, Modrinth).
 
 ### 🟠 High Priority
-- [ ] **Chat Bridge**: Bi-directional Discord <-> Minecraft chat integration.
-- [ ] **SQLite Migration**: Moving economy and events from JSON to a proper database for better concurrency.
-- [ ] **Mascan Protection**: Hardening offline-mode against proxied connection spoofing.
+
+- [ ] **SQLite via `aiosqlite`** — replace `bot_config.json` economy and events storage arrays outright. JSON has minor race conditions under rapid concurrent loads, even with limits.
+- [ ] **Minecraft→Discord chat bridge** — pipe in-game chat to a Discord channel directly, scanning logs.
+- [ ] **Full Translation Support (i18n)** — Extract English responses to a JSON/YAML locale file so the bot logic works transparently anywhere globally. _(Plan documented in `implementations/i18n-implementation.md`)_
+- [ ] **Mascan Protection** — Hardening offline-mode against proxied connection spoofing.
 
 ### 🟡 Medium Priority
-- [ ] **Uptime Statistics**: Tracking and displaying server longevity metrics.
-- [ ] **Performance Dashboard**: Real-time TPS and resource usage trends in Discord.
+
+- [ ] **Cloud Storage Synchronization** — Background async uploading of generated backups to Google Drive using standard Python API integration.
+- [ ] **Performance metrics dashboard** — periodic embed showing TPS trend, player count over time, RAM usage history.
+- [ ] **Allowlist request system** — Discord UI modal allowing external users to request entry without Admin manipulation.
+- [ ] **Scheduled announcements** — `/announce_schedule <time> <message>`.
+
+### 🟢 Low Priority / Nice-to-Have
+
+- [ ] **Death counter leaderboard** — `/deaths` command showing top 10 most-died players from NBT stats.
+- [ ] **Vote command** — `/vote <question> [option1] [option2] ...` — creates poll in-game via `tellraw`.
+- [ ] **Complete LogDispatcher Unit Testing** — specifically mock its output and verify its event firing reliability.
 
 ---
 
-## 📜 Version History (Recent)
+## 14. Development Workflow & Rules
 
-### v3.1.1 — Observability & Polish (Current)
-- Overhauled JoinGuard to use kick-screen codes.
-- Fixed configuration engine deadlocks.
-- Standardized Playit.gg to v1.0.10.
-- Implemented Slovenian translations for core commands.
-- Expanded installer to support multiple Linux distributions.
+### File Usage Rules
 
-### v3.0.0 — Production Release
-- Migrated to discord.py 2.0 with full Slash Command support.
-- Introduced `LogDispatcher` for efficient log fan-out.
-- Implemented `FileLock` for all configuration I/O.
-- Added simulation mode (`--simulate`) for testing.
+1. **Never import specific legacy functions** from obsolete files like `config_generator.py` or `utils/` folder equivalents that have been deleted. Stick entirely to `src/utils.py`.
+2. **Configuration loading** must be explicitly isolated. Use `config.load_bot_config()` or `config.load_user_config()` exclusively.
+3. Don't manipulate `dry_run` variables internally; access `config.dry_run`.
+
+### Setting Up Local Dev Environment
+
+```bash
+git clone https://github.com/slogiker/mc-bot.git
+cd mc-bot
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+### Running in Simulation Mode
+
+No Docker, no real server needed:
+
+```bash
+python bot.py --simulate
+```
+
+In simulation mode:
+
+- `MockServerManager` handles all server commands (fake delays, no processes)
+- Bot fully connects to Discord and registers slash commands
+- All commands work except ones that invoke RCON or write server files natively.
+
+### Adding a New Command
+
+1. Create a cog file in `cogs/`
+2. Add `@app_commands.command(name="...", description="...")`
+3. Decorate with `@has_role("your_cmd_name")`
+4. Add `"your_cmd_name"` to the appropriate role in `data/user_config.json`
 
 ---
-*Full historical reference and legacy notes are available in `docs/information.md.bak`.*
+
+## 15. Deployment Notes
+
+### Docker Volume Mounts
+
+```yaml
+volumes:
+  - ./mc-server:/app/mc-server # Minecraft server + world data
+  - ./backups:/app/backups # World backups
+  - ./logs:/app/logs # Bot logs
+  - ./data:/app/data # Bot config (persisted across rebuilds since v2.6.0)
+  - ./.env:/app/.env # Secrets
+```
+
+**Important:** As of v2.6.0, the `data/` directory is mounted as a volume. Config files (`bot_config.json`, `user_config.json`) are persisted across rebuilds. This was previously the most dangerous bug -- configs were lost on every `docker compose build`.
+
+### Network Architecture
+
+```
+Host machine
+  └─ mc-bot container
+       ├─ Python bot process
+       ├─ tmux session "minecraft"
+       │    └─ java server.jar (MC server, port 25565
+)
+       └─ RCON listener 127.0.0.1:25575
+```
+
+25575/tcp remains internal only and is highly protected.
+
+### Healthcheck
+
+The `docker-compose.yml` healthcheck uses `pgrep -f 'python bot.py'` to verify the bot process is alive. Docker restarts the container automatically after 3 consecutive failures. This checks the bot process specifically — not PID 1 and not a psutil probe.
+
+---
+
+## AI Agent Prompt Instructions
+
+> **System Instruction for all AIs:** At each change, add recent architectural or functional changes to this file (`docs/information.md`), and keep track of versions, update to and if broadly applicable, append new features to `README.md`. This `information.md` file can always be longer (or same size), never shorter. It must remain the comprehensive canonical source of truth for the codebase history and technical roadmap. Maintain this documented style, structure, and depth explicitly going forward.
