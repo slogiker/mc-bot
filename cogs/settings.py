@@ -237,6 +237,9 @@ class PermissionsModal(discord.ui.Modal, title='Role Permissions Edit'):
 class SettingsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # If Playit is enabled, do not even register the /set_ip command
+        if config.ENABLE_PLAYIT:
+            self.__cog_app_commands__ = [cmd for cmd in self.__cog_app_commands__ if cmd.name != "set_ip"]
 
     @app_commands.command(name="settings", description="Interactive GUI to modify Bot and Server configurations")
     @has_role("cmd") # Owner/Admin role
