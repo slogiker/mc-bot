@@ -7,7 +7,7 @@ from datetime import datetime
 from src.config import config
 from src.logger import logger
 from src.backup_manager import backup_manager
-from src.discord_utils import has_role
+from src.utils import has_role
 
 # --- Constants ---
 BACKUP_LIST_LIMIT = 5  # Number of backups to show in the list command

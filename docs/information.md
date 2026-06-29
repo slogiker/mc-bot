@@ -10,8 +10,8 @@ Do not hallucinate files or commands, refer to the tables below.
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v3.1.2`  
-**Last Updated:** 2026-06-23  
+**Version:** `v3.1.3`  
+**Last Updated:** 2026-06-29  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
 
@@ -1083,6 +1083,14 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 
 ## 11. Version History & Recent Changes
 
+### v3.1.3 — Security, Concurrency & Grace Period Hardening (2026-06-29)
+- **JoinGuard Online-Mode Bypass**: Automatically bypasses all JoinGuard checks if the Minecraft server is configured with `online-mode=true` in `server.properties`.
+- **12-Hour Disconnect Grace Period**: Overhauled the grace period to allow players to rejoin the server without verification for up to 12 hours after disconnecting.
+- **Removed Unsafe Premium Bypass**: Disabled the premium username bypass in offline-mode to prevent cracked clients from impersonating premium players.
+- **Fail-Closed Security & Cooldown Fixes**: Wrapped login verification in `try...except` to fail-closed on errors, and fixed the anti-spam cooldown bypass by ensuring players on cooldown are still kicked.
+- **MCLinkManager Class Lock**: Shared a class-level lock across all instances of `MCLinkManager` to prevent database corruption.
+- **Full QA Test Suite**: Added comprehensive unit and integration tests for JoinGuard, stats, and backup cogs, achieving a 100% green test suite.
+
 ### v3.1.2 — Event-Driven Architecture & CM4 Hardening (2026-06-23)
 - **Event-Driven Startup/Shutdown**: Replaced all hardcoded `sleep()` timeouts in management, setup_views, and server_tmux with real-time log monitoring via LogDispatcher. Server readiness is now detected by watching for the "Done" string in logs.
 - **EULA Bypass**: `eula.txt` is now created proactively before server start, removing a slow generation wait on first boot.
@@ -1380,7 +1388,17 @@ _(Cumulative architectural adjustments addressing Phases 1-7 refactoring session
 - ✅ **RCON Presence** — Online status verified via real handshake
 - ✅ **WSL2 Installer** — Production-ready Windows setup via dedicated Ubuntu distro
 - ✅ **Fail-Closed Mojang API** — hardened security during Mojang outages
-- ✅ **Smart Bounded Restarts** — Log### 🔴 Critical / Active
+- ✅ **Smart Bounded Restarts** — Log rotation, memory limits, and automated tmux checks.
+- ✅ **JoinGuard Online-Mode Bypass** — Automatically bypasses all JoinGuard checks if the Minecraft server is configured with `online-mode=true`.
+- ✅ **12-Hour Disconnect Grace Period** — Allows players who were recently online to rejoin within 12 hours of disconnecting without needing a verification code.
+- ✅ **Removed Unsafe Premium Bypass** — Disabled the premium username bypass in offline-mode to prevent cracked clients from impersonating premium players.
+- ✅ **Fail-Closed Security & Cooldown Fixes** — Wrapped login verification in `try...except` to fail-closed on errors, and fixed the anti-spam cooldown bypass.
+- ✅ **MCLinkManager Class Lock** — Shared a class-level lock across all instances of `MCLinkManager` to prevent database corruption.
+- ✅ **Full QA Test Suite** — Added comprehensive unit and integration tests for JoinGuard, stats, and backup cogs, achieving a 100% green test suite.
+
+## 13. TODO — Active Roadmap
+
+### 🔴 Critical / Active
 
 - [ ] **Forge API Expansion** — Implementing reliable version fetching for Forge platforms.
 - [ ] **Timeout Implementation** — Adding timeouts to all external API calls (Mojang, Modrinth).

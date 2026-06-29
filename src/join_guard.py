@@ -40,6 +40,9 @@ class JoinGuard:
 
         # username.lower() → unix timestamp of last kick (anti-spam)
         self._kick_cooldowns: dict[str, float] = {}
+        
+        # Keep references to background tasks to prevent garbage collection
+        self._background_tasks = set()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Public entry points (called from bot event dispatchers in bot.py)
@@ -50,40 +53,58 @@ class JoinGuard:
         Called by LogWatcher when 'UUID of player X is ...' appears in the log.
         Runs the full decision tree.
         """
+        from src.config import config
+        if config.ONLINE_MODE:
+            logger.info(f"JoinGuard: Server is in online-mode — bypassing login checks")
+            return
+
         key = mc_username.lower()
         logger.info(f"JoinGuard: login event for {mc_username}")
 
-        # Step 1: Premium check (using shared session)
-        is_premium = await verify_premium_mc_account(mc_username, session=getattr(self.bot, 'session', None))
-        if is_premium:
-            logger.info(f"JoinGuard: {mc_username} is premium — allow")
-            return
+        try:
+            # Step 1: Link check
+            link = await self.link_manager.get_link_by_mc(mc_username)
+            if not link:
+                logger.warning(f"JoinGuard: {mc_username} has no Discord link — kicking")
+                await self._kick(
+                    mc_username,
+                    "Tvoj Minecraft racun ni povezan z Discordom. "
+                    "Pridruzis se Discord streznika in vtipkaj /link."
+                )
+                return
 
-        # Step 2: Link check
-        link = await self.link_manager.get_link_by_mc(mc_username)
-        if not link:
-            logger.warning(f"JoinGuard: {mc_username} has no Discord link — kicking")
+            # Step 2: Grace window (30 min from last /verify)
+            if await self.link_manager.is_within_grace(mc_username):
+                logger.info(f"JoinGuard: {mc_username} is within grace window — allow")
+                return
+
+            # Step 3: Anti-spam cooldown
+            last_kick = self._kick_cooldowns.get(key, 0)
+            if time.time() - last_kick < COOLDOWN_SECONDS:
+                logger.debug(f"JoinGuard: {mc_username} on cooldown — kicking with existing challenge")
+                challenge = self.active_challenges.get(key)
+                if challenge:
+                    reason = (
+                        f"Verifikacija potrebna! "
+                        f"Koda: {challenge['code']} "
+                        f"V Discordu vtipkaj v #commands: "
+                        f"/verify {challenge['code']}"
+                    )
+                else:
+                    reason = "Prosimo pocakajte pred ponovno povezavo."
+                await self._kick(mc_username, reason)
+                return
+
+            # Step 4: Issue challenge
+            logger.info(f"JoinGuard: issuing challenge for {mc_username}")
+            await self._issue_challenge(mc_username, link["discord_id"])
+
+        except Exception as e:
+            logger.error(f"JoinGuard: Error during login verification for {mc_username}: {e}", exc_info=True)
             await self._kick(
                 mc_username,
-                "Tvoj Minecraft racun ni povezan z Discordom. "
-                "Pridruzis se Discord streznika in vtipkaj /link."
+                "Napaka pri preverjanju varnosti. Prosimo, poskusite znova."
             )
-            return
-
-        # Step 3: Grace window (30 min from last /verify)
-        if await self.link_manager.is_within_grace(mc_username):
-            logger.info(f"JoinGuard: {mc_username} is within grace window — allow")
-            return
-
-        # Step 4: Anti-spam cooldown
-        last_kick = self._kick_cooldowns.get(key, 0)
-        if time.time() - last_kick < COOLDOWN_SECONDS:
-            logger.debug(f"JoinGuard: {mc_username} on cooldown — ignoring join silently")
-            return
-
-        # Step 5: Issue challenge
-        logger.info(f"JoinGuard: issuing challenge for {mc_username}")
-        await self._issue_challenge(mc_username, link["discord_id"])
 
     def handle_player_quit(self, mc_username: str):
         """
@@ -92,7 +113,13 @@ class JoinGuard:
         Does NOT clear active challenge — it stays valid for its remaining window.
         Does NOT reset grace window — grace is based on last_verified, not last_disconnect.
         """
-        asyncio.create_task(self.link_manager.record_disconnect(mc_username))
+        from src.config import config
+        if config.ONLINE_MODE:
+            return
+
+        task = asyncio.create_task(self.link_manager.record_disconnect(mc_username))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         logger.debug(f"JoinGuard: recorded disconnect for {mc_username}")
 
     async def handle_collision(self, mc_username: str):
@@ -102,6 +129,10 @@ class JoinGuard:
         1. Grant emergency grace so real player can reconnect immediately without /verify.
         2. Send DM alert to the real player's Discord account.
         """
+        from src.config import config
+        if config.ONLINE_MODE:
+            return
+
         await self.link_manager.grant_emergency_grace(mc_username)
         logger.warning(f"JoinGuard: collision detected for {mc_username}")
 
@@ -152,30 +183,32 @@ class JoinGuard:
         """
         code = code.upper().strip()
 
-        for mc_username, challenge in list(self.active_challenges.items()):
-            if challenge["discord_id"] != discord_id:
-                continue
+        user_challenges = [
+            (mc_name, chal) for mc_name, chal in self.active_challenges.items()
+            if chal["discord_id"] == discord_id
+        ]
 
-            # Found a challenge owned by this Discord user
-            if time.time() > challenge["expires_at"]:
-                del self.active_challenges[mc_username]
-                return False, (
-                    "Koda je potekla. Prilogiras se na streznik znova in dobit bos novo kodo."
-                )
-
-            if challenge["code"] != code:
-                return False, "Napacna koda. Preveri kick reason in poskusi znova."
-
-            # Correct and within time
-            await self.complete_challenge(mc_username)
-            return True, (
-                f"Identiteta potrjena! Imas **30 minut** da se prilogiras kot **{mc_username}**."
+        if not user_challenges:
+            return False, (
+                "Ni aktivnega izziva za tvoj racun. "
+                "Prilogiras se na streznik najprej, noto vtipkaj kodo ki jo dobis na kick screenu."
             )
 
-        return False, (
-            "Ni aktivnega izziva za tvoj racun. "
-            "Prilogiras se na streznik najprej, nato vtipkaj kodo ki jo dobis na kick screenu."
-        )
+        for mc_username, challenge in user_challenges:
+            if challenge["code"] == code:
+                if time.time() > challenge["expires_at"]:
+                    del self.active_challenges[mc_username]
+                    return False, (
+                        "Koda je potekla. Prilogiras se na streznik znova in dobit bos novo kodo."
+                    )
+
+                # Correct and within time
+                await self.complete_challenge(mc_username)
+                return True, (
+                    f"Identiteta potrjena! Imas **30 minut** da se prilogiras kot **{mc_username}**."
+                )
+
+        return False, "Napacna koda. Preveri kick reason in poskusi znova."
 
     # ──────────────────────────────────────────────────────────────────────────
     # Internal helpers
@@ -208,7 +241,9 @@ class JoinGuard:
         self._kick_cooldowns[key] = time.time()
 
         # Schedule expiry cleanup
-        asyncio.create_task(self._expire_challenge(key, expires_at))
+        task = asyncio.create_task(self._expire_challenge(key, expires_at))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
         # Kick with code in reason
         reason = (

@@ -8,8 +8,9 @@ import nbtlib
 import asyncio
 import uuid # Moved from get_offline_uuid
 from src.config import config
-from src.discord_utils import has_role # Standardized import
+from src.utils import has_role, get_uuid # Standardized import
 from src.logger import logger
+from src.mc_link_manager import MCLinkManager
 
 # --- Constants ---
 TICKS_PER_SECOND = 20
@@ -123,52 +124,62 @@ class StatsCog(commands.Cog):
         """
         await interaction.response.defer()
         
-        bot_config = config.load_bot_config()
+        # Default to the commanding user if no arguments are provided
+        if not player and not user:
+            user = interaction.user
+
+        link_manager = MCLinkManager()
         server_path = config.SERVER_DIR
         
         target_name = player
-        uuid = None
+        resolved_uuid = None
         is_cracked = False
+        is_premium = False
 
         if user:
-            # Look up in mappings
-            mapping = bot_config.get('mappings', {}).get(str(user.id))
-            if mapping:
-                uuid = mapping.get('uuid')
-                target_name = mapping.get('name')
-                is_cracked = mapping.get('cracked', False)
+            link = await link_manager.get_link_by_discord(user.id)
+            if link:
+                target_name = link.get('mc_username')
+                is_premium = link.get('is_premium', False)
+                is_cracked = not is_premium
             else:
                 await interaction.followup.send("❌ This user is not linked to a Minecraft player.")
                 return
         elif player:
-            # Check mappings first
-            found_map = False
-            for uid, data in bot_config.get('mappings', {}).items():
-                if data.get('name', '').lower() == player.lower():
-                    uuid = data.get('uuid')
-                    is_cracked = data.get('cracked', False)
-                    target_name = data.get('name')
-                    found_map = True
-                    break
-            
-            if not found_map:
-                # Try Mojang
-                uuid, name = await self.get_uuid_online(player)
-                if uuid:
-                     target_name = name
-                     is_cracked = False
+            # Check if this player name is linked to anyone in our links
+            link = await link_manager.get_link_by_mc(player)
+            if link:
+                target_name = link.get('mc_username')
+                is_premium = link.get('is_premium', False)
+                is_cracked = not is_premium
+            else:
+                # Not linked, but they specified a player name.
+                # Try Mojang to check if they are premium
+                uuid_online, name_online = await self.get_uuid_online(player)
+                if uuid_online:
+                    target_name = name_online
+                    is_premium = True
+                    is_cracked = False
                 else:
-                     # Fallback to offline UUID
-                     uuid, name = await self.get_offline_uuid(player)
-                     target_name = name
-                     is_cracked = True
+                    target_name = player
+                    is_premium = False
+                    is_cracked = True
 
-        if not uuid:
-            await interaction.followup.send(f"❌ Could not find player '{player}'.")
+        if not target_name:
+            await interaction.followup.send("❌ Could not determine target player name.")
             return
 
+        # Look up actual UUID in the server's usercache.json (since the server knows the actual UUID it uses)
+        cached_uuid = await get_uuid(target_name)
+        if cached_uuid:
+            resolved_uuid = cached_uuid
+        else:
+            # Fallback to generating the offline UUID (since the server runs in offline-mode)
+            offline_uuid, _ = await self.get_offline_uuid(target_name)
+            resolved_uuid = offline_uuid
+
         # Load data in executor to avoid blocking
-        stats_json, nbt_data = await asyncio.to_thread(self.get_stats_from_nbt, uuid, server_path)
+        stats_json, nbt_data = await asyncio.to_thread(self.get_stats_from_nbt, resolved_uuid, server_path)
         
         if not stats_json and not nbt_data:
              await interaction.followup.send(f"❌ No data found for player '{target_name}'. Has this player joined the server?")
@@ -182,11 +193,13 @@ class StatsCog(commands.Cog):
         
         hours = play_time_ticks / TICKS_PER_SECOND / SECONDS_PER_HOUR
         
-        # Skin
-        if is_cracked:
-            skin_url = "https://minecraft-heads.com/avatar/Steve/64"
-        else:
-            skin_url = f"https://crafatar.com/avatars/{uuid}?overlay"
+        # Skin: if premium, fetch their premium UUID from Mojang for the skin.
+        # Otherwise, use Steve skin.
+        skin_url = "https://minecraft-heads.com/avatar/Steve/64"
+        if is_premium:
+            skin_uuid, _ = await self.get_uuid_online(target_name)
+            if skin_uuid:
+                skin_url = f"https://crafatar.com/avatars/{skin_uuid}?overlay"
 
         embed = discord.Embed(title=f"Stats for {target_name}", color=discord.Color.blue())
         embed.set_thumbnail(url=skin_url)

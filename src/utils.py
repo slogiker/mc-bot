@@ -173,18 +173,20 @@ async def parse_server_version():
     log_path = os.path.join(config.SERVER_DIR, 'logs', 'latest.log')
     
     exists = await asyncio.to_thread(os.path.exists, log_path)
-    if not exists:
-        return "Unknown"
+    if exists:
+        try:
+            async with aiofiles.open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                async for line in f:
+                    if "Starting minecraft server version" in line:
+                        parts = line.split()
+                        for part in parts:
+                            if part.startswith('1.') or part.startswith('2.'):
+                                return part
+        except Exception as e:
+            logger.error(f"Failed to parse server version: {e}")
     
-    try:
-        async with aiofiles.open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-            async for line in f:
-                if "Starting minecraft server version" in line:
-                    parts = line.split()
-                    for part in parts:
-                        if part.startswith('1.') or part.startswith('2.'):
-                            return part
-    except Exception as e:
-        logger.error(f"Failed to parse server version: {e}")
-    
+    # Fallback to config.INSTALLED_VERSION if log parsing failed or log doesn't exist
+    if isinstance(config.INSTALLED_VERSION, str):
+        return config.INSTALLED_VERSION
+        
     return "Unknown"

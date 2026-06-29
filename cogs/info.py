@@ -270,14 +270,13 @@ class Info(commands.Cog):
         
         embed = discord.Embed(
             title="📊 Server Dashboard",
-            description="Real-time performance and status metrics.",
+            description=f"🌐 **IP Address:** `{ip}`",
             color=0x2b2d31 # A sleek dark theme color often used in Discord
         )
         if guild and guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
         
         # General Info
-        embed.add_field(name="🌐 IP Address", value=f"`{ip}`", inline=True)
         embed.add_field(name="🛠️ Version", value=f"`{ver}`", inline=True)
         embed.add_field(name="🌱 Seed", value=f"`{seed}`", inline=True)
         

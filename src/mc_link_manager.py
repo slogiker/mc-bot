@@ -14,15 +14,20 @@ from datetime import datetime, timezone
 # }
 # ──────────────────────────────────────────────────────────────────────────────
 
-GRACE_SECONDS   = 30 * 60   # 30 minutes — how long after /verify the player can rejoin freely
+GRACE_SECONDS            = 30 * 60   # 30 minutes — how long after /verify the player can rejoin freely
+DISCONNECT_GRACE_SECONDS = 12 * 60 * 60  # 12 hours — how long after disconnecting the player can rejoin freely
 LINKS_PATH      = "data/mc_links.json"
 LOCK_PATH       = "data/mc_links.json.lock"
 
 
 class MCLinkManager:
+    _lock = None
+
     def __init__(self, data_file: str = LINKS_PATH):
         self.data_file = data_file
-        self.lock = asyncio.Lock()
+        if MCLinkManager._lock is None:
+            MCLinkManager._lock = asyncio.Lock()
+        self.lock = MCLinkManager._lock
         self._ensure_file()
 
     # ── File helpers ──────────────────────────────────────────────────────────
@@ -144,15 +149,23 @@ class MCLinkManager:
 
     async def is_within_grace(self, mc_username: str) -> bool:
         """
-        Returns True if the player successfully verified within the last GRACE_SECONDS (30 min).
-        Grace window is based on last_verified, NOT last_disconnect.
+        Returns True if:
+        1. The player successfully verified within the last GRACE_SECONDS (30 min).
+        2. The player disconnected within the last DISCONNECT_GRACE_SECONDS (12 hours).
         """
         import time
         data = await self._read()
         for entry in data.values():
             if entry["mc_username"].lower() == mc_username.lower():
+                # Check 1: Last verified (Discord /verify)
                 lv = entry.get("last_verified")
-                if lv is None:
-                    return False
-                return (time.time() - lv) <= GRACE_SECONDS
+                if lv is not None and (time.time() - lv) <= GRACE_SECONDS:
+                    return True
+                
+                # Check 2: Last disconnect (Minecraft leave)
+                ld = entry.get("last_disconnect")
+                if ld is not None and (time.time() - ld) <= DISCONNECT_GRACE_SECONDS:
+                    return True
+                    
+                return False
         return False

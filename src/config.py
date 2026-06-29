@@ -545,5 +545,57 @@ class Config:
                 print(f"Error reading server.properties: {e}")
         return "world"
 
+    @property
+    def ONLINE_MODE(self) -> bool:
+        """
+        Read online-mode from server.properties; fall back to False.
+
+        Returns:
+            bool: True if online-mode is true, False otherwise.
+        """
+        props_path = os.path.join(self.SERVER_DIR, "server.properties")
+        try:
+            with open(props_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("online-mode="):
+                        value = line.split("=", 1)[1].strip().lower()
+                        return value == "true"
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            try:
+                from src.logger import logger
+                logger.error(f"Error reading server.properties for online-mode: {e}")
+            except ImportError:
+                print(f"Error reading server.properties for online-mode: {e}")
+        return False
+
+    @property
+    def WHITELIST_ENABLED(self) -> bool:
+        """
+        Read white-list from server.properties; fall back to False.
+
+        Returns:
+            bool: True if white-list is true, False otherwise.
+        """
+        props_path = os.path.join(self.SERVER_DIR, "server.properties")
+        try:
+            with open(props_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("white-list="):
+                        value = line.split("=", 1)[1].strip().lower()
+                        return value == "true"
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            try:
+                from src.logger import logger
+                logger.error(f"Error reading server.properties for white-list: {e}")
+            except ImportError:
+                print(f"Error reading server.properties for white-list: {e}")
+        return False
+
 
 config = Config()
