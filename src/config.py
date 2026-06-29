@@ -119,6 +119,7 @@ class Config:
         """
         self.TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("BOT_TOKEN")
         self.RCON_PASSWORD = os.getenv("RCON_PASSWORD")
+        self.ENABLE_PLAYIT = os.getenv("ENABLE_PLAYIT", "true").lower() == "true"
         _dry_run = getattr(self, 'dry_run', False)
         self.dry_run = _dry_run
         

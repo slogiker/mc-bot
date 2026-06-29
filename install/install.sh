@@ -631,6 +631,12 @@ if [ -z "$SKIP_CONFIG" ]; then
     PUID=$(id -u "$TARGET_USER")
     PGID=$(id -g "$TARGET_USER")
 
+    if [[ -z "$setup_playit" || $setup_playit =~ ^[Yy]$ ]]; then
+        ENABLE_PLAYIT="true"
+    else
+        ENABLE_PLAYIT="false"
+    fi
+
     touch .env
     chmod 600 .env
     cat > .env <<EOF
@@ -638,6 +644,7 @@ if [ -z "$SKIP_CONFIG" ]; then
 BOT_TOKEN=$BOT_TOKEN
 RCON_PASSWORD=$RCON_PASSWORD
 PLAYIT_SECRET_KEY=$PLAYIT_KEY
+ENABLE_PLAYIT=$ENABLE_PLAYIT
 PUID=$PUID
 PGID=$PGID
 EOF

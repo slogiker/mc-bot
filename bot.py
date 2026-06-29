@@ -355,6 +355,9 @@ class MinecraftBot(commands.Bot):
             filenames = await asyncio.to_thread(os.listdir, './cogs')
             for filename in filenames:
                 if filename.endswith('.py') and not filename.startswith('_'):
+                    if filename == 'playit.py' and not config.ENABLE_PLAYIT:
+                        logger.info("Playit is disabled in configuration, skipping playit cog.")
+                        continue
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
                         logger.debug(f"Loaded cog: {filename}")
