@@ -71,6 +71,13 @@ class MinecraftInstaller:
 
             if success:
                 logger.info(f"Successfully downloaded {platform} server.")
+                # Pre-download the correct JRE for this Minecraft version
+                try:
+                    from src.jre_manager import jre_manager
+                    java_version = jre_manager.get_required_java_version(version)
+                    await jre_manager.ensure_jre(java_version, progress_callback)
+                except Exception as jre_err:
+                    logger.warning(f"Failed to pre-download JRE for version {version}: {jre_err}. Will retry on startup.")
             else:
                 logger.error(f"Failed to download {platform} server: {msg}")
             

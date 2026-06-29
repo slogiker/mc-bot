@@ -124,10 +124,20 @@ class TmuxServerManager(ServerInterface):
         # Kill any existing session just in case
         self._run_tmux_cmd(["kill-session", "-t", self.session_name])
 
+        # Resolve JRE path dynamically (honor custom path if specified)
+        java_path = config.JAVA_PATH
+        if java_path == "java":
+            try:
+                from src.jre_manager import jre_manager
+                java_path = await jre_manager.get_java_executable(config.INSTALLED_VERSION)
+            except Exception as jre_err:
+                logger.warning(f"Failed to resolve JRE path: {jre_err}. Falling back to system 'java'.")
+                java_path = "java"
+
         # Build command with proper escaping to prevent injection
         java_cmd = (
             f"cd {shlex.quote(config.SERVER_DIR)} && "
-            f"{shlex.quote(config.JAVA_PATH)} "
+            f"{shlex.quote(java_path)} "
             f"-Xms{config.JAVA_XMS} "
             f"-Xmx{config.JAVA_XMX} "
             f"-jar {shlex.quote(config.SERVER_JAR)} "

@@ -10,7 +10,7 @@ Do not hallucinate files or commands, refer to the tables below.
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v3.1.3`  
+**Version:** `v3.1.4`  
 **Last Updated:** 2026-06-29  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
@@ -1082,6 +1082,13 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 ---
 
 ## 11. Version History & Recent Changes
+
+### v3.1.4 — Dynamic JRE Management & Installer Polish (2026-06-29)
+- **Dynamic JRE Management**: Added `src/jre_manager.py` to dynamically detect, download, cache, and run the correct Java version (8, 17, 21, 25) based on the Minecraft server version, resolving Java version mismatches for all past and future Minecraft versions.
+- **Installer Reconfiguration Recovery**: Enhanced `install/install.sh` to load existing `.env` credentials (Discord token, RCON password, Playit settings) and support pressing Enter to keep them, making reconfiguration extremely fast.
+- **Honored Playit Disable Choice**: Updated the installer and bot to support the `ENABLE_PLAYIT` env variable. If the user chooses "No" during installation, it writes `ENABLE_PLAYIT=false` to `.env`, and the bot completely skips loading the Playit cog.
+- **Removed Startup Spam**: Removed the confusing "System Ready" embed notification that spam-notified the `#debug` channel on every bot startup.
+- **Traceback Logging**: Fixed `src/logger.py`'s custom formatter to correctly format log message arguments and print full exception tracebacks instead of swallowing them.
 
 ### v3.1.3 — Security, Concurrency & Grace Period Hardening (2026-06-29)
 - **JoinGuard Online-Mode Bypass**: Automatically bypasses all JoinGuard checks if the Minecraft server is configured with `online-mode=true` in `server.properties`.
