@@ -20,7 +20,20 @@ class CustomFormatter(logging.Formatter):
         if record.levelno >= logging.ERROR:
             location = f" [{record.filename}:{record.lineno}]"
             
-        return f"[{timestamp}] {record.levelname:<8} {record.msg}{location}"
+        # Format the actual message with its arguments
+        message = record.getMessage()
+        s = f"[{timestamp}] {record.levelname:<8} {message}{location}"
+        
+        # Append traceback if an exception occurred
+        if record.exc_info:
+            if not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+        if record.exc_text:
+            if s[-1:] != "\n":
+                s = s + "\n"
+            s = s + record.exc_text
+            
+        return s
 
 # --- Redirect Terminal Output to Logger ---
 class StreamToLogger:
