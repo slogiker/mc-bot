@@ -437,25 +437,9 @@ class MinecraftBot(commands.Bot):
         if self.server.is_running():
             await self.start_background_tasks()
         
-        # Send 'System Online' notification to debug channel
+        # Mark startup as complete
         if not self._startup_complete:
             self._startup_complete = True
-            debug_channel_id = config.DEBUG_CHANNEL_ID
-            if debug_channel_id:
-                channel = self.get_channel(int(debug_channel_id))
-                if channel:
-                    embed = discord.Embed(
-                        title="✅ System Ready",
-                        description=f"Bot version {config.INSTALLED_VERSION} is online.",
-                        color=discord.Color.green(),
-                        timestamp=discord.utils.utcnow()
-                    )
-                    server_status = "Online" if self.server.is_running() else "Offline"
-                    embed.add_field(name="Minecraft", value=f"**{server_status}**", inline=True)
-                    embed.add_field(name="Mode", value="Ghost 👻" if is_simulation else "Production", inline=True)
-                    
-                    await channel.send(embed=embed)
-                    logger.debug("Sent 'System Online' notification to debug channel.")
 
         # Check for pending bot restart message
         try:
