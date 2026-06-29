@@ -15,16 +15,32 @@ class SetupHelper:
         logger.debug(f"--- Starting Self-Healing Setup for Guild: {guild.name} ---")
         
         updates = {}
+        bot_cfg = config.load_bot_config()
         
         # 1. ROLES RECONCILIATION
-        role_definitions = ["Owner", "MC Admin", "MC Player"]
-        existing_roles = {r.name: r for r in guild.roles}
+        role_defs = {
+            "Owner": "owner_role_id",
+            "MC Admin": "admin_role_id",
+            "MC Player": "player_role_id"
+        }
 
-        for role_name in role_definitions:
-            role = existing_roles.get(role_name)
+        for role_name, config_key in role_defs.items():
+            role = None
+            
+            # Check by ID first
+            existing_id = bot_cfg.get(config_key)
+            if existing_id:
+                role = guild.get_role(int(existing_id))
+                if role:
+                    logger.debug(f"Self-Healer: Found existing role for {role_name} by ID: {existing_id}")
+            
+            # Fall back to name
+            if not role:
+                existing_roles = {r.name: r for r in guild.roles}
+                role = existing_roles.get(role_name)
+                
             if not role:
                 try:
-                    # Create missing role with specific color
                     if role_name == "Owner":
                         color = discord.Color.red()
                     elif role_name == "MC Admin":
@@ -37,14 +53,9 @@ class SetupHelper:
                     logger.error(f"Failed to create role {role_name}: {e}")
                     continue
             
-            # Map IDs to config keys
+            updates[config_key] = role.id
             if role_name == "Owner":
-                updates['owner_role_id'] = role.id
                 await self._assign_owner_role(guild, role)
-            elif role_name == "MC Admin":
-                updates['admin_role_id'] = role.id
-            elif role_name == "MC Player":
-                updates['player_role_id'] = role.id
 
         # 2. CATEGORY RECONCILIATION
         cat_name = "Minecraft Server"
@@ -64,7 +75,18 @@ class SetupHelper:
         }
         
         for ch_name, config_key in channel_defs.items():
-            channel = discord.utils.get(guild.text_channels, name=ch_name)
+            channel = None
+            
+            # Check by ID first
+            existing_id = bot_cfg.get(config_key)
+            if existing_id:
+                channel = guild.get_channel(int(existing_id))
+                if channel:
+                    logger.debug(f"Self-Healer: Found existing channel for {ch_name} by ID: {existing_id}")
+            
+            # Fall back to name
+            if not channel:
+                channel = discord.utils.get(guild.text_channels, name=ch_name)
             
             if not channel:
                 try:
@@ -94,11 +116,10 @@ class SetupHelper:
 
         # Force control panel to update immediately to show the Welcome/Setup message
         try:
-            if 'COMMAND_CHANNEL_ID' in updates:
+            if 'command_channel_id' in updates:
                 control_cog = self.bot.get_cog("ControlPanelCog")
                 if control_cog:
-                    # Temporarily update config in memory so the cog can find the channel
-                    config.COMMAND_CHANNEL_ID = str(updates['COMMAND_CHANNEL_ID'])
+                    config.COMMAND_CHANNEL_ID = str(updates['command_channel_id'])
                     await control_cog.update_panel()
         except Exception as e:
             logger.error(f"Failed to trigger initial control panel update: {e}")
