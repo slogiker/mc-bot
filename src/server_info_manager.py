@@ -21,7 +21,15 @@ class ServerInfoManager:
     
     async def get_or_create_channel(self, guild: discord.Guild) -> discord.TextChannel:
         """Get existing channel or create new one"""
-        channel = discord.utils.get(guild.text_channels, name=self.channel_name)
+        channel = None
+        # Try to resolve by ID from config first
+        if getattr(config, 'INFO_CHANNEL_ID', None):
+            channel = guild.get_channel(int(config.INFO_CHANNEL_ID))
+            if channel:
+                logger.debug(f"ServerInfoManager: Found existing channel by ID: {config.INFO_CHANNEL_ID}")
+
+        if not channel:
+            channel = discord.utils.get(guild.text_channels, name=self.channel_name)
         
         if not channel:
             # Create channel with specific permission overrides
@@ -35,6 +43,14 @@ class ServerInfoManager:
                 reason="Server Information Channel"
             )
             logger.info(f"Created {self.channel_name} channel")
+            
+            # Save it to config
+            try:
+                with config.update_bot_config() as data:
+                    data['info_channel_id'] = channel.id
+                config.INFO_CHANNEL_ID = channel.id
+            except Exception as e:
+                logger.error(f"Failed to save info_channel_id to config: {e}")
         
         return channel
 

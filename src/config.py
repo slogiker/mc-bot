@@ -190,6 +190,7 @@ class Config:
         self.COMMAND_CHANNEL_ID = bot_cfg.get('command_channel_id')
         self.LOG_CHANNEL_ID = bot_cfg.get('log_channel_id')
         self.DEBUG_CHANNEL_ID = bot_cfg.get('debug_channel_id')
+        self.INFO_CHANNEL_ID = bot_cfg.get('info_channel_id')
         self.SPAWN_X = bot_cfg.get('spawn_x')
         self.SPAWN_Y = bot_cfg.get('spawn_y')
         self.SPAWN_Z = bot_cfg.get('spawn_z')
