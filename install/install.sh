@@ -563,6 +563,11 @@ echo -e "\n${BLUE}${BOLD}${ICON_GEAR} [2/4] Configuring Environment...${NC}"
 
 if [ -f .env ]; then
     echo -e "    ${ICON_CHECK} .env file already exists."
+    EXISTING_TOKEN=$(grep -E "^BOT_TOKEN=" .env | cut -d'=' -f2-)
+    EXISTING_RCON=$(grep -E "^RCON_PASSWORD=" .env | cut -d'=' -f2-)
+    EXISTING_PLAYIT_KEY=$(grep -E "^PLAYIT_SECRET_KEY=" .env | cut -d'=' -f2-)
+    EXISTING_ENABLE_PLAYIT=$(grep -E "^ENABLE_PLAYIT=" .env | cut -d'=' -f2-)
+    
     read -p "    > Reconfigure? (y/N) " reconfig
     if [[ ! $reconfig =~ ^[Yy]$ ]]; then
         SKIP_CONFIG=1
@@ -573,7 +578,14 @@ if [ -z "$SKIP_CONFIG" ]; then
     # Discord Token
     echo -e "\n  ${ICON_KEY} ${BOLD}Discord Bot Token${NC}"
     echo -e "    ${DIM}Get it from: https://discord.com/developers/applications${NC}"
-    read -p "    > " BOT_TOKEN
+    if [ -n "$EXISTING_TOKEN" ]; then
+        read -p "    > [Enter to keep existing]: " BOT_TOKEN
+        if [ -z "$BOT_TOKEN" ]; then
+            BOT_TOKEN="$EXISTING_TOKEN"
+        fi
+    else
+        read -p "    > " BOT_TOKEN
+    fi
     
     if [ -z "$BOT_TOKEN" ]; then
         echo -e "  ${ICON_CROSS} ${RED}Token required.${NC}"
@@ -591,35 +603,53 @@ if [ -z "$SKIP_CONFIG" ]; then
         if [[ $reset_playit =~ ^[Yy]$ ]]; then
             rm -f data/playit_secret.key
             echo -e "    ${ICON_CHECK} ${GREEN}Playit identity cleared.${NC}"
+            EXISTING_PLAYIT_KEY=""
         fi
     fi
 
-    read -p "    > Enable Playit.gg? [Y/n] " setup_playit
-
-    PLAYIT_KEY=""
-    if [[ -z "$setup_playit" || $setup_playit =~ ^[Yy]$ ]]; then
-        echo -e "\n    Do you already have a ${CYAN}Playit Secret Key${NC}? [y/N]"
-        echo -e "    ${DIM}(If this is your first time, just press Enter)${NC}"
-        read -p "    > " has_key
-        
-        if [[ $has_key =~ ^[Yy]$ ]]; then
-            echo -e "    Enter your ${CYAN}Playit Secret Key${NC}:"
-            read -p "    > " PLAYIT_KEY
-            
-            if [ -n "$PLAYIT_KEY" ]; then
-                mkdir -p data
-                touch data/playit_secret.key
-                chmod 600 data/playit_secret.key
-                echo "$PLAYIT_KEY" > data/playit_secret.key
-                echo -e "    ${ICON_CHECK} ${GREEN}Secret key saved.${NC}"
-            fi
+    DEFAULT_PLAYIT="Y/n"
+    if [ "$EXISTING_ENABLE_PLAYIT" = "false" ]; then
+        DEFAULT_PLAYIT="y/N"
+    fi
+    read -p "    > Enable Playit.gg? [$DEFAULT_PLAYIT] " setup_playit
+    if [ -z "$setup_playit" ]; then
+        if [ "$EXISTING_ENABLE_PLAYIT" = "false" ]; then
+            setup_playit="n"
         else
-            echo -e "\n    ${ICON_CHECK} ${GREEN}Claim link will be generated after startup.${NC}"
+            setup_playit="y"
         fi
     fi
 
-    # Generate RCON
-    RCON_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+    PLAYIT_KEY="$EXISTING_PLAYIT_KEY"
+    if [[ $setup_playit =~ ^[Yy]$ ]]; then
+        if [ -z "$PLAYIT_KEY" ]; then
+            echo -e "\n    Do you already have a ${CYAN}Playit Secret Key${NC}? [y/N]"
+            echo -e "    ${DIM}(If this is your first time, just press Enter)${NC}"
+            read -p "    > " has_key
+            
+            if [[ $has_key =~ ^[Yy]$ ]]; then
+                echo -e "    Enter your ${CYAN}Playit Secret Key${NC}:"
+                read -p "    > " PLAYIT_KEY
+                
+                if [ -n "$PLAYIT_KEY" ]; then
+                    mkdir -p data
+                    touch data/playit_secret.key
+                    chmod 600 data/playit_secret.key
+                    echo "$PLAYIT_KEY" > data/playit_secret.key
+                    echo -e "    ${ICON_CHECK} ${GREEN}Secret key saved.${NC}"
+                fi
+            else
+                echo -e "\n    ${ICON_CHECK} ${GREEN}Claim link will be generated after startup.${NC}"
+            fi
+        fi
+    fi
+
+    # Generate RCON (keep existing if available)
+    if [ -n "$EXISTING_RCON" ]; then
+        RCON_PASSWORD="$EXISTING_RCON"
+    else
+        RCON_PASSWORD=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
+    fi
 
     # Docker sometimes creates .env as a root-owned directory if it's mounted before it exists.
     if [ -d .env ]; then

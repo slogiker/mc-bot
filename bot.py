@@ -446,7 +446,7 @@ class MinecraftBot(commands.Bot):
                 if channel:
                     embed = discord.Embed(
                         title="✅ System Ready",
-                        description=f"Bot version {config.installed_version} is online.",
+                        description=f"Bot version {config.INSTALLED_VERSION} is online.",
                         color=discord.Color.green(),
                         timestamp=discord.utils.utcnow()
                     )
