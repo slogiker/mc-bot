@@ -58,7 +58,7 @@ class SetupHelper:
                 await self._assign_owner_role(guild, role)
 
         # 2. CATEGORY RECONCILIATION
-        cat_name = "Minecraft Server"
+        cat_name = bot_cfg.get('category_name', 'Minecraft Server')
         category = discord.utils.get(guild.categories, name=cat_name)
         if not category:
             try:
@@ -99,14 +99,6 @@ class SetupHelper:
                 except Exception as e:
                     logger.error(f"Failed to create channel {ch_name}: {e}")
                     continue
-            else:
-                # Ensure existing channel is in the right category
-                if category and channel.category_id != category.id:
-                    try:
-                        await channel.edit(category=category)
-                        logger.info(f"Self-Healer: Restored channel {ch_name} to category {cat_name}")
-                    except Exception as e:
-                        logger.warning(f"Failed to move channel {ch_name}: {e}")
 
             updates[config_key] = channel.id
 
