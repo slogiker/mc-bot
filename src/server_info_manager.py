@@ -96,6 +96,10 @@ class ServerInfoManager:
             logger.error(f"Failed to update server info: {e}", exc_info=True)
 
     async def _get_address(self) -> str:
+        # 0. Prefer custom IP if set
+        if config.CUSTOM_IP:
+            return config.CUSTOM_IP
+
         # 1. Prefer live Playit address from the cog's cache
         try:
             playit_cog = self.bot.get_cog("PlayitCog")

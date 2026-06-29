@@ -253,5 +253,38 @@ class SettingsCog(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, view=SettingsView(), ephemeral=True)
 
+    @app_commands.command(name="set_ip", description="Set a custom public IP or domain name for the Minecraft server")
+    @app_commands.describe(ip="The custom IP or domain (e.g. mc.slogiker.com). Enter 'clear' to reset.")
+    @has_role("cmd")
+    async def set_ip(self, interaction: discord.Interaction, ip: str):
+        """Set a custom IP or domain for the server"""
+        await interaction.response.defer(ephemeral=True)
+        
+        target_ip = ip.strip()
+        if target_ip.lower() == "clear":
+            target_ip = None
+            msg = "✅ Custom IP has been cleared. The bot will now auto-detect your public IP."
+        else:
+            msg = f"✅ Custom IP set to: `{target_ip}`"
+            
+        try:
+            with config.update_user_config() as data:
+                if target_ip:
+                    data["custom_ip"] = target_ip
+                else:
+                    data.pop("custom_ip", None)
+            
+            # Update in-memory config immediately
+            config.CUSTOM_IP = target_ip
+            
+            # Trigger server info update immediately
+            from src.server_info_manager import ServerInfoManager
+            await ServerInfoManager(self.bot).update_info()
+            
+            await interaction.followup.send(msg, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Failed to set custom IP: {e}")
+            await interaction.followup.send(f"❌ Failed to set custom IP: {e}", ephemeral=True)
+
 async def setup(bot):
     await bot.add_cog(SettingsCog(bot))

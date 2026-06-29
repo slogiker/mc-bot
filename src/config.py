@@ -165,6 +165,7 @@ class Config:
         self.RESTART_TIME = user_cfg['restart_time']
         self.MAX_AUTO_RESTARTS = user_cfg.get('max_auto_restarts', 3)
         self.STARTUP_TIMEOUT = user_cfg.get('startup_timeout', 300)
+        self.CUSTOM_IP = user_cfg.get('custom_ip')
         
         user_tz = user_cfg.get('timezone', 'auto')
         if user_tz.lower() == 'auto':

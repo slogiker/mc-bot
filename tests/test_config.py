@@ -115,3 +115,8 @@ class TestValidateUserConfig:
         valid_user_config["backup_keep_days"] = 365
         valid, errors = validate_user_config(valid_user_config)
         assert valid is True
+
+    def test_custom_ip_optional(self, valid_user_config):
+        valid_user_config["custom_ip"] = "mc.example.com"
+        valid, errors = validate_user_config(valid_user_config)
+        assert valid is True

@@ -10,7 +10,7 @@ Do not hallucinate files or commands, refer to the tables below.
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v3.1.4`  
+**Version:** `v3.1.5`  
 **Last Updated:** 2026-06-29  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
@@ -1082,6 +1082,11 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 ---
 
 ## 11. Version History & Recent Changes
+
+### v3.1.5 — Custom IP/Domain Support (2026-06-29)
+- **Custom IP/Domain Setting**: Added support for configuring a custom IP address or domain name (e.g. `mc.slogiker.com`) in `user_config.json` via the new `custom_ip` key.
+- **Set IP Slash Command**: Added the `/set_ip <ip>` slash command (restricted to administrators) to dynamically update the server address from Discord. Typing `/set_ip clear` resets it to auto-detect.
+- **Prioritized Address Resolution**: Updated both the `/info` dashboard command and the `#server-information` channel update manager to prioritize the custom IP/domain over the auto-detected public IP or Playit address.
 
 ### v3.1.4 — Dynamic JRE Management & Installer Polish (2026-06-29)
 - **Dynamic JRE Management**: Added `src/jre_manager.py` to dynamically detect, download, cache, and run the correct Java version (8, 17, 21, 25) based on the Minecraft server version, resolving Java version mismatches for all past and future Minecraft versions.

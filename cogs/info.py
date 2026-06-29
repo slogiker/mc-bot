@@ -220,15 +220,18 @@ class Info(commands.Cog):
         ver = await parse_server_version()
         
         ip = "Unknown (Check /ip)"
-        try:
-            playit_cog = self.bot.get_cog("PlayitCog")
-            if playit_cog and playit_cog.cached_address:
-                ip = playit_cog.cached_address
-            else:
-                bot_cfg = config.load_bot_config()
-                ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
-        except Exception as e:
-            logger.error(f"Failed to fetch IP for info command: {e}")
+        if config.CUSTOM_IP:
+            ip = config.CUSTOM_IP
+        else:
+            try:
+                playit_cog = self.bot.get_cog("PlayitCog")
+                if playit_cog and playit_cog.cached_address:
+                    ip = playit_cog.cached_address
+                else:
+                    bot_cfg = config.load_bot_config()
+                    ip = bot_cfg.get('playit_ip', "Unknown (Check /ip)")
+            except Exception as e:
+                logger.error(f"Failed to fetch IP for info command: {e}")
         
         spawn = self.info_manager._get_spawn() or "Not set"
         
