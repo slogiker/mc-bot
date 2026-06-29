@@ -113,7 +113,7 @@ if __name__ == "__main__":
         asyncio.run(asyncio.wait_for(send(), timeout=15.0))
     except:
         pass
-'
+" || echo "Warning: Could not send Discord notification."
 }
 
 graceful_stop_minecraft() {
