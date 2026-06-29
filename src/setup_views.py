@@ -735,6 +735,17 @@ class SetupView(ui.View):
         config.JAVA_XMX = f"{self.state.ram}G"
         config.JAVA_XMS = f"{max(1, self.state.ram // 2)}G"
         
+        # Save RAM settings to user_config.json so they persist
+        try:
+            def save_ram():
+                with config.update_user_config() as data:
+                    data["java_ram_max"] = config.JAVA_XMX
+                    data["java_ram_min"] = config.JAVA_XMS
+            await asyncio.to_thread(save_ram)
+            logger.info(f"RAM configuration saved to user_config.json: Max={config.JAVA_XMX}, Min={config.JAVA_XMS}")
+        except Exception as e:
+            logger.error(f"Failed to save RAM configuration to user_config.json: {e}")
+        
         try:
             from src.utils import send_debug
             await send_debug(interaction.client, f"🚀 **Starting fresh installation of {setup_config['platform']} {setup_config['version']}**")
