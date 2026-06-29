@@ -94,7 +94,7 @@ async def send():
             try:
                 channel = await client.fetch_channel(int(channel_id))
                 if channel:
-                    await channel.send(f"🔔 **System Notice:** {msg}")
+                    await channel.send(f'🔔 **System Notice:** {msg}')
             except Exception as e:
                 pass
             finally:
@@ -107,13 +107,43 @@ async def send():
     except Exception as e:
         pass
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         # Run with a 15-second timeout to prevent hanging the install script
         asyncio.run(asyncio.wait_for(send(), timeout=15.0))
     except:
         pass
-" || echo "Warning: Could not send Discord notification."
+'
+}
+
+graceful_stop_minecraft() {
+    local container_name="mc-bot"
+    if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        echo -e "  ${YELLOW}${ICON_GEAR} Gracefully stopping Minecraft server...${NC}"
+        
+        # 1. Warn players
+        docker exec "$container_name" python3 -c "import asyncio; from src.utils import rcon_cmd; asyncio.run(rcon_cmd('say ⚠️ Server is restarting for maintenance/updates in 5 seconds...'))" &>/dev/null || true
+        sleep 5
+        
+        # 2. Issue stop command
+        docker exec "$container_name" python3 -c "import asyncio; from src.utils import rcon_cmd; asyncio.run(rcon_cmd('stop'))" &>/dev/null || true
+        
+        # 3. Wait for Java process to exit (max 60 seconds)
+        local timeout=60
+        local count=0
+        while docker exec "$container_name" pgrep -f java &>/dev/null && [ $count -lt $timeout ]; do
+            echo -n "."
+            sleep 1
+            count=$((count + 1))
+        done
+        echo ""
+        
+        if [ $count -eq $timeout ]; then
+            echo -e "  ${RED}${ICON_CROSS} Minecraft server did not stop in time. Forcing stop...${NC}"
+        else
+            echo -e "  ${GREEN}${ICON_CHECK} Minecraft server stopped gracefully.${NC}"
+        fi
+    fi
 }
 
 # --- Subcommand Functions ---
@@ -136,6 +166,7 @@ do_start() {
 
 do_stop() {
     send_discord_notice "Bot is shutting down for maintenance. Be right back! 🛠️"
+    graceful_stop_minecraft
     local cmd=$(get_compose_cmd)
     if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
     $cmd stop
@@ -143,6 +174,11 @@ do_stop() {
 
 do_restart() {
     send_discord_notice "Bot is restarting. Be right back! 🔄"
+    graceful_stop_minecraft
+    
+    # Set pending restart flag in bot_config.json
+    python3 -c "import json, os; fn='data/bot_config.json'; d=json.load(open(fn)) if os.path.exists(fn) else {}; d['update_restart_pending']='restart'; json.dump(d, open(fn, 'w'))" 2>/dev/null || true
+    
     local cmd=$(get_compose_cmd)
     if [ -z "$cmd" ]; then echo "Docker Compose not found."; return 1; fi
     $cmd restart
@@ -162,6 +198,11 @@ do_status() {
 
 do_update() {
     send_discord_notice "Bot is updating to the latest version. Be right back! 🚀"
+    graceful_stop_minecraft
+    
+    # Set pending update flag in bot_config.json
+    python3 -c "import json, os; fn='data/bot_config.json'; d=json.load(open(fn)) if os.path.exists(fn) else {}; d['update_restart_pending']='update'; json.dump(d, open(fn, 'w'))" 2>/dev/null || true
+    
     echo -e "${BLUE}${ICON_GEAR} Updating MC-Bot...${NC}"
     git pull origin main || true
     local cmd=$(get_compose_cmd)

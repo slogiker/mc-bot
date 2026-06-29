@@ -458,6 +458,26 @@ class MinecraftBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to update restart message: {e}")
 
+        # Check for update/restart pending notification
+        try:
+            bot_cfg = config.load_bot_config()
+            pending_type = bot_cfg.get('update_restart_pending')
+            if pending_type:
+                debug_channel_id = config.DEBUG_CHANNEL_ID
+                if debug_channel_id:
+                    channel = self.get_channel(int(debug_channel_id))
+                    if channel:
+                        if pending_type == 'update':
+                            msg = "🔄 **Bot updated and restarted successfully!** (Pulled latest changes from repository)"
+                        else:
+                            msg = "🔄 **Bot restarted successfully!**"
+                        await channel.send(msg)
+                
+                with config.update_bot_config() as data:
+                    data.pop('update_restart_pending', None)
+        except Exception as e:
+            logger.error(f"Failed to send pending restart notification: {e}")
+
         logger.debug("=== Bot is now fully ready! ===")
 
 # --- Lifecycle Management ---
