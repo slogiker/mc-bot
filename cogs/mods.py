@@ -56,7 +56,8 @@ class ModsCog(commands.Cog):
 
     async def _modrinth_search(self, query: str, limit: int = 10) -> list[dict]:
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+            headers = {"User-Agent": "slogiker/mc-bot/v3.2.0 (slogiker/mc-bot)"}
+            async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as session:
                 params = {"query": query, "limit": limit, "index": "relevance"}
                 async with session.get("https://api.modrinth.com/v2/search", params=params) as resp:
                     if resp.status == 200:
@@ -108,7 +109,8 @@ class ModsCog(commands.Cog):
         installed_files = []
         failed_mods = []
 
-        async with aiohttp.ClientSession() as session:
+        headers = {"User-Agent": "slogiker/mc-bot/v3.2.0 (slogiker/mc-bot)"}
+        async with aiohttp.ClientSession(headers=headers) as session:
             for i, slug in enumerate(slugs):
                 logger.info(f"Mod Search: '{slug}' - Querying Modrinth (version={mc_version}, loader={loader})")
                 await msg.edit(content=f"📥 [{i+1}/{len(slugs)}] Locating latest compatible version for `{slug}`...")
