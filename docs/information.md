@@ -10,8 +10,8 @@ Do not hallucinate files or commands, refer to the tables below.
 
 _(Note: The `DEVELOPER.md` file has been merged into this document)._
 
-**Version:** `v3.1.5`  
-**Last Updated:** 2026-06-29  
+**Version:** `v3.2.0`  
+**Last Updated:** 2026-06-30  
 **Author:** slogiker - Daniel Pliberšek  
 **License:** MIT
 
@@ -1082,6 +1082,20 @@ Obsolete view file. Legacy DM button flow removed in favor of the production-rea
 ---
 
 ## 11. Version History & Recent Changes
+
+### v3.2.0 — Mod Installation, Presence & Graceful Updates Overhaul (2026-06-30)
+- **Native Optional-Parameter Mod Search (`/mod_search`)**: Replaced the queue/dropdown-based mod search with a native, streamlined 5-optional-parameter autocomplete flow (`mod1` to `mod5`). The bot searches Modrinth and installs up to 5 mods/plugins at once, editing a single status message to prevent chat spam and triggering a single graceful server restart.
+- **Detailed Command & Download Logging**: Added an `on_interaction` event listener in `bot.py` to log every slash command execution (user, ID, and arguments). Added detailed status code logging in `cogs/mods.py` for Modrinth API checks and file downloads (e.g. `200` or `404`), making it clear when and why a mod download was skipped.
+- **Presence Deduplication & Rate-Limit Cache**: Implemented a `set_presence` helper in `bot.py` with in-memory caching. Prevents hitting the Discord gateway presence rate limit (max 5 updates/minute) by skipping redundant updates, ensuring instant and reliable status transitions.
+- **Graceful Update Shutdowns**: Modified `install/install.sh` to write `{"intentional_stop": true}` directly to `mc-server/bot_state.json` on the host before stopping the server. Modified `is_intentionally_stopped()` in `src/server_tmux.py` to read this state file live from disk on every check, preventing the running bot from triggering spurious "Server crashed" alerts during updates.
+- **Fabric TPS Parsing & Profiling**: Updated the TPS command in `/info` to support the Fabric tick profiling log pattern (`tick(s) per second` format) and increased the profiling sleep window from 1.0s to 2.0s to ensure accurate averages.
+- **Infrastructure & Bug Fixes**:
+  - Fixed a `SyntaxError` in `bot.py` caused by a missing `except` block.
+  - Resolved a bash syntax error in `install/install.sh` due to unescaped double quotes.
+  - Fixed an `AttributeError` on bot shutdown related to `_MissingSentinel` when the event loop is closed.
+  - Fixed a state caching issue in `src/server_tmux.py` by moving cache variable initialization to `__init__`.
+  - Added persistent seed caching and inline NBT path support for Minecraft 1.20+.
+  - Removed `.agents` from git tracking and added it to `.gitignore`.
 
 ### v3.1.5 — Custom IP/Domain Support (2026-06-29)
 - **Custom IP/Domain Setting**: Added support for configuring a custom IP address or domain name (e.g. `mc.slogiker.com`) in `user_config.json` via the new `custom_ip` key.
