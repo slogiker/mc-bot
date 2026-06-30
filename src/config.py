@@ -89,6 +89,8 @@ def validate_user_config(data: dict) -> tuple[bool, list[str]]:
 
 # --- Configuration Management ---
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 class Config:
     """
     Singleton configuration manager.
@@ -102,11 +104,12 @@ class Config:
         """Implement singleton pattern."""
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
-            cls._instance.BOT_CONFIG_FILE = os.path.join('data', 'bot_config.json')
-            cls._instance.USER_CONFIG_FILE = os.path.join('data', 'user_config.json')
-            # Use singleton locks to allow reentrancy within the same instance/thread
-            cls._instance._bot_lock = FileLock(cls._instance.BOT_CONFIG_FILE + ".lock")
-            cls._instance._user_lock = FileLock(cls._instance.USER_CONFIG_FILE + ".lock")
+            cls._instance.PROJECT_ROOT = PROJECT_ROOT
+            cls._instance.BOT_CONFIG_FILE = os.path.join(PROJECT_ROOT, 'data', 'bot_config.json')
+            cls._instance.USER_CONFIG_FILE = os.path.join(PROJECT_ROOT, 'data', 'user_config.json')
+            # Use singleton locks with a timeout to prevent blocking the event loop indefinitely
+            cls._instance._bot_lock = FileLock(cls._instance.BOT_CONFIG_FILE + ".lock", timeout=10)
+            cls._instance._user_lock = FileLock(cls._instance.USER_CONFIG_FILE + ".lock", timeout=10)
             cls._instance.load()
         return cls._instance
 
@@ -124,15 +127,56 @@ class Config:
         self.dry_run = _dry_run
         
         # Check for old config and migrate
-        if os.path.exists('config.json') and not os.path.exists(self.USER_CONFIG_FILE):
+        if os.path.exists(os.path.join(PROJECT_ROOT, 'config.json')) and not os.path.exists(self.USER_CONFIG_FILE):
             self._migrate_old_config()
         
         # Load user config
-        user_cfg = self._load_user_config_no_lock()
-        if not user_cfg and not os.path.exists(self.USER_CONFIG_FILE):
-            print("❌ user_config.json not found! Creating default...")
-            self._create_default_configs()
+        try:
             user_cfg = self._load_user_config_no_lock()
+            if not user_cfg and not os.path.exists(self.USER_CONFIG_FILE):
+                print("❌ user_config.json not found! Creating default...")
+                self._create_default_configs()
+                if self.dry_run:
+                    # In simulation mode, use the default config dict directly in memory
+                    user_cfg = {
+                        "java_ram_min": "2G",
+                        "java_ram_max": "4G",
+                        "backup_time": "03:00",
+                        "backup_keep_days": 7,
+                        "restart_time": "04:00",
+                        "max_auto_restarts": 3,
+                        "startup_timeout": 300,
+                        "timezone": "auto",
+                        "permissions": self._convert_old_roles({})
+                    }
+                else:
+                    user_cfg = self._load_user_config_no_lock()
+        except (json.JSONDecodeError, Exception) as e:
+            config_path = self.USER_CONFIG_FILE
+            if os.path.exists(config_path):
+                backup_path = f"{config_path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
+                try:
+                    shutil.copy2(config_path, backup_path)
+                    print(f"⚠️ user_config.json is corrupt — backed up to {backup_path}")
+                except Exception as backup_err:
+                    print(f"❌ Failed to backup corrupt user_config.json: {backup_err}")
+            
+            print(f"WARNING: Could not load user_config.json ({type(e).__name__}: {e}) — recreating with defaults.")
+            self._create_default_configs()
+            if self.dry_run:
+                user_cfg = {
+                    "java_ram_min": "2G",
+                    "java_ram_max": "4G",
+                    "backup_time": "03:00",
+                    "backup_keep_days": 7,
+                    "restart_time": "04:00",
+                    "max_auto_restarts": 3,
+                    "startup_timeout": 300,
+                    "timezone": "auto",
+                    "permissions": self._convert_old_roles({})
+                }
+            else:
+                user_cfg = self._load_user_config_no_lock()
         
         # Validate
         valid, errors = validate_user_config(user_cfg)
@@ -155,7 +199,16 @@ class Config:
             
             print(f"WARNING: Could not load bot_config.json ({type(e).__name__}: {e}) — recreating with defaults.")
             self._create_default_configs()
-            bot_cfg = self._load_bot_config_no_lock()
+            if self.dry_run:
+                bot_cfg = {
+                    "server_directory": "./mc-server",
+                    "guild_id": None,
+                    "command_channel_id": None,
+                    "log_channel_id": None,
+                    "debug_channel_id": None
+                }
+            else:
+                bot_cfg = self._load_bot_config_no_lock()
         
         # Apply user config
         self.JAVA_XMX = user_cfg['java_ram_max']
@@ -185,7 +238,11 @@ class Config:
         self.ROLE_PERMISSIONS = user_cfg['permissions']
         
         # Apply bot config
-        self.SERVER_DIR = bot_cfg.get('server_directory', './mc-server')
+        server_dir = bot_cfg.get('server_directory', './mc-server')
+        if not os.path.isabs(server_dir):
+            self.SERVER_DIR = os.path.abspath(os.path.join(PROJECT_ROOT, server_dir))
+        else:
+            self.SERVER_DIR = server_dir
         self.GUILD_ID = bot_cfg.get('guild_id')
         self.COMMAND_CHANNEL_ID = bot_cfg.get('command_channel_id')
         self.LOG_CHANNEL_ID = bot_cfg.get('log_channel_id')
@@ -220,7 +277,7 @@ class Config:
         print("🔄 Migrating old config.json to new format...")
         
         try:
-            with open('config.json', 'r') as f:
+            with open(os.path.join(PROJECT_ROOT, 'config.json'), 'r') as f:
                 old_cfg = json.load(f)
             
             # Create user_config.json
@@ -248,7 +305,7 @@ class Config:
             self._save_bot_config_no_lock(bot_cfg)
             
             # Backup old config
-            os.rename('config.json', 'config.json.backup')
+            os.rename(os.path.join(PROJECT_ROOT, 'config.json'), os.path.join(PROJECT_ROOT, 'config.json.backup'))
             print("✅ Migration complete! Old config backed up to config.json.backup")
             
         except Exception as e:
@@ -401,6 +458,7 @@ class Config:
         """
         with self._bot_lock:
             self._save_bot_config_no_lock(data)
+            self.load()
 
     def _load_user_config_no_lock(self) -> dict:
         """Internal helper to load user config without acquiring a lock."""
@@ -434,6 +492,7 @@ class Config:
         """
         with self._user_lock:
             self._save_user_config_no_lock(data)
+            self.load()
     
     @contextmanager
     def update_bot_config(self):

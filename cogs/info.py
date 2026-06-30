@@ -317,9 +317,9 @@ class Info(commands.Cog):
         embed.add_field(name="🧠 System RAM", value=f"`{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)`", inline=True)
         embed.add_field(name="💾 World Size", value=f"`{world_size}`", inline=True)
         
-        # Full-width fields for longer text
-        embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=False)
-        embed.add_field(name="🌱 Seed", value=f"`{seed}`", inline=False)
+        # Side-by-side fields for Spawn and Seed
+        embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=True)
+        embed.add_field(name="🌱 Seed", value=f"`{seed}`", inline=True)
         
         if self.bot.user and self.bot.user.avatar:
             embed.set_footer(text="Minecraft Server Manager", icon_url=self.bot.user.avatar.url)

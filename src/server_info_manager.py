@@ -163,7 +163,13 @@ class ServerInfoManager:
         if _cached_seed is not None:
             return _cached_seed
 
-        # 1. Try RCON if server is running
+        # 1. Try loading from bot_config.json first (persisted cache)
+        stored_seed = config.get('cached_seed')
+        if stored_seed:
+            _cached_seed = str(stored_seed)
+            return _cached_seed
+
+        # 2. Try RCON if server is running
         try:
             if self.bot.server.is_running():
                 from src.utils import rcon_cmd
@@ -171,25 +177,58 @@ class ServerInfoManager:
                 match = re.search(r'Seed: \[(-?\d+)\]', response)
                 if match:
                     _cached_seed = match.group(1)
+                    # Persist to bot_config.json
+                    try:
+                        with config.update_bot_config() as data:
+                            data['cached_seed'] = _cached_seed
+                    except Exception as e:
+                        logger.error(f"Failed to save cached_seed to config: {e}")
                     return _cached_seed
         except Exception as e:
             logger.debug(f"RCON seed command failed: {e}")
 
-        # 2. Parse level.dat (works offline)
+        # 3. Parse level.dat (works offline)
         try:
             import nbtlib
             level_dat = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER, "level.dat")
             if os.path.exists(level_dat):
                 data = await asyncio.to_thread(nbtlib.load, level_dat)
-                # 1.18+ format
+                
+                # 1.20+ / 1.21 format
                 try:
-                    _cached_seed = str(int(data["Data"]["WorldGenSettings"]["seed"]))
+                    _cached_seed = str(int(data["Data"]["WorldGenSettings"]["dimensions"]["minecraft:overworld"]["generator"]["seed"]))
+                    # Persist to bot_config.json
+                    try:
+                        with config.update_bot_config() as config_data:
+                            config_data['cached_seed'] = _cached_seed
+                    except Exception:
+                        pass
                     return _cached_seed
                 except (KeyError, TypeError):
                     pass
+                
+                # 1.18+ format
+                try:
+                    _cached_seed = str(int(data["Data"]["WorldGenSettings"]["seed"]))
+                    # Persist to bot_config.json
+                    try:
+                        with config.update_bot_config() as config_data:
+                            config_data['cached_seed'] = _cached_seed
+                    except Exception:
+                        pass
+                    return _cached_seed
+                except (KeyError, TypeError):
+                    pass
+                    
                 # Pre-1.18 format
                 try:
                     _cached_seed = str(int(data["Data"]["RandomSeed"]))
+                    # Persist to bot_config.json
+                    try:
+                        with config.update_bot_config() as config_data:
+                            config_data['cached_seed'] = _cached_seed
+                    except Exception:
+                        pass
                     return _cached_seed
                 except (KeyError, TypeError):
                     pass

@@ -11,11 +11,16 @@ class BackupManager:
         self.backup_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backups'))
         self.auto_dir = os.path.join(self.backup_dir, 'auto')
         self.custom_dir = os.path.join(self.backup_dir, 'custom')
-        self._lock = asyncio.Lock()  # Lock to prevent concurrent backups
         
         # Sync initialization is OK here (happens once at startup)
         os.makedirs(self.auto_dir, exist_ok=True)
         os.makedirs(self.custom_dir, exist_ok=True)
+
+    @property
+    def _lock(self):
+        if not hasattr(self, '_lazy_lock'):
+            self._lazy_lock = asyncio.Lock()
+        return self._lazy_lock
 
     async def create_backup(self, custom_name=None, server=None):
         """

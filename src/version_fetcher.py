@@ -18,7 +18,12 @@ class VersionFetcher:
     def __init__(self):
         self._cache = {}  # {platform: {'versions': [...], 'timestamp': datetime}}
         self._cache_duration = timedelta(hours=1)  # Cache for 1 hour
-        self._lock = asyncio.Lock()  # Prevent concurrent fetches
+
+    @property
+    def _lock(self):
+        if not hasattr(self, '_lazy_lock'):
+            self._lazy_lock = asyncio.Lock()
+        return self._lazy_lock
     
     async def get_versions(self, platform: str, limit: int = 5, force_fresh: bool = False) -> List[str]:
         """

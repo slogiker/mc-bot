@@ -14,10 +14,11 @@ from datetime import datetime, timezone
 # }
 # ──────────────────────────────────────────────────────────────────────────────
 
+PROJECT_ROOT             = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GRACE_SECONDS            = 30 * 60   # 30 minutes — how long after /verify the player can rejoin freely
 DISCONNECT_GRACE_SECONDS = 12 * 60 * 60  # 12 hours — how long after disconnecting the player can rejoin freely
-LINKS_PATH      = "data/mc_links.json"
-LOCK_PATH       = "data/mc_links.json.lock"
+LINKS_PATH      = os.path.join(PROJECT_ROOT, "data", "mc_links.json")
+LOCK_PATH       = os.path.join(PROJECT_ROOT, "data", "mc_links.json.lock")
 
 
 class MCLinkManager:
@@ -33,7 +34,7 @@ class MCLinkManager:
     # ── File helpers ──────────────────────────────────────────────────────────
 
     def _ensure_file(self):
-        os.makedirs("data", exist_ok=True)
+        os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
         if not os.path.exists(self.data_file):
             with open(self.data_file, "w") as f:
                 json.dump({}, f)

@@ -15,7 +15,12 @@ class TmuxServerManager(ServerInterface):
         self._intentional_stop = True  # Cache in memory to avoid blocking I/O
         self._start_time = None
         self._state_file = os.path.join(config.SERVER_DIR, 'bot_state.json')
-        self._state_lock = asyncio.Lock()  # Prevent race conditions
+
+    @property
+    def _state_lock(self):
+        if not hasattr(self, '_lazy_state_lock'):
+            self._lazy_state_lock = asyncio.Lock()
+        return self._lazy_state_lock
 
         # Cache status for 5 seconds to prevent flickering
         self._cached_is_running = False

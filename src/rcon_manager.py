@@ -10,7 +10,12 @@ class RCONManager:
     """
     def __init__(self):
         self._client = None
-        self._lock = asyncio.Lock()
+
+    @property
+    def _lock(self):
+        if not hasattr(self, '_lazy_lock'):
+            self._lazy_lock = asyncio.Lock()
+        return self._lazy_lock
 
     async def get_client(self) -> Client:
         """Returns a connected RCON client, reconnecting if necessary."""

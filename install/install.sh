@@ -81,7 +81,7 @@ async def send():
             with open('.env', 'r') as f:
                 for line in f:
                     if line.startswith('BOT_TOKEN='):
-                        token = line.split('=', 1)[1].strip().strip('\"').strip('\'')
+                        token = line.split('=', 1)[1].strip().strip('\"').strip("'")
                         break
         
         if not channel_id or not token or not msg:
