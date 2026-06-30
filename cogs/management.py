@@ -355,10 +355,7 @@ class Management(commands.Cog):
         embed = discord.Embed(description="🛑 Stopping server...", color=discord.Color.yellow())
         await interaction.followup.send(embed=embed, ephemeral=True)
         
-        await self.bot.change_presence(
-            activity=discord.Activity(type=discord.ActivityType.playing, name="Server Stopping..."),
-            status=discord.Status.idle
-        )
+        await self.bot.set_presence("Minecraft Server: Stopping...", discord.Status.dnd)
         
         success, message = await self.bot.server.stop()
         await self.bot.update_presence()
@@ -408,10 +405,7 @@ class Management(commands.Cog):
         embed = discord.Embed(description="🔄 Restarting server...", color=discord.Color.yellow())
         await interaction.followup.send(embed=embed, ephemeral=True)
         
-        await self.bot.change_presence(
-            activity=discord.Activity(type=discord.ActivityType.playing, name="Server Restarting..."),
-            status=discord.Status.idle
-        )
+        await self.bot.set_presence("Minecraft Server: Restarting...", discord.Status.idle)
         
         success, message = await self.bot.server.restart()
         await self.bot.update_presence()

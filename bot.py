@@ -125,6 +125,20 @@ class MinecraftBot(commands.Bot):
         self.add_listener(self.on_minecraft_started,       'on_minecraft_started')
         self.add_listener(self.on_minecraft_stopping,      'on_minecraft_stopping')
 
+    async def set_presence(self, name: str, status: discord.Status):
+        """Updates presence only if the status or activity text has actually changed to prevent rate-limiting."""
+        if getattr(self, '_last_presence_name', None) == name and getattr(self, '_last_presence_status', None) == status:
+            return
+        self._last_presence_name = name
+        self._last_presence_status = status
+        try:
+            await self.change_presence(
+                activity=discord.Activity(type=discord.ActivityType.playing, name=name),
+                status=status
+            )
+        except Exception as e:
+            logger.error(f"Failed to change presence: {e}")
+
     async def update_presence(self):
         """Updates the bot's presence status immediately based on current server state."""
         try:
@@ -134,20 +148,14 @@ class MinecraftBot(commands.Bot):
                 success, _ = await rcon_cmd("list")
                 
                 if success:
-                    await self.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Online"),
-                        status=discord.Status.online
-                    )
+                    await self.set_presence("Minecraft Server: Online", discord.Status.online)
                 else:
                     status_text = "Minecraft Server: Starting..."
                     start_time = getattr(self.server, 'get_start_time', lambda: None)()
                     if start_time and (time.time() - start_time) > 120:
                         status_text = "Minecraft Server: ⚠️ RCON unavailable"
                     
-                    await self.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name=status_text),
-                        status=discord.Status.idle
-                    )
+                    await self.set_presence(status_text, discord.Status.idle)
             else:
                 status_type = discord.Status.dnd
                 if self.server.is_intentionally_stopped():
@@ -155,10 +163,7 @@ class MinecraftBot(commands.Bot):
                 else:
                     status_text = "Minecraft Server: ⚠️ Crashed"
                     
-                await self.change_presence(
-                    activity=discord.Activity(type=discord.ActivityType.playing, name=status_text),
-                    status=status_type
-                )
+                await self.set_presence(status_text, status_type)
         except Exception as e:
             logger.error(f"Error in update_presence: {e}")
 
@@ -201,10 +206,7 @@ class MinecraftBot(commands.Bot):
         await self.server._save_state()
         
         logger.debug("Instant Presence Update: Server is Stopping")
-        await self.change_presence(
-            activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Stopping..."),
-            status=discord.Status.dnd
-        )
+        await self.set_presence("Minecraft Server: Stopping...", discord.Status.dnd)
 
     async def start_background_tasks(self):
         """Starts background log monitoring tasks if not already running."""
