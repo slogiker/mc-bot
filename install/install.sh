@@ -121,6 +121,11 @@ graceful_stop_minecraft() {
     if docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
         echo -e "  ${YELLOW}${ICON_GEAR} Gracefully stopping Minecraft server...${NC}"
         
+        # 0. Set intentional stop in bot_state.json to prevent the running bot from triggering auto-restart
+        if [ -d "mc-server" ]; then
+            echo '{"intentional_stop": true}' > mc-server/bot_state.json
+        fi
+        
         # 1. Warn players
         docker exec "$container_name" python3 -c "import asyncio; from src.utils import rcon_cmd; asyncio.run(rcon_cmd('say ⚠️ Server is restarting for maintenance/updates in 5 seconds...'))" &>/dev/null || true
         sleep 5

@@ -57,7 +57,14 @@ class TmuxServerManager(ServerInterface):
             return False
 
     def is_intentionally_stopped(self) -> bool:
-        """Return cached state (non-blocking)"""
+        """Check the state file on disk to get the most up-to-date status"""
+        try:
+            if os.path.exists(self._state_file):
+                with open(self._state_file, 'r') as f:
+                    data = json.load(f)
+                    self._intentional_stop = data.get('intentional_stop', True)
+        except Exception as e:
+            logger.error(f"Failed to read state file: {e}")
         return self._intentional_stop
         
     def get_start_time(self) -> float | None:

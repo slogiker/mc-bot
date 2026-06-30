@@ -772,18 +772,17 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user (Ctrl+C)")
+    except (KeyboardInterrupt, SystemExit):
+        pass
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-        # Print readable crash message to terminal
-        import traceback
-        print("\n" + "=" * 60)
-        print("  MC-BOT CRASHED - Debug Information")
-        print("=" * 60)
-        print(f"  Error: {type(e).__name__}: {e}")
-        print("-" * 60)
-        traceback.print_exc()
-        print("=" * 60)
-    finally:
-        pass  # Nothing to clean up at this level
+        if "object has no attribute 'create_task'" in str(e) or "_MissingSentinel" in str(e):
+            pass
+        else:
+            print("\n" + "=" * 60)
+            print("  MC-BOT CRASHED - Debug Information")
+            print("=" * 60)
+            print(f"  Error: {type(e).__name__}: {e}")
+            print("-" * 60)
+            import traceback
+            traceback.print_exc()
+            print("=" * 60)
