@@ -110,6 +110,7 @@ class ModsCog(commands.Cog):
 
         async with aiohttp.ClientSession() as session:
             for i, slug in enumerate(slugs):
+                logger.info(f"Mod Search: '{slug}' - Querying Modrinth (version={mc_version}, loader={loader})")
                 await msg.edit(content=f"📥 [{i+1}/{len(slugs)}] Locating latest compatible version for `{slug}`...")
 
                 api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
@@ -120,12 +121,14 @@ class ModsCog(commands.Cog):
 
                 try:
                     async with session.get(api_url, params=params) as resp:
+                        logger.info(f"Mod Search: '{slug}' - API check status {resp.status}")
                         if resp.status != 200:
                             failed_mods.append(f"`{slug}` (API error)")
                             continue
 
                         versions = await resp.json()
                         if not versions:
+                            logger.warning(f"Mod Search: '{slug}' - No compatible version found (404)")
                             failed_mods.append(f"`{slug}` (no version for {mc_version} / {loader})")
                             continue
 
@@ -135,6 +138,7 @@ class ModsCog(commands.Cog):
 
                         dest_path = os.path.join(config.SERVER_DIR, dest_folder, filename)
 
+                        logger.info(f"Mod Search: '{slug}' - Downloading '{filename}'...")
                         await msg.edit(content=f"📥 [{i+1}/{len(slugs)}] Downloading `{filename}`...")
 
                         async with session.get(download_url) as file_resp:
@@ -143,10 +147,12 @@ class ModsCog(commands.Cog):
                                 async with aiofiles.open(dest_path, mode='wb') as f:
                                     await f.write(await file_resp.read())
                                 installed_files.append(filename)
+                                logger.info(f"Mod Search: '{slug}' - Download completed (200)")
                             else:
+                                logger.error(f"Mod Search: '{slug}' - Download failed ({file_resp.status})")
                                 failed_mods.append(f"`{slug}` (download error)")
                 except Exception as e:
-                    logger.error(f"Failed to download {slug}: {e}")
+                    logger.error(f"Mod Search: '{slug}' - Process failed: {e}")
                     failed_mods.append(f"`{slug}` ({str(e)})")
 
         # Build final status embed

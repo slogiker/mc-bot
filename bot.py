@@ -519,6 +519,14 @@ class MinecraftBot(commands.Bot):
         logger.info("Bot session resumed.")
         await self._report_reconnection()
 
+    async def on_interaction(self, interaction: discord.Interaction):
+        if interaction.type == discord.InteractionType.application_command:
+            command = interaction.command
+            name = command.name if command else "unknown"
+            user = interaction.user
+            args = ", ".join([f"{k}={v}" for k, v in interaction.namespace.__dict__.items() if v is not None])
+            logger.info(f"Command executed: /{name} by {user} (ID: {user.id}) | Args: {args}")
+
     async def _report_reconnection(self):
         try:
             if hasattr(self, '_disconnect_time') and self._disconnect_time:
