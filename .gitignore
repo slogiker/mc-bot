@@ -77,7 +77,8 @@ tmp/
 temp/
 world_tmp_backup/
 temp_pyonesend/
-install-log.txt
-new.txt
-poc.py
 simulate.py
+
+# --- Agents & Subagents ---
+.agents/
+
