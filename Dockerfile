@@ -55,5 +55,6 @@ COPY --chown=bot:bot src/ ./src/
 USER bot
 
 EXPOSE 25565
+EXPOSE 24454/udp
 
 CMD ["python", "bot.py"]

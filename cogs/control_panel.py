@@ -3,6 +3,7 @@ from discord import ui
 from discord.ext import commands, tasks
 from src.config import config
 from src.logger import logger
+from src.utils import check_user_permission
 
 class ControlPanelView(ui.View):
     def __init__(self, bot):
@@ -76,19 +77,12 @@ class ControlPanelView(ui.View):
             await interaction.followup.send("❌ Error fetching status.", ephemeral=True)
 
     async def _check_perm(self, interaction: discord.Interaction, cmd_name: str) -> bool:
-        """Helper to verify roles using config map."""
-        # Need to re-implement has_role logic for interactions not bound to a command
-        if interaction.user.id == config.OWNER_ID:
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-            
-        has_perm = False
-        user_roles = [str(r.id) for r in getattr(interaction.user, 'roles', [])]
-        for role_id, allowed_cmds in config.ROLES.items():
-            if str(role_id) in user_roles and cmd_name in allowed_cmds:
-                has_perm = True
-                break
+        """Helper to verify roles using the common check_user_permission logic."""
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("❌ This button can only be used in a server.", ephemeral=True)
+            return False
+
+        has_perm = check_user_permission(interaction.user, cmd_name, interaction.guild)
                 
         if not has_perm:
             await interaction.response.send_message("❌ You lack the permission to use this button.", ephemeral=True)

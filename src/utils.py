@@ -22,46 +22,79 @@ async def send_debug(bot: discord.Client, msg: str) -> None:
         except Exception as e:
             logger.error(f"Failed to send debug message: {e}")
 
+def check_user_permission(user: discord.Member, cmd_name: str, guild: discord.Guild) -> bool:
+    """
+    Check if a user has permission to run a command/action.
+    
+    Checks in order:
+    1. Bot Owner (using config.OWNER_ID)
+    2. Guild Owner
+    3. Discord Administrator permission
+    4. Role ID match in `config.ROLES`
+    5. Role Name match in `config.ROLE_PERMISSIONS` (Legacy/Fallback)
+    6. `@everyone` role ID or name match
+    
+    Args:
+        user (discord.Member): The member to check.
+        cmd_name (str): The permission/command name.
+        guild (discord.Guild): The guild where the command is executed.
+        
+    Returns:
+        bool: True if the user has permission, False otherwise.
+    """
+    # 1. Bot Owner
+    if user.id == config.OWNER_ID:
+        return True
+
+    # 2. Guild Owner
+    if guild and user.id == guild.owner_id:
+        return True
+
+    # 3. Discord Administrator permission
+    if isinstance(user, discord.Member) and user.guild_permissions.administrator:
+        return True
+
+    # 4. Check Permissions by Role ID (Preferred)
+    user_roles = getattr(user, 'roles', [])
+    for role in user_roles:
+        if cmd_name in config.ROLES.get(str(role.id), []):
+            return True
+
+    # 5. Check Permissions by Role Name (Legacy/Fallback)
+    permissions = config.ROLE_PERMISSIONS
+    for role in user_roles:
+        if cmd_name in permissions.get(role.name, []):
+            return True
+
+    # 6. Check @everyone (ID and Name)
+    if guild:
+        if cmd_name in config.ROLES.get(str(guild.default_role.id), []):
+            return True
+    if cmd_name in permissions.get("@everyone", []):
+        return True
+
+    return False
+
 def has_role(cmd_name: str):
     """
     Decorator to check if the user has the required role for a command.
     
-    It performs a 3-step check:
-    1. Check if user has a role ID that is mapped to the command in `config.ROLES`.
-    2. Check if user has a role NAME that is mapped to the command in `user_config` (Legacy/Fallback).
-    3. Check if @everyone has permission (ID or Name).
+    It delegates to `check_user_permission` for verification.
     
     Args:
         cmd_name (str): The internal name of the command permission to check.
     """
-    async def predicate(interaction):
-        # 0. Guild Owner ALWAYS has full access to all commands
-        if interaction.user.id == interaction.guild.owner_id:
-            return True
-        
-        # 1. Check Permissions by Role ID (Preferred)
-        # config.ROLES is populated with Role ID -> [commands] in resolve_role_permissions
-        for role in interaction.user.roles:
-            if cmd_name in config.ROLES.get(str(role.id), []):
-                return True
-                
-        # 2. Check Permissions by Role Name (Legacy/Fallback)
-        # Use in-memory config.ROLE_PERMISSIONS instead of reading from disk
-        permissions = config.ROLE_PERMISSIONS
-        
-        for role in interaction.user.roles:
-            if cmd_name in permissions.get(role.name, []):
-                return True
-
-        # 3. Check @everyone (ID and Name)
-        if cmd_name in config.ROLES.get(str(interaction.guild.default_role.id), []):
-            return True
-        if cmd_name in permissions.get("@everyone", []):
+    async def predicate(interaction: discord.Interaction):
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
+            return False
+            
+        if check_user_permission(interaction.user, cmd_name, interaction.guild):
             return True
 
         await send_debug(interaction.client, f"Check failed: {interaction.user.mention} ({interaction.user.id}) lacks role for '{cmd_name}'.")
         
-        allowed_roles = [r for r, cmds in permissions.items() if cmd_name in cmds]
+        allowed_roles = [r for r, cmds in config.ROLE_PERMISSIONS.items() if cmd_name in cmds]
         await interaction.response.send_message(f"❌ You need one of these roles: {', '.join(allowed_roles)}", ephemeral=True)
         return False
 
