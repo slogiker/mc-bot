@@ -104,6 +104,7 @@ class MinecraftBot(commands.Bot):
         self._sync_lock = asyncio.Lock()  # Prevent race conditions
         self.start_time = time.time()  # Track bot uptime
         self._startup_complete = False  # Track if initial setup is done
+        self._disconnect_time = None  # Track when the bot disconnected from Discord
         
         # Initialize Security modules
         self.session = None  # Created in on_ready or similar
@@ -475,10 +476,51 @@ class MinecraftBot(commands.Bot):
                 
                 with config.update_bot_config() as data:
                     data.pop('update_restart_pending', None)
+        # Check for Host Reboot / Power Loss on startup
+        try:
+            import psutil
+            host_uptime = time.time() - psutil.boot_time()
+            if host_uptime < 300: # Host booted less than 5 minutes ago
+                intentional_stop = True
+                if hasattr(self, 'server') and self.server:
+                    intentional_stop = self.server.is_intentionally_stopped()
+                
+                if not intentional_stop:
+                    debug_channel_id = config.DEBUG_CHANNEL_ID
+                    if debug_channel_id:
+                        channel = self.get_channel(int(debug_channel_id))
+                        if channel:
+                            await channel.send("🔌 **Host Reboot / Power Loss Detected!** The server host recently restarted (uptime: {:.0f}s) while the Minecraft server was online. Auto-recovering...")
         except Exception as e:
-            logger.error(f"Failed to send pending restart notification: {e}")
+            logger.error(f"Failed to check host uptime: {e}")
+
+        # Check if we were disconnected before
+        if hasattr(self, '_disconnect_time') and self._disconnect_time:
+            await self._report_reconnection()
 
         logger.debug("=== Bot is now fully ready! ===")
+
+    async def on_disconnect(self):
+        self._disconnect_time = time.time()
+        logger.warning("Bot disconnected from Discord.")
+
+    async def on_resumed(self):
+        logger.info("Bot session resumed.")
+        await self._report_reconnection()
+
+    async def _report_reconnection(self):
+        try:
+            if hasattr(self, '_disconnect_time') and self._disconnect_time:
+                duration = time.time() - self._disconnect_time
+                self._disconnect_time = None # Reset
+                if duration > 30: # Only report if disconnected for more than 30 seconds
+                    debug_channel_id = config.DEBUG_CHANNEL_ID
+                    if debug_channel_id:
+                        channel = self.get_channel(int(debug_channel_id))
+                        if channel:
+                            await channel.send(f"🌐 **Internet Outage / Network Disruption Recovered!** The bot was disconnected from Discord for {duration:.0f} seconds before successfully reconnecting.")
+        except Exception as e:
+            logger.error(f"Failed to report reconnection: {e}")
 
 # --- Lifecycle Management ---
 
