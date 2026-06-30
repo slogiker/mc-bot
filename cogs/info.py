@@ -279,18 +279,7 @@ class Info(commands.Cog):
         if guild and guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
         
-        # General Info
-        embed.add_field(name="🛠️ Version", value=f"`{ver}`", inline=True)
-        embed.add_field(name="🌱 Seed", value=f"`{seed}`", inline=True)
-        
-        # Performance & Resources
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-        mem = psutil.virtual_memory()
-        embed.add_field(name="💻 System CPU", value=f"`{cpu_percent}%`", inline=True)
-        embed.add_field(name="🧠 System RAM", value=f"`{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)`", inline=True)
-        embed.add_field(name="💾 World Size", value=f"`{world_size}`", inline=True)
-        
-        # Server Status
+        # Server Status & Info
         if self.bot.server.is_running():
             server_uptime_str = "Unknown"
             if hasattr(self.bot.server, 'get_start_time'):
@@ -310,19 +299,27 @@ class Info(commands.Cog):
                 players_formatted, current_players, max_players = self._get_player_list_info("Unable to fetch player list")
             
             embed.add_field(name="🟢 Server Status", value="`Online`", inline=True)
+            embed.add_field(name="🛠️ Version", value=f"`{ver}`", inline=True)
             embed.add_field(name="⏱️ TPS", value=f"`{tps}`", inline=True)
-            embed.add_field(name="👥 Players", value=f"`{current_players}/{max_players}`", inline=True)
             
+            embed.add_field(name="👥 Players", value=f"`{current_players}/{max_players}`", inline=True)
             embed.add_field(name="⏳ Server Uptime", value=f"`{server_uptime_str}`", inline=True)
             embed.add_field(name="🤖 Bot Uptime", value=f"`{bot_uptime}`", inline=True)
-            embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=True)
-            
-            if current_players != "0" and current_players != "?":
-                embed.add_field(name="Online Players List", value=players_formatted, inline=False)
         else:
             embed.add_field(name="🔴 Server Status", value="`Offline`", inline=True)
+            embed.add_field(name="🛠️ Version", value=f"`{ver}`", inline=True)
             embed.add_field(name="🤖 Bot Uptime", value=f"`{bot_uptime}`", inline=True)
-            embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=True)
+        
+        # Performance & Resources
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        embed.add_field(name="💻 System CPU", value=f"`{cpu_percent}%`", inline=True)
+        embed.add_field(name="🧠 System RAM", value=f"`{mem.percent}% ({mem.used // 1024**3}GB/{mem.total // 1024**3}GB)`", inline=True)
+        embed.add_field(name="💾 World Size", value=f"`{world_size}`", inline=True)
+        
+        # Full-width fields for longer text
+        embed.add_field(name="📍 Spawn", value=f"`{spawn}`", inline=False)
+        embed.add_field(name="🌱 Seed", value=f"`{seed}`", inline=False)
         
         if self.bot.user and self.bot.user.avatar:
             embed.set_footer(text="Minecraft Server Manager", icon_url=self.bot.user.avatar.url)
