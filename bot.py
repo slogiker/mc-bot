@@ -196,6 +196,10 @@ class MinecraftBot(commands.Bot):
 
     async def on_minecraft_stopping(self):
         """Dispatched custom event from LogWatcher when 'Stopping server' is detected."""
+        logger.info("Detected graceful server shutdown. Marking as intentional stop to prevent spurious crash alerts.")
+        self.server._intentional_stop = True
+        await self.server._save_state()
+        
         logger.debug("Instant Presence Update: Server is Stopping")
         await self.change_presence(
             activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Stopping..."),
@@ -461,14 +465,19 @@ class MinecraftBot(commands.Bot):
             bot_cfg = config.load_bot_config()
             pending_type = bot_cfg.get('update_restart_pending')
             if pending_type:
+                # Set intentional_stop to False and start the server in the background
+                self.server._intentional_stop = False
+                await self.server._save_state()
+                asyncio.create_task(self.server.start())
+                
                 debug_channel_id = config.DEBUG_CHANNEL_ID
                 if debug_channel_id:
                     channel = self.get_channel(int(debug_channel_id))
                     if channel:
                         if pending_type == 'update':
-                            msg = "🔄 **Bot updated and restarted successfully!** (Pulled latest changes from repository)"
+                            msg = "🔄 **Bot updated and restarted successfully!** (Pulled latest changes from repository). Starting Minecraft server..."
                         else:
-                            msg = "🔄 **Bot restarted successfully!**"
+                            msg = "🔄 **Bot restarted successfully!** Starting Minecraft server..."
                         await channel.send(msg)
                 
                 with config.update_bot_config() as data:
