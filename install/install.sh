@@ -81,7 +81,7 @@ async def send():
             with open('.env', 'r') as f:
                 for line in f:
                     if line.startswith('BOT_TOKEN='):
-                        token = line.split('=', 1)[1].strip().strip('\"').strip("'")
+                        token = line.split('=', 1)[1].strip().strip(chr(34)).strip(chr(39))
                         break
         
         if not channel_id or not token or not msg:
@@ -107,7 +107,7 @@ async def send():
     except Exception as e:
         pass
 
-if __name__ == \"__main__\":
+if __name__ == '__main__':
     try:
         # Run with a 15-second timeout to prevent hanging the install script
         asyncio.run(asyncio.wait_for(send(), timeout=15.0))
