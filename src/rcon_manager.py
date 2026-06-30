@@ -24,7 +24,8 @@ class RCONManager:
                 logger.info("RCON: Connecting to server...")
                 client = Client(config.RCON_HOST, config.RCON_PORT, config.RCON_PASSWORD)
                 try:
-                    await client.connect()
+                    # Connect with a timeout of 5 seconds to prevent hanging
+                    await asyncio.wait_for(client.connect(), timeout=5.0)
                     self._client = client
                 except Exception as e:
                     # Connection failed (server probably still starting)
@@ -37,7 +38,8 @@ class RCONManager:
         try:
             client = await self.get_client()
             # aiomcrcon returns (response_string, request_id)
-            response, _ = await client.send_cmd(cmd)
+            # Add timeout to command execution
+            response, _ = await asyncio.wait_for(client.send_cmd(cmd), timeout=5.0)
             return True, response
         except Exception as e:
             logger.warning(f"RCON command failed: {e}. Attempting reconnect...")
@@ -45,14 +47,14 @@ class RCONManager:
             async with self._lock:
                 if self._client:
                     try:
-                        await self._client.close()
+                        await asyncio.wait_for(self._client.close(), timeout=2.0)
                     except Exception:
                         pass
                     self._client = None
             
             try:
                 client = await self.get_client()
-                response, _ = await client.send_cmd(cmd)
+                response, _ = await asyncio.wait_for(client.send_cmd(cmd), timeout=5.0)
                 return True, response
             except Exception as e2:
                 logger.error(f"RCON reconnect failed: {e2}")
@@ -62,7 +64,10 @@ class RCONManager:
         """Closes the RCON connection."""
         async with self._lock:
             if self._client:
-                await self._client.close()
+                try:
+                    await asyncio.wait_for(self._client.close(), timeout=3.0)
+                except Exception as e:
+                    logger.debug(f"Failed to close RCON client cleanly: {e}")
                 self._client = None
                 logger.info("RCON connection closed")
 

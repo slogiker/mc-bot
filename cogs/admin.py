@@ -50,8 +50,11 @@ class Admin(commands.Cog):
             await interaction.response.defer(ephemeral=True)
             try:
                 success, res = await rcon_cmd(f"whitelist add {username}")
-                _, _ = await rcon_cmd("whitelist reload")
-                await interaction.followup.send(f"➕ {res}", ephemeral=True)
+                if success:
+                    _, _ = await rcon_cmd("whitelist reload")
+                    await interaction.followup.send(f"➕ {res}", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"❌ Failed to add to whitelist: {res}", ephemeral=True)
             except Exception as rcon_error:
                 logger.error(f"RCON error in whitelist_add: {rcon_error}")
                 await interaction.followup.send(f"❌ Failed to add to whitelist: {rcon_error}", ephemeral=True)

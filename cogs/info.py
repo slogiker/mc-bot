@@ -17,14 +17,14 @@ class Info(commands.Cog):
         self.bot = bot
         self.info_manager = ServerInfoManager(bot)
 
-    def _get_player_list_info(self, rcon_response: str) -> tuple[str, str, str]:
+    def _get_player_list_info(self, rcon_response: str, success: bool = True) -> tuple[str, str, str]:
         """
         Parses the RCON 'list' command response to extract player information.
         Returns a tuple: (formatted_player_list_string, current_players_count_str, max_players_count_str)
         """
         RCON_DOWN_MSG = "Unable to fetch player list"
 
-        if not rcon_response or rcon_response == RCON_DOWN_MSG:
+        if not success or not rcon_response or rcon_response == RCON_DOWN_MSG or str(rcon_response).startswith("Error:"):
             # RCON Down Fallback: Use LogWatcher's memory from config
             try:
                 bot_cfg = config.load_bot_config()
@@ -130,7 +130,7 @@ class Info(commands.Cog):
             
             try:
                 success, res = await rcon_cmd("list")
-                description, _, _ = self._get_player_list_info(res)
+                description, _, _ = self._get_player_list_info(res, success)
 
                 embed = discord.Embed(title="Online Players", description=description, color=0x5865F2)
                 await interaction.followup.send(embed=embed)
@@ -256,7 +256,7 @@ class Info(commands.Cog):
         # World Size
         world_size = "Unknown"
         try:
-            world_dir = os.path.join(config.SERVER_DIR, "world")
+            world_dir = os.path.join(config.SERVER_DIR, config.WORLD_FOLDER)
             if os.path.exists(world_dir):
                 size_gb = await get_dir_size_gb(world_dir)
                 world_size = f"{size_gb:.2f} GB"
@@ -293,7 +293,7 @@ class Info(commands.Cog):
             try:
                 # Fix: rcon_cmd returns (success, response)
                 success_list, players_raw = await rcon_cmd("list")
-                players_formatted, current_players, max_players = self._get_player_list_info(players_raw)
+                players_formatted, current_players, max_players = self._get_player_list_info(players_raw, success_list)
             except Exception as e:
                 logger.error(f"Error fetching player list for info command: {e}")
                 players_formatted, current_players, max_players = self._get_player_list_info("Unable to fetch player list")

@@ -200,7 +200,7 @@ class Tasks(commands.Cog):
                      ) 
 
             # Check Playit tunnel (same pattern as MC server crash recovery)
-            secret_key_path = os.path.join(os.getcwd(), "data", "playit_secret.key")
+            secret_key_path = os.path.join(config.PROJECT_ROOT, "data", "playit_secret.key")
             playit_secret = os.environ.get("PLAYIT_SECRET_KEY") or (open(secret_key_path).read().strip() if os.path.exists(secret_key_path) else None)
 
             if playit_secret:
@@ -232,8 +232,8 @@ class Tasks(commands.Cog):
                         with open(secret_key_path, "w") as f:
                             f.write(os.environ.get("PLAYIT_SECRET_KEY"))
 
-                    socket_path = os.path.join(os.getcwd(), "data", "playit.sock")
-                    log_path = os.path.join(os.getcwd(), "logs", "playit.log")
+                    socket_path = os.path.join(config.PROJECT_ROOT, "data", "playit.sock")
+                    log_path = os.path.join(config.PROJECT_ROOT, "logs", "playit.log")
 
                     start_proc = await asyncio.create_subprocess_exec(
                         "tmux", "new-session", "-d", "-s", "playit",

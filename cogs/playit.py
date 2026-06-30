@@ -66,7 +66,7 @@ class PlayitCog(commands.Cog):
 
     def get_secret_key(self):
         """Get Playit secret key from data file."""
-        key_path = os.path.join("data", "playit_secret.key")
+        key_path = os.path.join(config.PROJECT_ROOT, "data", "playit_secret.key")
         if os.path.exists(key_path):
             try:
                 with open(key_path, "r") as f:
@@ -83,9 +83,13 @@ class PlayitCog(commands.Cog):
     async def start_tunnel(self):
         """Starts or restarts the playit tunnel."""
         logger.info("Playit: Starting tunnel...")
-        secret_key_path = os.path.join("data", "playit_secret.key")
-        socket_path = os.path.join("data", "playit.sock")
-        log_path = os.path.join("logs", "playit.log")
+        secret_key_path = os.path.join(config.PROJECT_ROOT, "data", "playit_secret.key")
+        socket_path = os.path.join(config.PROJECT_ROOT, "data", "playit.sock")
+        log_path = os.path.join(config.PROJECT_ROOT, "logs", "playit.log")
+
+        # Ensure directories exist
+        os.makedirs(os.path.dirname(secret_key_path), exist_ok=True)
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
         # Kill existing if any
         await asyncio.create_subprocess_shell("tmux kill-session -t playit", stderr=asyncio.subprocess.DEVNULL)
