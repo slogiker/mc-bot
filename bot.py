@@ -476,6 +476,9 @@ class MinecraftBot(commands.Bot):
                 
                 with config.update_bot_config() as data:
                     data.pop('update_restart_pending', None)
+        except Exception as e:
+            logger.error(f"Failed to send pending restart notification: {e}")
+
         # Check for Host Reboot / Power Loss on startup
         try:
             import psutil
