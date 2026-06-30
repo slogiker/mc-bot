@@ -75,12 +75,13 @@ class Info(commands.Cog):
             except Exception:
                  # Vanilla Fallback: Use debug start/stop to infer TPS
                  _, _ = await rcon_cmd("debug start")
-                 await asyncio.sleep(1.0) # wait exactly 1 second
+                 await asyncio.sleep(2.0) # wait 2 seconds to get a stable tick count
                  success_debug, debug_raw = await rcon_cmd("debug stop")
                  
                  if success_debug and "Stopped tick profiling after" in debug_raw:
                      # Sample: "Stopped tick profiling after 1 seconds and 20 ticks (20.00 ticks per second)"
-                     match = re.search(r'\(([\d.]+)\s+ticks per second\)', debug_raw)
+                     # Or: "Stopped tick profiling after 0.96 second(s) and 0 tick(s) (0.00 tick(s) per second)"
+                     match = re.search(r'\(([\d.]+)\s+tick\(s\)?\s+per\s+second\)', debug_raw)
                      if match:
                          tps = match.group(1)
                      else:
