@@ -11,231 +11,7 @@ from src.utils import has_role, send_debug, get_server_mod_folder
 
 logger = logging.getLogger('mc_bot')
 
-class ModrinthSelect(discord.ui.Select):
-    def __init__(self, search_results):
-        options = []
-        for mod in search_results:
-            label = mod.get('title', 'Unknown')[:100]
-            desc = mod.get('description', '')[:100]
-            val = mod.get('slug', '')
-            options.append(discord.SelectOption(label=label, description=desc, value=val))
-            
-        super().__init__(placeholder="Select a mod/plugin to add to queue...", min_values=1, max_values=1, options=options)
 
-    async def callback(self, interaction: discord.Interaction):
-        slug = self.values[0]
-        selected_mod = None
-        for mod in self.view.current_hits:
-            if mod.get('slug') == slug:
-                selected_mod = mod
-                break
-        
-        if selected_mod:
-            title = selected_mod.get('title', 'Unknown')
-            if not any(item['slug'] == slug for item in self.view.cog.queue):
-                self.view.cog.queue.append({"title": title, "slug": slug})
-                await interaction.response.defer()
-                await self.view.update_message(interaction)
-            else:
-                await interaction.response.send_message(f"ℹ️ `{title}` is already in the queue.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Error: Selected mod not found in search results.", ephemeral=True)
-
-
-class ModrinthSearchModal(discord.ui.Modal, title="Search and Add Mod"):
-    query_input = discord.ui.TextInput(
-        label="Search Query",
-        placeholder="Enter mod name or slug (e.g. sodium)...",
-        required=True,
-        max_length=100
-    )
-
-    def __init__(self, view):
-        super().__init__()
-        self.view = view
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        query = self.query_input.value
-        
-        hits = await self.view.cog._modrinth_search(query)
-        if not hits:
-            await interaction.followup.send(f"❌ No results found for `{query}`.", ephemeral=True)
-            return
-            
-        self.view.current_hits = hits
-        self.view.current_query = query
-        self.view.update_dropdown(hits)
-        await self.view.update_message(interaction)
-
-
-class ModrinthSearchView(discord.ui.View):
-    def __init__(self, search_results, bot, cog, initial_query):
-        super().__init__(timeout=600)
-        self.bot = bot
-        self.cog = cog
-        self.current_hits = search_results
-        self.current_query = initial_query
-        
-        # Add the dropdown
-        self.add_item(ModrinthSelect(search_results))
-
-    def update_dropdown(self, hits):
-        for item in self.children:
-            if isinstance(item, ModrinthSelect):
-                options = []
-                for mod in hits:
-                    label = mod.get('title', 'Unknown')[:100]
-                    desc = mod.get('description', '')[:100]
-                    val = mod.get('slug', '')
-                    options.append(discord.SelectOption(label=label, description=desc, value=val))
-                item.options = options
-                break
-
-    async def update_message(self, interaction: discord.Interaction):
-        type_icon = {"plugin": "🔧", "mod": "🧩", "modpack": "📦"}
-        lines = []
-        for h in self.current_hits[:10]:
-            icon = type_icon.get(h.get("project_type", ""), "📦")
-            name = h.get("title", "?")
-            slug = h.get("slug", "?")
-            summary = h.get("description", "")[:72]
-            downloads = h.get("downloads", 0)
-            dl = f"{downloads:,}"
-            lines.append(f"{icon} **{name}** — slug: `{slug}` · {dl} downloads\n  *{summary}*")
-            
-        queue_lines = []
-        if self.cog.queue:
-            queue_lines.append("\n🛒 **Pending Mod Queue:**")
-            for item in self.cog.queue:
-                queue_lines.append(f"• 🧩 **{item['title']}** (`{item['slug']}`)")
-        else:
-            queue_lines.append("\n🛒 **Pending Mod Queue:** *(Empty)*")
-            
-        for child in self.children:
-            if isinstance(child, discord.ui.Button) and child.label.startswith("📥 Download"):
-                if self.cog.queue:
-                    child.label = f"📥 Download & Install ({len(self.cog.queue)})"
-                else:
-                    child.label = "📥 Download & Install"
-                break
-                
-        embed = discord.Embed(
-            title=f"Modrinth Search: {self.current_query}",
-            description="\n\n".join(lines) + "\n" + "\n".join(queue_lines) + "\n\nSelect from the dropdown to add to the queue. Click 'Download & Install' when ready.",
-            color=discord.Color.green()
-        )
-        
-        await interaction.message.edit(embed=embed, view=self)
-
-    @discord.ui.button(label="➕ Add Another", style=discord.ButtonStyle.secondary, row=1)
-    async def add_another(self, interaction: discord.Interaction, button: discord.ui.Button):
-        modal = ModrinthSearchModal(self)
-        await interaction.response.send_modal(modal)
-
-    @discord.ui.button(label="🗑️ Clear Queue", style=discord.ButtonStyle.danger, row=1)
-    async def clear_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.cog.queue = []
-        await interaction.response.defer()
-        await self.update_message(interaction)
-
-    @discord.ui.button(label="📥 Download & Install", style=discord.ButtonStyle.success, row=1)
-    async def download_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.cog.queue:
-            await interaction.response.send_message("❌ The queue is empty. Add some mods first!", ephemeral=True)
-            return
-            
-        await interaction.response.defer()
-        await interaction.message.edit(content="⏳ Starting downloads...", embed=None, view=None)
-        
-        mc_version = getattr(config, 'INSTALLED_VERSION', None)
-        if not mc_version or mc_version == "Unknown":
-            from src.utils import parse_server_version
-            mc_version = await parse_server_version()
-        if not mc_version or mc_version == "Unknown":
-            mc_version = "1.20.1"
-            
-        dest_folder = await get_server_mod_folder()
-        if dest_folder is None:
-            await interaction.message.edit(content="❌ Mods and plugins are not supported on Vanilla servers.")
-            return
-        loader = "fabric" if dest_folder == "mods" else "paper"
-        
-        installed_files = []
-        failed_mods = []
-        
-        async with aiohttp.ClientSession() as session:
-            for i, item in enumerate(self.cog.queue):
-                slug = item['slug']
-                title = item['title']
-                
-                await interaction.message.edit(content=f"📥 [{i+1}/{len(self.cog.queue)}] Locating latest compatible version for `{title}`...")
-                
-                api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
-                params = {
-                    "loaders": f'["{loader}"]',
-                    "game_versions": f'["{mc_version}"]'
-                }
-                
-                try:
-                    async with session.get(api_url, params=params) as resp:
-                        if resp.status != 200:
-                            failed_mods.append(f"`{title}` (API error)")
-                            continue
-                            
-                        versions = await resp.json()
-                        if not versions:
-                            failed_mods.append(f"`{title}` (no version for {mc_version} / {loader})")
-                            continue
-                            
-                        latest_file = versions[0]['files'][0]
-                        download_url = latest_file['url']
-                        filename = latest_file['filename']
-                        
-                        dest_path = os.path.join(config.SERVER_DIR, dest_folder, filename)
-                        
-                        await interaction.message.edit(content=f"📥 [{i+1}/{len(self.cog.queue)}] Downloading `{filename}`...")
-                        
-                        async with session.get(download_url) as file_resp:
-                            if file_resp.status == 200:
-                                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                                async with aiofiles.open(dest_path, mode='wb') as f:
-                                    await f.write(await file_resp.read())
-                                installed_files.append(filename)
-                            else:
-                                failed_mods.append(f"`{title}` (download error)")
-                except Exception as e:
-                    logger.error(f"Failed to download {slug}: {e}")
-                    failed_mods.append(f"`{title}` ({str(e)})")
-                    
-        # Update final status
-        status_lines = []
-        if installed_files:
-            status_lines.append("✅ **Successfully installed:**")
-            status_lines.extend([f"• `{f}`" for f in installed_files])
-        if failed_mods:
-            status_lines.append("\n❌ **Failed to install:**")
-            status_lines.extend([f"• {m}" for m in failed_mods])
-            
-        status_text = "\n".join(status_lines)
-        await interaction.message.edit(content=f"📦 **Mod Installation Complete!**\n\n{status_text}")
-        
-        # Clear queue after installation
-        self.cog.queue = []
-        
-        if installed_files:
-            await send_debug(interaction.client, f"📥 **Mods installed!**\n" + "\n".join([f"• `{f}`" for f in installed_files]) + "\nServer will restart in 10 seconds. Take a quick water break! 💧")
-            
-            # Automatic restart
-            if self.bot.server.is_running():
-                await asyncio.sleep(10)
-                success, restart_msg = await self.bot.server.restart()
-                if success:
-                    await send_debug(interaction.client, "🚀 **Server Restarted!** Mod changes are now active.")
-                else:
-                    await send_debug(interaction.client, f"⚠️ **Automatic restart failed:** {restart_msg}. Please restart manually.")
-            else:
-                await interaction.followup.send("💡 Server is currently offline. Start it to apply changes.", ephemeral=True)
 
 
 class InstalledModsView(discord.ui.View):
@@ -277,7 +53,6 @@ class InstalledModsView(discord.ui.View):
 class ModsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queue = []
 
     async def _modrinth_search(self, query: str, limit: int = 10) -> list[dict]:
         try:
@@ -290,67 +65,116 @@ class ModsCog(commands.Cog):
             pass
         return []
 
-    @app_commands.command(name="mod_search", description="Search and install mods/plugins from Modrinth")
-    @app_commands.describe(query="Name or slug of the mod/plugin — autocomplete searches as you type")
+    @app_commands.command(name="mod_search", description="Search and install up to 5 mods/plugins from Modrinth")
+    @app_commands.describe(
+        mod1="First mod/plugin to install",
+        mod2="Second mod/plugin to install (optional)",
+        mod3="Third mod/plugin to install (optional)",
+        mod4="Fourth mod/plugin to install (optional)",
+        mod5="Fifth mod/plugin to install (optional)"
+    )
     @has_role("mods")
-    async def mod_search(self, interaction: discord.Interaction, query: str):
+    async def mod_search(
+        self, 
+        interaction: discord.Interaction, 
+        mod1: str, 
+        mod2: str = None, 
+        mod3: str = None, 
+        mod4: str = None, 
+        mod5: str = None
+    ):
         await interaction.response.defer()
+        msg = await interaction.followup.send("⏳ Initializing mod installation...")
 
-        hits = await self._modrinth_search(query)
+        # Collect all selected slugs and remove duplicates
+        slugs = [s for s in [mod1, mod2, mod3, mod4, mod5] if s]
+        slugs = list(dict.fromkeys(slugs))
 
-        if not hits:
-            await interaction.followup.send(f"❌ No results found for `{query}`.")
+        # Get server version
+        mc_version = getattr(config, 'INSTALLED_VERSION', None)
+        if not mc_version or mc_version == "Unknown":
+            from src.utils import parse_server_version
+            mc_version = await parse_server_version()
+        if not mc_version or mc_version == "Unknown":
+            mc_version = "1.20.1"
+
+        # Auto-detect loader
+        dest_folder = await get_server_mod_folder()
+        if dest_folder is None:
+            await msg.edit(content="❌ Mods and plugins are not supported on Vanilla servers.")
             return
+        loader = "fabric" if dest_folder == "mods" else "paper"
 
-        # Check if the query matches a slug exactly (usually when selected via autocomplete)
-        exact_match = None
-        for h in hits:
-            if h.get("slug") == query:
-                exact_match = h
-                break
-        
-        if exact_match:
-            # Auto-add to the queue
-            if not any(item['slug'] == exact_match['slug'] for item in self.queue):
-                self.queue.append({"title": exact_match['title'], "slug": exact_match['slug']})
+        installed_files = []
+        failed_mods = []
 
-        type_icon = {"plugin": "🔧", "mod": "🧩", "modpack": "📦"}
-        lines = []
-        for h in hits[:10]:
-            icon = type_icon.get(h.get("project_type", ""), "📦")
-            name = h.get("title", "?")
-            slug = h.get("slug", "?")
-            summary = h.get("description", "")[:72]
-            downloads = h.get("downloads", 0)
-            dl = f"{downloads:,}"
-            lines.append(f"{icon} **{name}** — slug: `{slug}` · {dl} downloads\n  *{summary}*")
+        async with aiohttp.ClientSession() as session:
+            for i, slug in enumerate(slugs):
+                await msg.edit(content=f"📥 [{i+1}/{len(slugs)}] Locating latest compatible version for `{slug}`...")
 
-        # Build queue display
-        queue_lines = []
-        if self.queue:
-            queue_lines.append("\n🛒 **Pending Mod Queue:**")
-            for item in self.queue:
-                queue_lines.append(f"• 🧩 **{item['title']}** (`{item['slug']}`)")
-        else:
-            queue_lines.append("\n🛒 **Pending Mod Queue:** *(Empty)*")
+                api_url = f"https://api.modrinth.com/v2/project/{slug}/version"
+                params = {
+                    "loaders": f'["{loader}"]',
+                    "game_versions": f'["{mc_version}"]'
+                }
 
-        view = ModrinthSearchView(hits, self.bot, self, query)
-        
-        # Set the download button label to show the count of queued mods
-        for child in view.children:
-            if isinstance(child, discord.ui.Button) and child.label.startswith("📥 Download"):
-                if self.queue:
-                    child.label = f"📥 Download & Install ({len(self.queue)})"
-                break
+                try:
+                    async with session.get(api_url, params=params) as resp:
+                        if resp.status != 200:
+                            failed_mods.append(f"`{slug}` (API error)")
+                            continue
 
-        embed = discord.Embed(
-            title=f"Modrinth Search: {query}",
-            description="\n\n".join(lines) + "\n" + "\n".join(queue_lines) + "\n\nSelect from the dropdown to add to the queue. Click 'Download & Install' when ready.",
-            color=discord.Color.green()
-        )
-        await interaction.followup.send(embed=embed, view=view)
+                        versions = await resp.json()
+                        if not versions:
+                            failed_mods.append(f"`{slug}` (no version for {mc_version} / {loader})")
+                            continue
 
-    @mod_search.autocomplete("query")
+                        latest_file = versions[0]['files'][0]
+                        download_url = latest_file['url']
+                        filename = latest_file['filename']
+
+                        dest_path = os.path.join(config.SERVER_DIR, dest_folder, filename)
+
+                        await msg.edit(content=f"📥 [{i+1}/{len(slugs)}] Downloading `{filename}`...")
+
+                        async with session.get(download_url) as file_resp:
+                            if file_resp.status == 200:
+                                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                                async with aiofiles.open(dest_path, mode='wb') as f:
+                                    await f.write(await file_resp.read())
+                                installed_files.append(filename)
+                            else:
+                                failed_mods.append(f"`{slug}` (download error)")
+                except Exception as e:
+                    logger.error(f"Failed to download {slug}: {e}")
+                    failed_mods.append(f"`{slug}` ({str(e)})")
+
+        # Build final status embed
+        embed = discord.Embed(title="📦 Mod Installation Results", color=discord.Color.green())
+        if installed_files:
+            embed.add_field(name="✅ Successfully Installed", value="\n".join([f"• `{f}`" for f in installed_files]), inline=False)
+        if failed_mods:
+            embed.add_field(name="❌ Failed to Install", value="\n".join([f"• {m}" for m in failed_mods]), inline=False)
+
+        await msg.edit(content=None, embed=embed)
+
+        if installed_files:
+            await send_debug(interaction.client, f"📥 **Mods installed!**\n" + "\n".join([f"• `{f}`" for f in installed_files]) + "\nServer will restart in 10 seconds. Take a quick water break! 💧")
+
+            # Automatic restart
+            if self.bot.server.is_running():
+                await asyncio.sleep(10)
+                success, restart_msg = await self.bot.server.restart()
+                if success:
+                    await send_debug(interaction.client, "🚀 **Server Restarted!** Mod changes are now active.")
+                else:
+                    await send_debug(interaction.client, f"⚠️ **Automatic restart failed:** {restart_msg}. Please restart manually.")
+
+    @mod_search.autocomplete("mod1")
+    @mod_search.autocomplete("mod2")
+    @mod_search.autocomplete("mod3")
+    @mod_search.autocomplete("mod4")
+    @mod_search.autocomplete("mod5")
     async def mod_search_autocomplete(self, interaction: discord.Interaction, current: str):
         if len(current) < 2:
             return []
