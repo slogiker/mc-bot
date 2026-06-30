@@ -143,69 +143,112 @@ class Management(commands.Cog):
         """Displays the current status and connection information for the server."""
         await interaction.response.defer(ephemeral=False)
         
-        is_running = self.bot.server.is_running()
+        from datetime import timedelta
+        import re
         
-        # Build base embed
+        is_running = self.bot.server.is_running()
+        is_intentional = self.bot.server.is_intentionally_stopped()
+        
+        # Check RCON
+        rcon_success = False
+        current_players = "0"
+        max_players = "0"
+        
         if is_running:
+            try:
+                # Send RCON command with a short timeout to prevent hanging
+                success, response = await rcon_manager.send_command("list")
+                if success:
+                    rcon_success = True
+                    # Parse player list: "There are X of a max Y players online: player1..."
+                    match = re.search(r"There are (\d+) of a max (\d+) players", response)
+                    if match:
+                        current_players = match.group(1)
+                        max_players = match.group(2)
+                    else:
+                        # Fallback if format is different
+                        parts = response.split("/")
+                        if len(parts) == 2:
+                            current_players = parts[0].strip().split()[-1]
+                            max_players = parts[1].strip().split()[0]
+            except Exception as e:
+                logger.debug(f"RCON check failed in status command: {e}")
+        
+        # Determine Status
+        status_state = "offline"
+        if is_running:
+            if rcon_success:
+                status_state = "online"
+            else:
+                start_time = getattr(self.bot.server, 'get_start_time', lambda: None)()
+                if start_time and (time.time() - start_time) < 120:
+                    status_state = "starting"
+                else:
+                    status_state = "crashed" # Stuck or RCON dead
+        else:
+            if is_intentional:
+                status_state = "stopped"
+            else:
+                status_state = "crashed"
+                
+        # Build Embed
+        if status_state == "online":
             embed = discord.Embed(
-                title="🟢 Minecraft Server: Online", 
+                title="🟢 Server Status: Online",
+                description="The server is running and accepting players.",
                 color=discord.Color.green(),
                 timestamp=discord.utils.utcnow()
             )
-            embed.description = "The server is currently running and accepting connections."
-        elif self.bot.server.is_intentionally_stopped():
+        elif status_state == "starting":
             embed = discord.Embed(
-                title="🟡 Minecraft Server: Stopped", 
+                title="🟡 Server Status: Starting...",
+                description="The server is currently booting up. Please wait a moment.",
                 color=discord.Color.gold(),
                 timestamp=discord.utils.utcnow()
             )
-            embed.description = "The server was intentionally stopped by an administrator."
-        else:
+        elif status_state == "stopped":
             embed = discord.Embed(
-                title="🔴 Minecraft Server: Offline / Crashed", 
+                title="⚪ Server Status: Stopped",
+                description="The server was intentionally stopped by an administrator.",
+                color=discord.Color.light_grey(),
+                timestamp=discord.utils.utcnow()
+            )
+        else: # crashed
+            embed = discord.Embed(
+                title="🔴 Server Status: Crashed / Stuck",
+                description="The server is offline or not responding. Check debug logs.",
                 color=discord.Color.red(),
                 timestamp=discord.utils.utcnow()
             )
-            embed.description = "The server is offline. Check the debug logs if this was unexpected."
             
-        # Add core info
-        embed.add_field(name="Process Status", value="`Running`" if is_running else "`Stopped`", inline=True)
-        
-        # Add Uptime if online
-        if is_running and hasattr(self.bot.server, 'get_start_time'):
-            start_time = self.bot.server.get_start_time()
+        # Add IP / Address (if not stopped/offline)
+        if status_state != "stopped":
+            address = "Unknown"
+            playit_cog = self.bot.get_cog("PlayitCog")
+            if playit_cog:
+                if playit_cog._is_cache_valid():
+                    address = playit_cog.cached_address
+                else:
+                    addr, _ = await playit_cog.fetch_playit_address()
+                    if addr:
+                        address = addr
+            if address and address != "Unknown":
+                embed.add_field(name="🌐 Server IP", value=f"`{address}`", inline=False)
+                
+        # Add Uptime & Players
+        if is_running:
+            # Uptime
+            start_time = getattr(self.bot.server, 'get_start_time', lambda: None)()
             if start_time:
                 uptime_sec = int(time.time() - start_time)
-                uptime_str = time.strftime('%H:%M:%S', time.gmtime(uptime_sec))
-                embed.add_field(name="Uptime", value=f"`{uptime_str}`", inline=True)
-        
-        # Connection Details
-        address_found = False
-        playit_cog = self.bot.get_cog("PlayitCog")
-        if playit_cog:
-            if playit_cog._is_cache_valid():
-                embed.add_field(name="Server Address", value=f"```\n{playit_cog.cached_address}\n```", inline=False)
-                address_found = True
-            else:
-                address, _ = await playit_cog.fetch_playit_address()
-                if address:
-                    embed.add_field(name="Server Address", value=f"```\n{address}\n```", inline=False)
-                    address_found = True
-
-        if not address_found:
-             embed.add_field(name="Server Address", value="`IP not available (Playit tunnel offline?)`", inline=False)
-
-        # Player List
-        if is_running:
-            try:
-                success, response = await rcon_manager.send_command("list")
-                if success:
-                    # RCON list format is usually: "There are X of a max Y players online: player1, player2..."
-                    embed.add_field(name="Players Online", value=f"```\n{response}\n```", inline=False)
-            except Exception as e:
-                logger.error(f"Error fetching player list via RCON: {e}", exc_info=True)
-
-        embed.set_footer(text="Last updated")
+                uptime_str = str(timedelta(seconds=uptime_sec))
+                embed.add_field(name="⏳ Uptime", value=f"`{uptime_str}`", inline=True)
+                
+            if status_state == "online":
+                # Players
+                embed.add_field(name="👥 Players", value=f"`{current_players}/{max_players}`", inline=True)
+                    
+        embed.set_footer(text="Minecraft Server Manager")
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="control", description="Spawn the Control Panel")

@@ -107,7 +107,7 @@ async def send():
     except Exception as e:
         pass
 
-if __name__ == "__main__":
+if __name__ == \"__main__\":
     try:
         # Run with a 15-second timeout to prevent hanging the install script
         asyncio.run(asyncio.wait_for(send(), timeout=15.0))
