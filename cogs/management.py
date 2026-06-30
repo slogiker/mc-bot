@@ -52,6 +52,7 @@ class Management(commands.Cog):
 
                 # Attempt start
                 success, msg = await self.bot.server.start()
+                await self.bot.update_presence()
                 if success:
                     logger.info("✅ Auto-restart initiated. Waiting for boot...")
 
@@ -283,6 +284,7 @@ class Management(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         success, message = await self.bot.server.start()
+        await self.bot.update_presence()
         if success:
             # Ensure background tasks (LogWatcher) are running to detect 'Done' and update presence
             await self.bot.start_background_tasks()
@@ -359,6 +361,7 @@ class Management(commands.Cog):
         )
         
         success, message = await self.bot.server.stop()
+        await self.bot.update_presence()
         if success:
             embed = discord.Embed(
                 title="🛑 Server Stopped",
@@ -411,6 +414,7 @@ class Management(commands.Cog):
         )
         
         success, message = await self.bot.server.restart()
+        await self.bot.update_presence()
         if success:
             embed = discord.Embed(
                 title="🚀 Server Restarted",
