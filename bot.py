@@ -136,6 +136,8 @@ class MinecraftBot(commands.Bot):
                 activity=discord.Activity(type=discord.ActivityType.playing, name=name),
                 status=status
             )
+        except (RuntimeError, discord.ConnectionClosed, ConnectionResetError) as e:
+            logger.warning(f"Failed to change presence (disconnected): {e}")
         except Exception as e:
             logger.error(f"Failed to change presence: {e}")
 

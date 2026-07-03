@@ -72,18 +72,12 @@ class PlayerTracker(commands.Cog):
                     continue
 
                 if "Starting minecraft server version" in msg:
-                    await self.bot.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
-                        status=discord.Status.idle
-                    )
+                    await self.bot.set_presence("Server Starting...", discord.Status.idle)
 
                 elif "Done (" in msg and "! For help, type" in msg:
                     bot_config = config.load_bot_config()
                     count = len(bot_config.get('online_players', []))
-                    await self.bot.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft: {count} Players"),
-                        status=discord.Status.online
-                    )
+                    await self.bot.set_presence(f"Minecraft: {count} Players", discord.Status.online)
 
                 elif "joined the game" in msg:
                     m = re.match(r'^(\w+) joined the game', msg)
@@ -95,10 +89,7 @@ class PlayerTracker(commands.Cog):
                             players.append(player)
                             bot_config['online_players'] = players
                             config.save_bot_config(bot_config)
-                        await self.bot.change_presence(
-                            activity=discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft: {len(players)} Players"),
-                            status=discord.Status.online
-                        )
+                        await self.bot.set_presence(f"Minecraft: {len(players)} Players", discord.Status.online)
                         await self.send_event_notification("join", player)
 
                 elif "left the game" in msg:
@@ -111,10 +102,7 @@ class PlayerTracker(commands.Cog):
                             players.remove(player)
                             bot_config['online_players'] = players
                             config.save_bot_config(bot_config)
-                        await self.bot.change_presence(
-                            activity=discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft: {len(players)} Players"),
-                            status=discord.Status.online
-                        )
+                        await self.bot.set_presence(f"Minecraft: {len(players)} Players", discord.Status.online)
                         await self.send_event_notification("leave", player)
 
                 elif any(word in msg for word in _DEATH_WORDS):

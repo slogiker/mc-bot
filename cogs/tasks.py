@@ -63,10 +63,7 @@ class Tasks(commands.Cog):
 
         # specific check to ensure we update status if it crashed
         if self.bot.status != discord.Status.dnd:
-            await self.bot.change_presence(
-                activity=discord.Activity(type=discord.ActivityType.playing, name="Server Offline"),
-                status=discord.Status.dnd
-            )
+            await self.bot.set_presence("Server Offline", discord.Status.dnd)
         
         if self.restart_attempts == 2:
             logger.error("Server failed to restart twice. Stopping crash loop.")
@@ -137,10 +134,7 @@ class Tasks(commands.Cog):
 
                 # specific check to ensure we update status if it crashed
                 if self.bot.status != discord.Status.dnd:
-                     await self.bot.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name="Server Offline"),
-                        status=discord.Status.dnd
-                    )
+                    await self.bot.set_presence("Server Offline", discord.Status.dnd)
                 
                 if self.restart_attempts == 2:
                     logger.error("Server failed to restart twice. Stopping crash loop.")
@@ -194,10 +188,7 @@ class Tasks(commands.Cog):
             # If intentionally stopped, ensure status is DND/Idle
             elif self.bot.server.is_intentionally_stopped():
                  if self.bot.status != discord.Status.dnd:
-                     await self.bot.change_presence(
-                        activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
-                        status=discord.Status.dnd
-                     ) 
+                     await self.bot.set_presence("Minecraft Server: Offline", discord.Status.dnd)
 
             # Check Playit tunnel (same pattern as MC server crash recovery)
             secret_key_path = os.path.join(config.PROJECT_ROOT, "data", "playit_secret.key")

@@ -297,10 +297,7 @@ class Management(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             
             # Update explicit presence
-            await self.bot.change_presence(
-                activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
-                status=discord.Status.idle
-            )
+            await self.bot.set_presence("Server Starting...", discord.Status.idle)
             
 
             if await log_dispatcher.wait_for_pattern('Done (', timeout=config.STARTUP_TIMEOUT):
@@ -377,10 +374,7 @@ class Management(commands.Cog):
             await ServerInfoManager(self.bot).update_info(interaction.guild)
             
             # Update explicit presence
-            await self.bot.change_presence(
-                activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
-                status=discord.Status.dnd
-            )
+            await self.bot.set_presence("Minecraft Server: Offline", discord.Status.dnd)
         else:
             embed = discord.Embed(
                 title="❌ Failed to Stop Server",
@@ -426,10 +420,7 @@ class Management(commands.Cog):
             # Update info channel
             await ServerInfoManager(self.bot).update_info(interaction.guild)
             # Update explicit presence (will be eventually overidden by the log monitor but good for instant feedback)
-            await self.bot.change_presence(
-                activity=discord.Activity(type=discord.ActivityType.playing, name="Server Starting..."),
-                status=discord.Status.idle
-            )
+            await self.bot.set_presence("Server Starting...", discord.Status.idle)
         else:
             embed = discord.Embed(
                 title="❌ Failed to Restart Server",
@@ -470,10 +461,7 @@ class Management(commands.Cog):
             await ServerInfoManager(self.bot).update_info(interaction.guild)
             
             # Update presence
-            await self.bot.change_presence(
-                activity=discord.Activity(type=discord.ActivityType.playing, name="Minecraft Server: Offline"),
-                status=discord.Status.dnd
-            )
+            await self.bot.set_presence("Minecraft Server: Offline", discord.Status.dnd)
         else:
             embed = discord.Embed(
                 title="❌ Failed to Force-Stop",
