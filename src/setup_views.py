@@ -35,6 +35,225 @@ async def fetch_versions():
         return GLOBAL_VERSIONS
 
 
+class CarryOverSelectionView(ui.View):
+    """View to select which files/settings to carry over before reset."""
+    def __init__(self, bot, parent_interaction: discord.Interaction, create_backup: bool):
+        super().__init__(timeout=180)
+        self.bot = bot
+        self.parent_interaction = parent_interaction
+        self.create_backup = create_backup
+        
+        # Define carry over options based on what is available
+        server_dir = config.SERVER_DIR
+        has_mods = os.path.exists(os.path.join(server_dir, "mods")) or os.path.exists(os.path.join(server_dir, "plugins"))
+        has_whitelist = os.path.exists(os.path.join(server_dir, "whitelist.json"))
+        has_ops = os.path.exists(os.path.join(server_dir, "ops.json"))
+        has_properties = os.path.exists(os.path.join(server_dir, "server.properties"))
+        
+        options = [
+            discord.SelectOption(
+                label="Server Version & Platform",
+                value="version",
+                description=f"Keep {config.INSTALLED_PLATFORM.title() if config.INSTALLED_PLATFORM else 'current'} {config.INSTALLED_VERSION or ''} (no re-download)",
+                emoji="💾",
+                default=True
+            )
+        ]
+        
+        if has_properties:
+            options.append(discord.SelectOption(
+                label="World Seed",
+                value="seed",
+                description="Use the same seed for the new world",
+                emoji="🌱",
+                default=True
+            ))
+            options.append(discord.SelectOption(
+                label="Server Configuration",
+                value="config",
+                description="Keep settings (difficulty, max-players, online-mode, view-distance)",
+                emoji="⚙️",
+                default=True
+            ))
+            
+        if has_mods:
+            options.append(discord.SelectOption(
+                label="Mods & Plugins",
+                value="mods",
+                description="Keep existing mods and plugins directories",
+                emoji="🧩",
+                default=True
+            ))
+            
+        if has_whitelist:
+            options.append(discord.SelectOption(
+                label="Player Whitelist",
+                value="whitelist",
+                description="Keep whitelisted players list (whitelist.json)",
+                emoji="📜",
+                default=True
+            ))
+            
+        if has_ops:
+            options.append(discord.SelectOption(
+                label="Operators (Ops)",
+                value="ops",
+                description="Keep server operators (ops.json)",
+                emoji="👑",
+                default=True
+            ))
+
+        # Add the dropdown select to this view
+        self.select = ui.Select(
+            placeholder="Select items to carry over to the new world...",
+            min_values=0,
+            max_values=len(options),
+            options=options
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+        
+        # Track selected values, default to all enabled by default
+        self.selected_values = [opt.value for opt in options]
+        
+    async def select_callback(self, interaction: discord.Interaction):
+        self.selected_values = self.select.values
+        await interaction.response.defer()
+
+    @ui.button(label="Continue with Reset", style=discord.ButtonStyle.danger, emoji="🚀", row=1)
+    async def confirm_reset(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await self._run_reset(interaction)
+
+    @ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=1)
+    async def cancel_reset(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.edit_message(content="❌ **Reset cancelled.**", embed=None, view=None)
+
+    async def _run_reset(self, interaction: discord.Interaction):
+        # 1. UI Lock
+        await interaction.edit_original_response(content="⏳ **Preparing carry-over data and initiating reset...**", embed=None, view=None)
+        
+        # Parse previous configurations if requested
+        carried_seed = ""
+        carried_config = {}
+        server_dir = config.SERVER_DIR
+        props_path = os.path.join(server_dir, "server.properties")
+        
+        if "seed" in self.selected_values or "config" in self.selected_values:
+            if os.path.exists(props_path):
+                try:
+                    with open(props_path, "r") as f:
+                        for line in f:
+                            if "=" in line and not line.startswith("#"):
+                                k, v = line.split("=", 1)
+                                k, v = k.strip(), v.strip()
+                                if k == "level-seed":
+                                    carried_seed = v
+                                elif k == "difficulty":
+                                    carried_config["difficulty"] = v
+                                elif k == "max-players":
+                                    carried_config["max_players"] = int(v) if v.isdigit() else 20
+                                elif k == "online-mode":
+                                    carried_config["online_mode"] = (v.lower() == "true")
+                                elif k == "view-distance":
+                                    carried_config["view_distance"] = int(v) if v.isdigit() else 16
+                                elif k == "white-list":
+                                    carried_config["whitelist"] = (v.lower() == "true")
+                except Exception as e:
+                    logger.error(f"Failed to parse server.properties for carry over: {e}")
+        
+        # 2. Emergency Backup if requested
+        if self.create_backup:
+            await interaction.edit_original_response(content="⏳ **Creating emergency backup...**")
+            date_str = discord.utils.utcnow().strftime('%Y-%m-%d_%H-%M')
+            success, filename, path = await backup_manager.create_backup(
+                custom_name=f"setup_full_reset_{date_str}", 
+                server=self.bot.server
+            )
+            if not success:
+                await interaction.followup.send(f"⚠️ **Backup failed:** {filename}. Attempting reset anyway...", ephemeral=True)
+            else:
+                await interaction.followup.send(f"✅ **Safety backup created:** `{filename}`", ephemeral=True)
+
+        # 3. Stop server if running
+        if self.bot.server.is_running():
+            await interaction.edit_original_response(content="⏳ **Stopping Minecraft server...**")
+            await self.bot.server.stop()
+            await asyncio.sleep(2)
+
+        # 4. Wipe server folder but preserve checked files/folders
+        await interaction.edit_original_response(content="⏳ **Wiping server files (preserving carry-over items)...**")
+        
+        # Build list of items to keep
+        keep_items = {"eula.txt"}
+        if "version" in self.selected_values:
+            keep_items.update({
+                "server.jar",
+                "libraries",
+                "run.bat",
+                "run.sh",
+                "user_jvm_args.txt",
+                ".fabric",
+                "fabric-server-launch.jar"
+            })
+        if "mods" in self.selected_values:
+            keep_items.update({"mods", "plugins"})
+        if "whitelist" in self.selected_values:
+            keep_items.add("whitelist.json")
+        if "ops" in self.selected_values:
+            keep_items.add("ops.json")
+            
+        for item in os.listdir(server_dir):
+            if item in keep_items:
+                continue
+                
+            item_path = os.path.join(server_dir, item)
+            try:
+                if os.path.isfile(item_path) or os.path.islink(item_path):
+                    os.unlink(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+            except Exception as wipe_err:
+                logger.warning(f"Could not delete {item}: {wipe_err}")
+
+        # Re-enable intentional stop
+        try:
+            self.bot.server._intentional_stop = True
+            await self.bot.server._save_state()
+        except Exception:
+            pass
+
+        # 5. Populate SetupState with default values
+        state = SetupState()
+        
+        # Populate platform & version if kept
+        if "version" in self.selected_values:
+            state.platform = config.INSTALLED_PLATFORM or "paper"
+            state.version = config.INSTALLED_VERSION or "latest"
+            
+        # Populate seed if kept
+        if "seed" in self.selected_values and carried_seed:
+            state.seed = carried_seed
+            
+        # Populate settings if kept
+        if "config" in self.selected_values:
+            state.difficulty = carried_config.get("difficulty", "normal")
+            state.max_players = carried_config.get("max_players", 20)
+            state.online_mode = carried_config.get("online_mode", True)
+            state.view_distance = carried_config.get("view_distance", 16)
+            state.whitelist = carried_config.get("whitelist", False)
+
+        # Get existing RAM settings
+        state.ram = int(config.JAVA_XMX.replace("G", "")) if config.JAVA_XMX and config.JAVA_XMX.replace("G", "").isdigit() else 4
+
+        await interaction.edit_original_response(content="✅ **Server wiped successfully!**\n\nStarting setup wizard with carry-over defaults in 3 seconds...")
+        await asyncio.sleep(3)
+
+        # 6. Launch SetupView with pre-populated state
+        view = SetupView(interaction, state=state)
+        await view.start()
+
+
 class WorldManagementView(ui.View):
     """View to handle world management when running setup again."""
     def __init__(self, bot, interaction: discord.Interaction):
@@ -98,29 +317,23 @@ class WorldManagementView(ui.View):
 
     @ui.button(label="Backup & Reset World", style=discord.ButtonStyle.danger, emoji="💾")
     async def backup_reset(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        
-        # 1. UI Lock
-        await interaction.edit_original_response(content="⏳ **Preparing emergency backup...**", embed=None, view=None)
-        
-        date_str = discord.utils.utcnow().strftime('%Y-%m-%d_%H-%M')
-        success, filename, path = await backup_manager.create_backup(
-            custom_name=f"setup_full_reset_{date_str}", 
-            server=self.bot.server
+        view = CarryOverSelectionView(self.bot, interaction, create_backup=True)
+        embed = discord.Embed(
+            title="🔄 Carry-Over Options",
+            description="Select which components from the previous world you want to keep for the new one. Discarded files will be backed up and deleted.",
+            color=discord.Color.orange()
         )
-
-        if not success:
-            await interaction.followup.send(f"⚠️ **Backup failed:** {filename}. Attempting reset anyway...", ephemeral=True)
-        else:
-            await interaction.followup.send(f"✅ **Safety backup created:** `{filename}`", ephemeral=True)
-
-        # 2. Perform Full Wipe
-        await self._perform_full_reset(interaction)
+        await interaction.response.edit_message(embed=embed, view=view)
 
     @ui.button(label="Reset World (No Backup)", style=discord.ButtonStyle.secondary, emoji="🗑️")
     async def reset_only(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        await self._perform_full_reset(interaction)
+        view = CarryOverSelectionView(self.bot, interaction, create_backup=False)
+        embed = discord.Embed(
+            title="🔄 Carry-Over Options",
+            description="Select which components from the previous world you want to keep for the new one. Discarded files will be deleted forever without backup.",
+            color=discord.Color.orange()
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
 
     @ui.button(label="Keep Existing World", style=discord.ButtonStyle.success, emoji="🌍")
     async def keep_world(self, interaction: discord.Interaction, button: ui.Button):
@@ -476,10 +689,10 @@ class SetupView(ui.View):
         "Confirmation"
     ]
     
-    def __init__(self, interaction: discord.Interaction):
+    def __init__(self, interaction: discord.Interaction, state: Optional[SetupState] = None):
         super().__init__(timeout=600)  # 10 minute timeout
         self.interaction = interaction
-        self.state = SetupState()
+        self.state = state or SetupState()
         self.message: Optional[discord.Message] = None
         
     async def on_timeout(self):

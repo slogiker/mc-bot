@@ -56,6 +56,21 @@ class MinecraftInstaller:
         """
         try:
             jar_path = os.path.join(self.server_dir, "server.jar")
+            
+            # Skip download if files were carried over
+            if os.path.exists(jar_path) and platform == config.INSTALLED_PLATFORM and version == config.INSTALLED_VERSION:
+                logger.info(f"Using carried over server files for {platform} {version}")
+                if progress_callback:
+                    await progress_callback(f"Using existing {platform.title()} server files (carried over)...")
+                # Pre-download the correct JRE for this Minecraft version
+                try:
+                    from src.jre_manager import jre_manager
+                    java_version = jre_manager.get_required_java_version(version)
+                    await jre_manager.ensure_jre(java_version, progress_callback)
+                except Exception as jre_err:
+                    logger.warning(f"Failed to pre-download JRE for version {version}: {jre_err}. Will retry on startup.")
+                return True, "Carried over existing server files"
+                
             logger.info(f"Downloading {platform} server version {version} to {jar_path}")
             
             if platform == "paper":
