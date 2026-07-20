@@ -21,27 +21,6 @@ class Admin(commands.Cog):
         else:
             await self.bot.tree.sync()
         await interaction.followup.send("✅ Commands synced!", ephemeral=True)
-    @app_commands.command(name="backup_now", description="Trigger immediate backup")
-    @app_commands.checks.cooldown(1, 300)  # 1 use per 5 minutes
-    @has_role("backup_now")
-    async def backup_now(self, interaction: discord.Interaction, name: str = "manual"):
-        try:
-            await interaction.response.defer(ephemeral=True)
-            from src.backup_manager import backup_manager
-            
-            await interaction.followup.send("⏳ Starting backup...", ephemeral=True)
-            success, result, filepath = await backup_manager.create_backup(custom_name=name, server=self.bot.server)
-            
-            if success:
-                await interaction.followup.send(f"✅ Backup created: `{result}`", ephemeral=True)
-            else:
-                await interaction.followup.send(f"❌ Backup failed: {result}", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Error in backup_now command: {e}", exc_info=True)
-            try:
-                await interaction.followup.send(f"❌ Backup command failed: {e}", ephemeral=True)
-            except discord.HTTPException:
-                pass
 
     @app_commands.command(name="whitelist_add", description="Add user to whitelist")
     @has_role("whitelist_add")

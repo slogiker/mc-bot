@@ -40,6 +40,8 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./.env:/app/.env:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
 
   # Dev — source files mounted live, no rebuild needed for code changes
   # Usage: docker compose --profile dev up --build
@@ -56,3 +58,5 @@ services:
       - ./bot.py:/app/bot.py:ro
       - ./cogs:/app/cogs:ro
       - ./src:/app/src:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro

@@ -161,8 +161,8 @@ class Management(commands.Cog):
                 success, response = await rcon_manager.send_command("list")
                 if success:
                     rcon_success = True
-                    # Parse player list: "There are X of a max Y players online: player1..."
-                    match = re.search(r"There are (\d+) of a max (\d+) players", response)
+                    # Parse player list: "There are X of a max of Y players online: player1..."
+                    match = re.search(r"There are (\d+) of a max(?: of)? (\d+) players", response)
                     if match:
                         current_players = match.group(1)
                         max_players = match.group(2)

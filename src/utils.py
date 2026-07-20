@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from datetime import datetime
 import discord
 from discord import app_commands
 from src.config import config
@@ -223,3 +224,19 @@ async def parse_server_version():
         return config.INSTALLED_VERSION
         
     return "Unknown"
+
+
+def get_timezone():
+    """Returns the configured pytz timezone object."""
+    import pytz
+    tz_name = getattr(config, 'TIMEZONE', 'UTC')
+    try:
+        return pytz.timezone(tz_name)
+    except Exception:
+        return pytz.UTC
+
+
+def get_now() -> datetime:
+    """Returns the current datetime in the configured timezone."""
+    from datetime import datetime
+    return datetime.now(get_timezone())

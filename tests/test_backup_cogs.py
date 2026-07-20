@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 from contextlib import contextmanager
 from datetime import datetime
 from cogs.backup import BackupCog, BackupDownloadView
-from cogs.admin import Admin
 
 @pytest.fixture
 def mock_bot():
@@ -24,10 +23,6 @@ def backup_cog(mock_bot):
         return cog
 
 @pytest.fixture
-def admin_cog(mock_bot):
-    return Admin(mock_bot)
-
-@pytest.fixture
 def mock_interaction():
     interaction = MagicMock(spec=discord.Interaction)
     interaction.response = MagicMock()
@@ -38,26 +33,12 @@ def mock_interaction():
     return interaction
 
 @pytest.mark.asyncio
-async def test_admin_backup_now_success(admin_cog, mock_interaction):
-    """Test /backup_now command success."""
-    with patch('src.backup_manager.backup_manager.create_backup', new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = (True, "backup_manual_123.zip", "/path/to/backup_manual_123.zip")
-        
-        await admin_cog.backup_now.callback(admin_cog, mock_interaction, name="test-backup")
-        
-        mock_create.assert_called_once_with(custom_name="test-backup", server=admin_cog.bot.server)
-        mock_interaction.response.defer.assert_called_once_with(ephemeral=True)
-        assert mock_interaction.followup.send.call_count == 2
-        mock_interaction.followup.send.assert_any_call("⏳ Starting backup...", ephemeral=True)
-        mock_interaction.followup.send.assert_any_call("✅ Backup created: `backup_manual_123.zip`", ephemeral=True)
-
-@pytest.mark.asyncio
-async def test_admin_backup_now_failure(admin_cog, mock_interaction):
-    """Test /backup_now command failure."""
+async def test_backup_command_failure(backup_cog, mock_interaction):
+    """Test /backup command failure."""
     with patch('src.backup_manager.backup_manager.create_backup', new_callable=AsyncMock) as mock_create:
         mock_create.return_value = (False, "Error message", None)
         
-        await admin_cog.backup_now.callback(admin_cog, mock_interaction, name="test-backup")
+        await backup_cog.backup.callback(backup_cog, mock_interaction, name="test-backup")
         
         mock_interaction.followup.send.assert_any_call("❌ Backup failed: Error message", ephemeral=True)
 
@@ -103,10 +84,8 @@ async def test_backup_loop_trigger_success(backup_cog):
     with patch('src.config.config.load_user_config', return_value=user_cfg), \
          patch('src.config.config.load_bot_config', return_value=bot_cfg), \
          patch('src.config.config.update_bot_config', side_effect=mock_update_bot_config), \
-         patch('cogs.backup.datetime') as mock_datetime, \
+         patch('src.utils.get_now', return_value=mock_now), \
          patch('src.backup_manager.backup_manager.create_backup', new_callable=AsyncMock) as mock_create:
-        
-        mock_datetime.now.return_value = mock_now
         mock_create.return_value = (True, "backup_auto_20260629.zip", "/path/to/backup")
         
         await BackupCog.backup_loop.coro(backup_cog)
@@ -129,10 +108,8 @@ async def test_backup_loop_already_done_today(backup_cog):
     
     with patch('src.config.config.load_user_config', return_value=user_cfg), \
          patch('src.config.config.load_bot_config', return_value=bot_cfg), \
-         patch('cogs.backup.datetime') as mock_datetime, \
+         patch('src.utils.get_now', return_value=mock_now), \
          patch('src.backup_manager.backup_manager.create_backup', new_callable=AsyncMock) as mock_create:
-        
-        mock_datetime.now.return_value = mock_now
         
         await BackupCog.backup_loop.coro(backup_cog)
         
@@ -151,10 +128,8 @@ async def test_backup_loop_time_not_matched(backup_cog):
     
     with patch('src.config.config.load_user_config', return_value=user_cfg), \
          patch('src.config.config.load_bot_config', return_value=bot_cfg), \
-         patch('cogs.backup.datetime') as mock_datetime, \
+         patch('src.utils.get_now', return_value=mock_now), \
          patch('src.backup_manager.backup_manager.create_backup', new_callable=AsyncMock) as mock_create:
-        
-        mock_datetime.now.return_value = mock_now
         
         await BackupCog.backup_loop.coro(backup_cog)
         

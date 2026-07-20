@@ -146,8 +146,8 @@ class ControlPanelCog(commands.Cog):
             
             status_text = "🟢 **Online**" if self.bot.server.is_running() else "🔴 **Offline**"
             embed.add_field(name="Current Status", value=status_text)
-            from datetime import datetime
-            embed.set_footer(text=f"Auto-updates • Last checked: {datetime.now().strftime('%H:%M:%S')}")
+            from src.utils import get_now
+            embed.set_footer(text=f"Auto-updates • Last checked: {get_now().strftime('%H:%M:%S')}")
 
             view = ControlPanelView(self.bot)
 
@@ -156,6 +156,7 @@ class ControlPanelCog(commands.Cog):
             try:
                 msg = await channel.fetch_message(self.message_id)
                 await msg.edit(embed=embed, view=view)
+                await self._prune_channel_messages(channel)
                 return
             except discord.NotFound:
                 # Message was deleted — need to post a new one
@@ -184,8 +185,27 @@ class ControlPanelCog(commands.Cog):
             bot_config = config.load_bot_config()
             bot_config['control_panel_message_id'] = new_msg.id
             config.save_bot_config(bot_config)
+            await self._prune_channel_messages(channel)
         except Exception as e:
             logger.error(f"Failed to send Control Panel: {e}")
+
+    async def _prune_channel_messages(self, channel):
+        """Prunes non-control-panel messages in the command channel older than 5 minutes."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        try:
+            async for msg in channel.history(limit=100):
+                if msg.id == self.message_id:
+                    continue
+                # Delete messages older than 5 minutes (300 seconds)
+                if (now - msg.created_at).total_seconds() > 300:
+                    try:
+                        await msg.delete()
+                    except discord.HTTPException as e:
+                        if e.status != 404:
+                            logger.warning(f"Failed to delete old message {msg.id}: {e}")
+        except Exception as e:
+            logger.error(f"Error while pruning channel messages: {e}")
 
 async def setup(bot):
     await bot.add_cog(ControlPanelCog(bot))

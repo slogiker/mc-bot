@@ -49,7 +49,8 @@ class BackupCog(commands.Cog):
             bot_config = config.load_bot_config()
             
             backup_time = user_config.get('backup_time', '03:00')
-            now = datetime.now()
+            from src.utils import get_now
+            now = get_now()
             current_time = now.strftime("%H:%M")
             
             # Check if times match
@@ -112,7 +113,7 @@ class BackupCog(commands.Cog):
             await interaction.followup.send(f"❌ Backup failed: {filename}", ephemeral=True)
 
     @app_commands.command(name="backup_list", description="List available backups")
-    @has_role("backup")
+    @has_role("backup_list")
     async def backup_list(self, interaction: discord.Interaction):
         """
         Lists available world backups, grouped by type (Custom/Auto).
@@ -168,7 +169,7 @@ class BackupCog(commands.Cog):
 
     @app_commands.command(name="backup_download", description="Download a specific backup directly")
     @app_commands.describe(filename="The backup file to download")
-    @has_role("backup")
+    @has_role("backup_download")
     async def backup_download(self, interaction: discord.Interaction, filename: str):
         """
         Sends a specific backup file to the user.

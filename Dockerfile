@@ -35,6 +35,9 @@ RUN ARCH=$(uname -m) && \
 
 WORKDIR /app
 
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONIOENCODING=utf-8
+
 # Add non-root user for security
 RUN groupadd -r bot && useradd -r -g bot -d /app bot
 

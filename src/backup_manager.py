@@ -29,7 +29,8 @@ class BackupManager:
         - **Auto**: If no name, it is stored in 'backups/auto/' and subject to 7-day retention policy.
         """
         async with self._lock:
-            timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+            from src.utils import get_now
+            timestamp = get_now().strftime('%Y-%m-%d_%H-%M')
             
             if custom_name:
                 filename = f"backup_custom_{timestamp}_{custom_name}.zip"
@@ -100,7 +101,8 @@ class BackupManager:
 
     async def _cleanup_auto_backups(self):
         """Deletes auto backups older than retention days."""
-        now = datetime.now()
+        from src.utils import get_now
+        now = get_now()
         retention_days = config.BACKUP_RETENTION_DAYS
         
         logger.info("Running backup cleanup...")
@@ -116,7 +118,7 @@ class BackupManager:
             try:
                 # Use asyncio.to_thread for file stat operations
                 mtime_timestamp = await asyncio.to_thread(os.path.getmtime, fpath)
-                mtime = datetime.fromtimestamp(mtime_timestamp)
+                mtime = datetime.fromtimestamp(mtime_timestamp, now.tzinfo)
                 if (now - mtime).days > retention_days:
                     await asyncio.to_thread(os.remove, fpath)
                     logger.info(f"Deleted old backup: {fname}")

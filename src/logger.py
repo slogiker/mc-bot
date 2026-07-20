@@ -10,7 +10,38 @@ from logging.handlers import TimedRotatingFileHandler
 class CustomFormatter(logging.Formatter):
     def format(self, record):
         try:
-            timestamp = datetime.now().strftime('%H:%M:%S - %d.%m.%Y')
+            import pytz
+            tz = None
+            
+            # Check if config is loaded to get configuration timezone
+            if 'src.config' in sys.modules:
+                from src.config import config
+                tz_name = getattr(config, 'TIMEZONE', 'UTC')
+                if tz_name and tz_name.lower() != 'auto':
+                    try:
+                        tz = pytz.timezone(tz_name)
+                    except Exception:
+                        pass
+            else:
+                # Direct read of user_config.json to prevent circular import early on
+                try:
+                    logger_dir = os.path.dirname(os.path.abspath(__file__))
+                    user_cfg_path = os.path.join(os.path.dirname(logger_dir), 'data', 'user_config.json')
+                    if os.path.exists(user_cfg_path):
+                        import json
+                        with open(user_cfg_path, 'r') as f:
+                            data = json.load(f)
+                            tz_name = data.get('timezone', 'UTC')
+                            if tz_name and tz_name.lower() != 'auto':
+                                tz = pytz.timezone(tz_name)
+                except Exception:
+                    pass
+
+            if tz:
+                timestamp = datetime.now(tz).strftime('%H:%M:%S - %d.%m.%Y')
+            else:
+                # Fallback to local system time (respecting mounted host timezone)
+                timestamp = datetime.now().astimezone().strftime('%H:%M:%S - %d.%m.%Y')
         except (ImportError, TypeError, NameError):
             # Fallback during Python shutdown when modules are cleared
             timestamp = "SHUTDOWN"

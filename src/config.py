@@ -325,14 +325,14 @@ class Config:
         return {
             "Owner": [
                 "cmd", "sync", "bot_restart", "start", "stop", "restart",
-                "control", "backup", "backup_now", "backup_list", "backup_download",
+                "control", "backup", "backup_list", "backup_download",
                 "logs", "whitelist_add", "set_spawn", "status", "players",
                 "seed", "version", "info", "mods", "stats", "help",
                 "event_manage", "event_list", "trigger_admin", "trigger_list",
                 "reload_config", "admin", "server_info", "uptime"
             ],
             "MC Admin": [
-                "start", "stop", "restart", "cmd", "backup_now",
+                "start", "stop", "restart", "cmd", "backup", "backup_list",
                 "reload_config", "bot_restart",
                 "logs", "whitelist_add", "seed", "players", "stats",
                 "version", "server_info", "mods", "help", "sync",
@@ -341,7 +341,7 @@ class Config:
             "MC Player": [
                 "status", "start", "players", "stop", "restart",
                 "logs", "whitelist_add", "seed", "version",
-                "server_info", "mods", "backup_now", "stats", "help",
+                "server_info", "mods", "stats", "help",
                 "uptime"
             ],
             "@everyone": [

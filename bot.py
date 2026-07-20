@@ -503,7 +503,7 @@ class MinecraftBot(commands.Bot):
                     if debug_channel_id:
                         channel = self.get_channel(int(debug_channel_id))
                         if channel:
-                            await channel.send("🔌 **Host Reboot / Power Loss Detected!** The server host recently restarted (uptime: {:.0f}s) while the Minecraft server was online. Auto-recovering...")
+                            await channel.send(f"🔌 **Host Reboot / Power Loss Detected!** The server host recently restarted (uptime: {host_uptime:.0f}s) while the Minecraft server was online. Auto-recovering...")
         except Exception as e:
             logger.error(f"Failed to check host uptime: {e}")
 
