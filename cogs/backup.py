@@ -7,7 +7,7 @@ from datetime import datetime
 from src.config import config
 from src.logger import logger
 from src.backup_manager import backup_manager
-from src.utils import has_role
+from src.utils import has_role, send_debug
 
 # --- Constants ---
 BACKUP_LIST_LIMIT = 5  # Number of backups to show in the list command
@@ -62,10 +62,8 @@ class BackupCog(commands.Cog):
                 if last_run != today_str:
                     logger.info(f"⏰ Starting scheduled backup (Time: {backup_time})")
                     
-                    # Notify command channel if possible
-                    cmd_channel = self.bot.get_channel(config.COMMAND_CHANNEL_ID)
-                    if cmd_channel:
-                        await cmd_channel.send("⏳ Starting scheduled backup...")
+                    # Notify debug channel
+                    await send_debug(self.bot, "⏳ Starting scheduled backup...")
 
                     success, filename, _ = await backup_manager.create_backup(server=self.bot.server)
                     
@@ -77,12 +75,10 @@ class BackupCog(commands.Cog):
                         except Exception as cfg_error:
                             logger.error(f"Failed to update last_auto_backup: {cfg_error}")
                         
-                        if cmd_channel:
-                            await cmd_channel.send(f"✅ Scheduled backup created: `{filename}`")
+                        await send_debug(self.bot, f"✅ Scheduled backup created: `{filename}`")
                     else:
                         logger.error(f"Scheduled backup failed: {filename}")
-                        if cmd_channel:
-                             await cmd_channel.send(f"❌ Scheduled backup failed: {filename}")
+                        await send_debug(self.bot, f"❌ Scheduled backup failed: {filename}")
 
         except Exception as e:
             logger.error(f"Error in backup schedule loop: {e}")

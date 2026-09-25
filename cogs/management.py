@@ -39,10 +39,20 @@ class Management(commands.Cog):
                 
                 if self.consecutive_restarts > config.MAX_AUTO_RESTARTS:
                     logger.error("❌ Max auto-restart attempts reached. Server will remain offline.")
+                    self.bot.server._intentional_stop = True
+                    if hasattr(self.bot.server, '_save_state'):
+                        await self.bot.server._save_state()
                     await self._notify_owner_of_failure()
                     return
 
-                # Perform smart analysis
+                # Perform smart analysis and automated repair
+                repaired, repair_msg = await self._smart_self_heal()
+                if repaired:
+                    logger.info(f"Self-healed before restart: {repair_msg}")
+                    await send_debug(self.bot, f"🔧 **Self-Healer:** {repair_msg}")
+                    # Give it a fresh attempt counter since an automated fix was applied
+                    self.consecutive_restarts = 1
+
                 crash_reason = await self._analyze_crash()
                 logger.info(f"Crash Analysis: {crash_reason}")
 
@@ -81,6 +91,47 @@ class Management(commands.Cog):
         except Exception as e:
             logger.error(f"Error in auto-restart loop: {e}", exc_info=True)
 
+    async def _smart_self_heal(self) -> tuple[bool, str]:
+        """Diagnose crash causes from latest.log and attempt automated repair."""
+        log_path = os.path.join(config.SERVER_DIR, "logs", "latest.log")
+        if not os.path.exists(log_path):
+            return False, ""
+
+        try:
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()[-60:]
+            log_text = "".join(lines)
+
+            # 1. Incompatible mod / classtweaker error
+            import re
+            mod_match = re.search(r'(?:Failed to read classTweaker file from mod|ClassTweakerFormatException.*from mod|Incompatible mod|Error loading mod)\s+([a-zA-Z0-9_\-]+)', log_text, re.IGNORECASE)
+            if not mod_match and "ClassTweakerFormatException" in log_text:
+                for line in lines:
+                    if "mod" in line.lower() and ("classtweaker" in line.lower() or "runtime namespace" in line.lower()):
+                        m = re.search(r'mod\s+([a-zA-Z0-9_\-]+)', line, re.IGNORECASE)
+                        if m:
+                            mod_match = m
+                            break
+
+            if mod_match:
+                bad_mod = mod_match.group(1)
+                from src.utils import quarantine_incompatible_mod
+                quarantined = quarantine_incompatible_mod(bad_mod)
+                if quarantined:
+                    return True, f"Quarantined incompatible mod `{quarantined}`. Retrying server launch..."
+
+            # 2. Check for unaccepted EULA
+            if "You need to agree to the EULA" in log_text or ("eula.txt" in log_text and "false" in log_text.lower()):
+                eula_path = os.path.join(config.SERVER_DIR, "eula.txt")
+                with open(eula_path, "w") as f:
+                    f.write("eula=true\n")
+                return True, "Automatically accepted Minecraft EULA."
+
+        except Exception as e:
+            logger.error(f"Error during smart self-heal analysis: {e}", exc_info=True)
+
+        return False, ""
+
     async def _analyze_crash(self) -> str:
         """Parses logs/latest.log to guess the crash reason."""
         log_path = os.path.join(config.SERVER_DIR, "logs", "latest.log")
@@ -89,11 +140,13 @@ class Management(commands.Cog):
 
         try:
             # Read last 50 lines
-            with open(log_path, 'r') as f:
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()[-50:]
             
             log_text = "".join(lines).lower()
             
+            if "classtweaker" in log_text or "incompatible mod" in log_text:
+                return "❌ Incompatible Mod detected (classtweaker/namespace mismatch). Check mc-server/mods/quarantined/"
             if "java.lang.unsupportedclassversionerror" in log_text or "has been compiled by a more recent version" in log_text:
                 return "❌ Java Version Mismatch (Server requires a newer Java version)."
             if "java.lang.outofmemoryerror" in log_text:

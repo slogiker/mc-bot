@@ -91,20 +91,20 @@ class ModsCog(commands.Cog):
         slugs = [s for s in [mod1, mod2, mod3, mod4, mod5] if s]
         slugs = list(dict.fromkeys(slugs))
 
-        # Get server version
-        mc_version = getattr(config, 'INSTALLED_VERSION', None)
+        # Get server version from unified source of truth
+        from src.utils import get_server_version, get_server_platform
+        mc_version = await get_server_version()
         if not mc_version or mc_version == "Unknown":
-            from src.utils import parse_server_version
-            mc_version = await parse_server_version()
-        if not mc_version or mc_version == "Unknown":
-            mc_version = "1.20.1"
+            await msg.edit(content="❌ Could not detect Minecraft server version. Please ensure the server is installed or set `installed_version` in config before downloading mods.")
+            return
 
         # Auto-detect loader
         dest_folder = await get_server_mod_folder()
         if dest_folder is None:
             await msg.edit(content="❌ Mods and plugins are not supported on Vanilla servers.")
             return
-        loader = "fabric" if dest_folder == "mods" else "paper"
+        platform = await get_server_platform()
+        loader = "fabric" if platform == "fabric" or dest_folder == "mods" else "paper"
 
         installed_files = []
         failed_mods = []

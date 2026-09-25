@@ -85,6 +85,7 @@ async def test_backup_loop_trigger_success(backup_cog):
          patch('src.config.config.load_bot_config', return_value=bot_cfg), \
          patch('src.config.config.update_bot_config', side_effect=mock_update_bot_config), \
          patch('src.utils.get_now', return_value=mock_now), \
+         patch('cogs.backup.send_debug', new_callable=AsyncMock) as mock_send_debug, \
          patch('src.backup_manager.backup_manager.create_backup', new_callable=AsyncMock) as mock_create:
         mock_create.return_value = (True, "backup_auto_20260629.zip", "/path/to/backup")
         
@@ -92,8 +93,8 @@ async def test_backup_loop_trigger_success(backup_cog):
         
         backup_cog.bot.wait_until_ready.assert_called_once()
         mock_create.assert_called_once_with(server=backup_cog.bot.server)
-        mock_channel.send.assert_any_call("⏳ Starting scheduled backup...")
-        mock_channel.send.assert_any_call("✅ Scheduled backup created: `backup_auto_20260629.zip`")
+        mock_send_debug.assert_any_call(backup_cog.bot, "⏳ Starting scheduled backup...")
+        mock_send_debug.assert_any_call(backup_cog.bot, "✅ Scheduled backup created: `backup_auto_20260629.zip`")
         assert bot_cfg["last_auto_backup"] == "2026-06-29"
 
 @pytest.mark.asyncio

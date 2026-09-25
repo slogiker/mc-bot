@@ -178,6 +178,30 @@ class Config:
             else:
                 user_cfg = self._load_user_config_no_lock()
         
+        # Self-repair missing keys in user_cfg
+        user_defaults = {
+            "java_ram_min": "2G",
+            "java_ram_max": "4G",
+            "backup_time": "03:00",
+            "backup_keep_days": 7,
+            "restart_time": "04:00",
+            "max_auto_restarts": 3,
+            "startup_timeout": 300,
+            "timezone": "auto",
+            "permissions": self._convert_old_roles({})
+        }
+        user_modified = False
+        for k, v in user_defaults.items():
+            if k not in user_cfg:
+                user_cfg[k] = v
+                user_modified = True
+        if user_modified and not self.dry_run:
+            try:
+                self._save_user_config_no_lock(user_cfg)
+                logger.info("Self-repair: Restored missing keys in user_config.json")
+            except Exception:
+                pass
+
         # Validate
         valid, errors = validate_user_config(user_cfg)
         if not valid:
@@ -209,6 +233,38 @@ class Config:
                 }
             else:
                 bot_cfg = self._load_bot_config_no_lock()
+
+        # Self-repair missing keys in bot_cfg
+        bot_defaults = {
+            "server_directory": "./mc-server",
+            "guild_id": None,
+            "command_channel_id": None,
+            "log_channel_id": None,
+            "debug_channel_id": None,
+            "owner_role_id": None,
+            "admin_role_id": None,
+            "player_role_id": None,
+            "owner_id": None,
+            "control_panel_message_id": None,
+            "info_channel_id": None,
+            "last_auto_backup": "",
+            "cached_seed": None,
+            "online_players": [],
+            "installed_version": None,
+            "installed_platform": None
+        }
+        bot_modified = False
+        for k, v in bot_defaults.items():
+            if k not in bot_cfg:
+                bot_cfg[k] = v
+                bot_modified = True
+        if bot_modified and not self.dry_run:
+            try:
+                self._save_bot_config_no_lock(bot_cfg)
+                logger.info("Self-repair: Restored missing keys in bot_config.json")
+            except Exception:
+                pass
+
         
         # Apply user config
         self.JAVA_XMX = user_cfg['java_ram_max']

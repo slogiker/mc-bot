@@ -146,16 +146,22 @@ class ServerInfoManager:
         return "Run /ip in Discord to get the address"
 
     def _get_version(self) -> str:
-        # Try to read installed version from config or properties
+        # Check config
+        installed_ver = getattr(config, 'INSTALLED_VERSION', None)
+        if installed_ver and str(installed_ver).strip() not in ("", "None", "Unknown", "unknown"):
+            return str(installed_ver).strip()
+
+        # Check versions directory
         try:
-            from src.mc_manager import get_server_properties
-            props = get_server_properties()
-            if props:
-                # MC doesn't store version in server.properties usually, 
-                # but we might have it in our dynamic config
-                pass
+            versions_dir = os.path.join(config.SERVER_DIR, "versions")
+            if os.path.isdir(versions_dir):
+                subdirs = [d for d in os.listdir(versions_dir) if os.path.isdir(os.path.join(versions_dir, d)) and not d.startswith(".")]
+                if subdirs:
+                    subdirs.sort(reverse=True)
+                    return subdirs[0]
         except Exception:
             pass
+
         return config.get('installed_version', 'Unknown') 
 
     async def _get_seed(self) -> str:

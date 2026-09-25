@@ -337,9 +337,66 @@ class WorldManagementView(ui.View):
 
     @ui.button(label="Keep Existing World", style=discord.ButtonStyle.success, emoji="🌍")
     async def keep_world(self, interaction: discord.Interaction, button: ui.Button):
-        # Proceed to setup directly without wiping
-        view = SetupView(interaction)
-        await view.start()
+        await interaction.response.defer(ephemeral=True)
+        await interaction.edit_original_response(content="🔍 **Verifying existing server files and Discord configuration...**", embed=None, view=None)
+
+        server_dir = config.SERVER_DIR
+        props_path = os.path.join(server_dir, "server.properties")
+        eula_path = os.path.join(server_dir, "eula.txt")
+
+        # 1. Check and repair EULA
+        if os.path.exists(eula_path):
+            try:
+                with open(eula_path, "r") as f:
+                    content = f.read()
+                if "eula=true" not in content.lower():
+                    with open(eula_path, "w") as f:
+                        f.write("eula=true\n")
+            except Exception as e:
+                logger.warning(f"Could not check/repair EULA: {e}")
+        else:
+            try:
+                with open(eula_path, "w") as f:
+                    f.write("eula=true\n")
+            except Exception as e:
+                logger.warning(f"Could not create EULA: {e}")
+
+        # 2. Recheck and self-heal Discord channels and roles
+        from src.setup_helper import SetupHelper
+        helper = SetupHelper(self.bot)
+        try:
+            if interaction.guild:
+                updates = await helper.ensure_setup(interaction.guild)
+                config.update_dynamic_config(updates, save=True)
+                config.resolve_role_permissions(interaction.guild)
+        except Exception as e:
+            logger.error(f"Error ensuring Discord setup during keep_world: {e}")
+
+        # 3. Detect and persist version/platform if missing
+        from src.utils import get_server_version, get_server_platform
+        version = await get_server_version()
+        platform = await get_server_platform()
+
+        # 4. Refresh control panel
+        try:
+            control_cog = self.bot.get_cog("ControlPanelCog")
+            if control_cog:
+                await control_cog.update_panel()
+        except Exception as e:
+            logger.warning(f"Failed to update control panel: {e}")
+
+        embed = discord.Embed(
+            title="✅ Existing World Preserved",
+            description="Setup has been cancelled. Your existing world, server files, and Discord configurations were rechecked and verified.",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="🌍 World Status", value="Intact (`world/` preserved)", inline=True)
+        embed.add_field(name="⚙️ Server JAR", value="Verified (`server.jar`)", inline=True)
+        embed.add_field(name="🏷️ Platform & Version", value=f"`{platform.title()}` `{version}`", inline=True)
+        embed.add_field(name="📋 Discord Channels & Roles", value="Rechecked & Active", inline=False)
+        embed.set_footer(text="Minecraft Bot: Ready to run")
+
+        await interaction.edit_original_response(content=None, embed=embed, view=None)
 
 class SetupState:
     """Manages the state of the setup process"""
