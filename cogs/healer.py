@@ -82,6 +82,33 @@ class Healer(commands.Cog):
                     await send_debug(self.bot, "🔧 Self-Healer: Automatically accepted EULA for you.")
                     break
 
+                # 3. Java UnsupportedClassVersionError (Outdated Java Runtime)
+                if "java.lang.unsupportedclassversionerror" in line.lower() or "compiled by a more recent version" in line.lower():
+                    logger.warning("Healer: Detected Java UnsupportedClassVersionError. Resolving compatible JRE...")
+                    from src.jre_manager import jre_manager
+                    from src.utils import get_server_version
+                    import re
+                    class_match = re.search(r'class file version (\d+)', line)
+                    needed_java = None
+                    if class_match:
+                        class_ver = int(class_match.group(1))
+                        if class_ver >= 53:
+                            needed_java = class_ver - 44
+                        elif class_ver == 52:
+                            needed_java = 8
+                    
+                    if not needed_java:
+                        detected_ver = await get_server_version()
+                        needed_java = jre_manager.get_required_java_version(detected_ver)
+
+                    try:
+                        await jre_manager.ensure_jre(needed_java)
+                        await send_debug(self.bot, f"☕ Self-Healer: Installed Java {needed_java} to resolve crash. Restarting server...")
+                        await self.bot.server.start()
+                    except Exception as jre_fix_err:
+                        logger.error(f"Healer failed to auto-fix Java mismatch: {jre_fix_err}")
+                    break
+
     @maintenance_loop.before_loop
     @crash_analyzer_loop.before_loop
     async def before_healer(self):

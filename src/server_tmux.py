@@ -140,7 +140,11 @@ class TmuxServerManager(ServerInterface):
         if java_path == "java":
             try:
                 from src.jre_manager import jre_manager
-                java_path = await jre_manager.get_java_executable(config.INSTALLED_VERSION)
+                mc_ver = config.INSTALLED_VERSION
+                if not mc_ver or str(mc_ver).lower() in ("unknown", "none", ""):
+                    from src.utils import get_server_version
+                    mc_ver = await get_server_version()
+                java_path = await jre_manager.get_java_executable(mc_ver)
             except Exception as jre_err:
                 logger.warning(f"Failed to resolve JRE path: {jre_err}. Falling back to system 'java'.")
                 java_path = "java"

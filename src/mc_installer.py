@@ -62,13 +62,12 @@ class MinecraftInstaller:
                 logger.info(f"Using carried over server files for {platform} {version}")
                 if progress_callback:
                     await progress_callback(f"Using existing {platform.title()} server files (carried over)...")
-                # Pre-download the correct JRE for this Minecraft version
+                # Pre-download or verify the correct JRE for this Minecraft version
                 try:
                     from src.jre_manager import jre_manager
-                    java_version = jre_manager.get_required_java_version(version)
-                    await jre_manager.ensure_jre(java_version, progress_callback)
+                    await jre_manager.get_java_executable(version, progress_callback=progress_callback)
                 except Exception as jre_err:
-                    logger.warning(f"Failed to pre-download JRE for version {version}: {jre_err}. Will retry on startup.")
+                    logger.warning(f"Failed to verify/pre-download JRE for version {version}: {jre_err}. Will retry on startup.")
                 return True, "Carried over existing server files"
                 
             logger.info(f"Downloading {platform} server version {version} to {jar_path}")
@@ -86,13 +85,12 @@ class MinecraftInstaller:
 
             if success:
                 logger.info(f"Successfully downloaded {platform} server.")
-                # Pre-download the correct JRE for this Minecraft version
+                # Pre-download or verify the correct JRE for this Minecraft version
                 try:
                     from src.jre_manager import jre_manager
-                    java_version = jre_manager.get_required_java_version(version)
-                    await jre_manager.ensure_jre(java_version, progress_callback)
+                    await jre_manager.get_java_executable(version, progress_callback=progress_callback)
                 except Exception as jre_err:
-                    logger.warning(f"Failed to pre-download JRE for version {version}: {jre_err}. Will retry on startup.")
+                    logger.warning(f"Failed to verify/pre-download JRE for version {version}: {jre_err}. Will retry on startup.")
             else:
                 logger.error(f"Failed to download {platform} server: {msg}")
             

@@ -10,7 +10,7 @@ logger = logging.getLogger('mc_bot')
 class CategorySelect(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Java RAM Settings", description="Modify minimum and maximum RAM allocation", emoji="💾", value="ram"),
+            discord.SelectOption(label="Java & RAM Settings", description="Modify RAM allocation and Java runtime version", emoji="☕", value="ram"),
             discord.SelectOption(label="Schedules", description="Modify backup and restart times", emoji="⏰", value="schedules"),
             discord.SelectOption(label="Timezone", description="Configure your local timezone", emoji="🌍", value="timezone"),
             discord.SelectOption(label="Role Permissions", description="Edit which roles can use specific commands", emoji="🛡️", value="permissions")
@@ -33,7 +33,7 @@ class SettingsView(discord.ui.View):
         super().__init__(timeout=300)
         self.add_item(CategorySelect())
 
-class RamModal(discord.ui.Modal, title='Java RAM Configuration'):
+class RamModal(discord.ui.Modal, title='Java & RAM Configuration'):
     def __init__(self):
         super().__init__()
         user_config = config.load_user_config()
@@ -54,20 +54,37 @@ class RamModal(discord.ui.Modal, title='Java RAM Configuration'):
             required=True,
             max_length=6
         )
+        self.java_version = discord.ui.TextInput(
+            label="Java Version ('auto', 8, 17, 21, 25)",
+            style=discord.TextStyle.short,
+            placeholder='auto',
+            default=str(user_config.get('java_version', 'auto')),
+            required=False,
+            max_length=10
+        )
         
         self.add_item(self.min_ram)
         self.add_item(self.max_ram)
+        self.add_item(self.java_version)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
+            jv_val = self.java_version.value.strip().lower() if self.java_version.value else "auto"
             with config.update_user_config() as user_config:
                 user_config['java_ram_min'] = self.min_ram.value
                 user_config['java_ram_max'] = self.max_ram.value
+                user_config['java_version'] = jv_val if jv_val else "auto"
             
-            await interaction.response.send_message(f"✅ RAM settings updated. Min: `{self.min_ram.value}`, Max: `{self.max_ram.value}`.\n*These changes will apply the next time the Minecraft server starts.*", ephemeral=True)
-            await send_debug(interaction.client, f"Settings updated by {interaction.user}: RAM Min={self.min_ram.value}, Max={self.max_ram.value}")
+            await interaction.response.send_message(
+                f"✅ Settings updated. RAM: Min `{self.min_ram.value}`, Max `{self.max_ram.value}` | Java: `{jv_val}`.\n*These changes will apply the next time the Minecraft server starts.*",
+                ephemeral=True
+            )
+            await send_debug(
+                interaction.client,
+                f"Settings updated by {interaction.user}: RAM Min={self.min_ram.value}, Max={self.max_ram.value}, Java={jv_val}"
+            )
         except Exception as e:
-            logger.error(f"Failed to update RAM settings: {e}")
+            logger.error(f"Failed to update Java/RAM settings: {e}")
             await interaction.response.send_message(f"❌ Failed to update settings: {e}", ephemeral=True)
 
 class ScheduleModal(discord.ui.Modal, title='Schedule Configuration'):

@@ -30,3 +30,39 @@ def test_get_required_java_version():
     assert jre_manager.get_required_java_version("unknown") == 21
     assert jre_manager.get_required_java_version("") == 21
     assert jre_manager.get_required_java_version("invalid-version") == 21
+
+    # Platform-prefixed versions
+    assert jre_manager.get_required_java_version("paper-1.16.5") == 8
+    assert jre_manager.get_required_java_version("paper-1.20.4") == 17
+    assert jre_manager.get_required_java_version("fabric-1.21.1") == 21
+    assert jre_manager.get_required_java_version("vanilla-1.22") == 25
+
+
+@pytest.mark.asyncio
+async def test_upgrade_java_if_needed():
+    # Test upgrading from 1.20.4 (Java 17) to 1.21.1 (Java 21)
+    status_messages = []
+    async def callback(msg):
+        status_messages.append(msg)
+
+    target_java, changed, exe = await jre_manager.upgrade_java_if_needed(
+        new_mc_version="1.21.1",
+        old_mc_version="1.20.4",
+        progress_callback=callback
+    )
+    assert target_java == 21
+    assert changed is True
+    assert len(status_messages) > 0
+    assert "Java 17" in status_messages[0] and "Java 21" in status_messages[0]
+
+    # Test updating within same Java generation (1.21.1 to 1.21.4 -> both Java 21)
+    status_messages.clear()
+    target_java, changed, exe = await jre_manager.upgrade_java_if_needed(
+        new_mc_version="1.21.4",
+        old_mc_version="1.21.1",
+        progress_callback=callback
+    )
+    assert target_java == 21
+    assert changed is False
+    assert len(status_messages) == 0
+

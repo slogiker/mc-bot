@@ -4,6 +4,8 @@ x-base: &base
   build:
     context: .
     dockerfile: Dockerfile
+    args:
+      JAVA_VERSION: "${JAVA_VERSION:-21}"
   container_name: mc-bot
   restart: unless-stopped
   logging:
@@ -31,7 +33,7 @@ x-base: &base
     - no-new-privileges:true
 
 services:
-  # Production — source files baked into the image
+  # Production - source files baked into the image
   mc-bot:
     <<: *base
     volumes:
@@ -43,7 +45,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
 
-  # Dev — source files mounted live, no rebuild needed for code changes
+  # Dev - source files mounted live, no rebuild needed for code changes
   # Usage: docker compose --profile dev up --build
   mc-bot-dev:
     <<: *base

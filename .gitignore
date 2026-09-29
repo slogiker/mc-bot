@@ -54,7 +54,9 @@ desktop.ini
 mc-server/
 backups/
 logs/
-data/
+data/*
+!data/user_config.json
+!data/bot_config.json
 bot_state.json
 *.json.backup
 config.json
@@ -81,4 +83,7 @@ simulate.py
 
 # --- Agents & Subagents ---
 .agents/
+
+# --- Scratch & Temp ---
+scratch/
 

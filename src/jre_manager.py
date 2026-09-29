@@ -4,10 +4,14 @@ based on the required Minecraft server version.
 """
 import os
 import sys
+import re
 import platform
 import shutil
 import tarfile
 import tempfile
+import subprocess
+import asyncio
+from typing import Optional, Tuple
 import aiohttp
 import aiofiles
 from src.logger import logger
@@ -18,40 +22,90 @@ class JREManager:
     def __init__(self):
         self.jre_base_dir = os.path.abspath(os.path.join("data", "jre"))
         os.makedirs(self.jre_base_dir, exist_ok=True)
+        self._system_java_version: Optional[int] = None
+        self._system_java_checked = False
 
-    def get_required_java_version(self, mc_version: str) -> int:
+    def get_system_java_version(self) -> Optional[int]:
+        """
+        Detect the major version of the system default 'java' executable.
+        Returns None if java is not available or version cannot be parsed.
+        """
+        if self._system_java_checked:
+            return self._system_java_version
+
+        self._system_java_checked = True
+        try:
+            res = subprocess.run(
+                ["java", "-version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5
+            )
+            output = res.stderr or res.stdout
+            match = re.search(r'version\s+"(\d+)(?:\.(\d+))?', output)
+            if match:
+                g1, g2 = match.group(1), match.group(2)
+                if g1 == "1" and g2:
+                    self._system_java_version = int(g2)
+                else:
+                    self._system_java_version = int(g1)
+                logger.info(f"Detected system default Java version: {self._system_java_version}")
+            else:
+                logger.warning(f"Could not parse Java version from output: {output[:100]}")
+        except Exception as e:
+            logger.debug(f"System 'java' check failed: {e}")
+            self._system_java_version = None
+
+        return self._system_java_version
+
+    def get_required_java_version(self, mc_version: Optional[str]) -> int:
         """
         Determine the required major Java version for a given Minecraft version.
         
         Java requirements:
           - Minecraft < 1.17: Java 8
           - Minecraft 1.17 - 1.20.4: Java 17 (LTS)
-          - Minecraft 1.20.5 - 1.21.4: Java 21 (LTS)
+          - Minecraft 1.20.5 - 1.21.x: Java 21 (LTS)
           - Minecraft 1.22+: Java 25 (LTS)
         """
-        if not mc_version or mc_version.lower() == "unknown":
+        # 1. Check if user configured an explicit java_version override in config
+        try:
+            from src.config import config
+            cfg_java = getattr(config, 'JAVA_VERSION', None)
+            if cfg_java and str(cfg_java).lower() not in ('auto', 'default', 'none'):
+                try:
+                    return int(cfg_java)
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+        if not mc_version or str(mc_version).lower() in ("unknown", "none", ""):
             return 21  # Default fallback
 
-        # Normalize version (e.g., "26.2" -> "1.26.2")
-        parts = mc_version.split('.')
-        if not parts:
+        # Strip any platform prefix (e.g. "paper-1.20.4" -> "1.20.4", "fabric-1.21.1" -> "1.21.1")
+        clean_version = re.sub(r'^[a-zA-Z_\-]+', '', str(mc_version).strip())
+
+        parts = clean_version.split('.')
+        if not parts or not parts[0]:
             return 21
 
         try:
             # Handle potential short version format (e.g. "26.2" or "25.3")
             if len(parts) >= 2 and not parts[0].startswith("1"):
-                major = int(parts[0])
-                minor = int(parts[1])
-                # If it's a version like 26.2, treat it as 1.26.2
+                major = int(re.sub(r'\D', '', parts[0]))
+                minor = int(re.sub(r'\D', '', parts[1]))
                 if major >= 12:
                     parts = ["1", str(major), str(minor)]
 
             if len(parts) < 2:
                 return 21
 
-            major = int(parts[0])
-            minor = int(parts[1])
-            patch = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+            major = int(re.sub(r'\D', '', parts[0]))
+            minor = int(re.sub(r'\D', '', parts[1]))
+            patch_match = re.search(r'\d+', parts[2]) if len(parts) > 2 else None
+            patch = int(patch_match.group(0)) if patch_match else 0
 
             if major == 1:
                 if minor < 17:
@@ -118,7 +172,6 @@ class JREManager:
                             downloaded += len(chunk)
                             if total_size > 0 and progress_callback:
                                 percent = int((downloaded / total_size) * 100)
-                                # Throttle callbacks slightly
                                 if percent % 10 == 0 or downloaded == total_size:
                                     await progress_callback(f"📥 Downloading JRE {java_version} ({percent}%)...")
 
@@ -147,13 +200,19 @@ class JREManager:
         finally:
             # Cleanup temp file
             if os.path.exists(temp_tar):
-                os.unlink(temp_tar)
+                try:
+                    os.unlink(temp_tar)
+                except Exception:
+                    pass
 
     def _extract_tar(self, tar_path: str, dest_dir: str):
         """Extract tar.gz and flatten the top-level directory"""
         with tempfile.TemporaryDirectory() as tmpdir:
+            kwargs = {}
+            if hasattr(tarfile, 'data_filter'):
+                kwargs['filter'] = 'data'
             with tarfile.open(tar_path, "r:gz") as tar:
-                tar.extractall(path=tmpdir)
+                tar.extractall(path=tmpdir, **kwargs)
             
             # Find the inner directory
             inner_dirs = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))]
@@ -167,24 +226,62 @@ class JREManager:
             for item in os.listdir(inner_dir):
                 shutil.move(os.path.join(inner_dir, item), os.path.join(dest_dir, item))
 
-    async def get_java_executable(self, mc_version: str) -> str:
-        """Get the path to the correct java executable for the given Minecraft version"""
-        if not mc_version or mc_version.lower() == "unknown":
-            return "java"  # Fallback to system default
+    async def get_java_executable(self, mc_version: Optional[str], progress_callback=None) -> str:
+        """
+        Get the path to the correct java executable for the given Minecraft version.
+        Checks custom path, system java compatibility, local cache, and downloads on demand.
+        """
+        try:
+            from src.config import config
+            custom_path = getattr(config, 'JAVA_PATH', 'java')
+            if custom_path != "java" and os.path.exists(custom_path):
+                return custom_path
+        except Exception:
+            pass
 
         try:
-            java_version = self.get_required_java_version(mc_version)
-            # Check if already installed
-            dest_dir = os.path.join(self.jre_base_dir, str(java_version))
+            required_java = self.get_required_java_version(mc_version)
+            
+            # Check if system default java satisfies the requirement
+            sys_java = self.get_system_java_version()
+            if sys_java == required_java:
+                return "java"
+
+            # Check if JRE is already cached in data/jre/<required_java>/bin/java
+            dest_dir = os.path.join(self.jre_base_dir, str(required_java))
             java_exe = os.path.join(dest_dir, "bin", "java")
             if os.path.exists(java_exe):
                 return java_exe
             
             # Download on demand
-            return await self.ensure_jre(java_version)
+            return await self.ensure_jre(required_java, progress_callback=progress_callback)
         except Exception as e:
             logger.warning(f"Failed to resolve JRE for Minecraft version '{mc_version}': {e}. Falling back to system 'java'.")
             return "java"
 
-import asyncio
+    async def upgrade_java_if_needed(
+        self,
+        new_mc_version: str,
+        old_mc_version: Optional[str] = None,
+        progress_callback=None
+    ) -> Tuple[int, bool, str]:
+        """
+        Check if updating Minecraft version requires a Java runtime upgrade.
+        If required, downloads and prepares the target JRE.
+        
+        Returns:
+            Tuple of (target_java_version, was_upgraded_or_changed, java_executable_path)
+        """
+        new_java = self.get_required_java_version(new_mc_version)
+        old_java = self.get_required_java_version(old_mc_version) if old_mc_version else (self.get_system_java_version() or 21)
+        
+        changed = (new_java != old_java)
+        if changed:
+            logger.info(f"Java version transition detected for Minecraft {new_mc_version}: Java {old_java} -> Java {new_java}")
+            if progress_callback:
+                await progress_callback(f"☕ Updating Java runtime from Java {old_java} to Java {new_java} (required for Minecraft {new_mc_version})...")
+
+        java_exe = await self.get_java_executable(new_mc_version, progress_callback=progress_callback)
+        return new_java, changed, java_exe
+
 jre_manager = JREManager()

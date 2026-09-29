@@ -211,7 +211,17 @@ class ModsCog(commands.Cog):
             except Exception:
                 pass
                 
-        # 1. Server Installer Phase
+        # 1. Java Runtime Phase - Verify & upgrade Java if needed
+        await updater_callback("☕ Checking Java Runtime requirements...")
+        from src.jre_manager import jre_manager
+        old_mc_version = getattr(config, 'INSTALLED_VERSION', None)
+        target_java, java_upgraded, java_exe = await jre_manager.upgrade_java_if_needed(
+            new_mc_version=version,
+            old_mc_version=old_mc_version,
+            progress_callback=updater_callback
+        )
+
+        # 2. Server Installer Phase
         await updater_callback("🛠️ Checking server platform...")
         from src.mc_installer import mc_installer
         
@@ -230,10 +240,13 @@ class ModsCog(commands.Cog):
              await msg_obj.edit(content=f"❌ **Server Core Upgrade Failed:** {install_msg}")
              return
              
-        # Cache the new version
-        config.update_dynamic_config({"installed_version": f"{platform}-{version}"})
+        # Cache and persist the new version
+        config.update_dynamic_config({
+            "installed_version": version,
+            "installed_platform": platform
+        }, save=True)
         
-        # 2. Mod Updater Phase
+        # 3. Mod Updater Phase
         if platform != "vanilla":
             await updater_callback("✅ Server Core updated. Initializing Mod/Plugin Upgrader...")
             from src.mod_updater import ModUpdater
@@ -242,7 +255,8 @@ class ModsCog(commands.Cog):
         else:
             await updater_callback("✅ Server Core updated. Skipping Mod/Plugin Upgrader (Vanilla platform).")
         
-        await msg_obj.reply(f"✅ **Update Complete!** The server core has been updated to `{version}`.\nYou can now `/start` the server.")
+        java_note = f" (Java {target_java})" if not java_upgraded else f" (Upgraded to Java {target_java})"
+        await msg_obj.reply(f"✅ **Update Complete!** The server core has been updated to `{version}`{java_note}.\nYou can now `/start` the server.")
 
 
 async def setup(bot):

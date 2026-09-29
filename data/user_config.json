@@ -11,5 +11,6 @@
     "Owner": ["*"],
     "MC Admin": ["start", "stop", "restart", "status"],
     "MC Player": ["status"]
-  }
+  },
+  "java_version": "auto"
 }

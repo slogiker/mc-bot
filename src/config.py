@@ -141,6 +141,7 @@ class Config:
                     user_cfg = {
                         "java_ram_min": "2G",
                         "java_ram_max": "4G",
+                        "java_version": "auto",
                         "backup_time": "03:00",
                         "backup_keep_days": 7,
                         "restart_time": "04:00",
@@ -157,16 +158,17 @@ class Config:
                 backup_path = f"{config_path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
                 try:
                     shutil.copy2(config_path, backup_path)
-                    print(f"⚠️ user_config.json is corrupt — backed up to {backup_path}")
+                    print(f"⚠️ user_config.json is corrupt - backed up to {backup_path}")
                 except Exception as backup_err:
                     print(f"❌ Failed to backup corrupt user_config.json: {backup_err}")
             
-            print(f"WARNING: Could not load user_config.json ({type(e).__name__}: {e}) — recreating with defaults.")
+            print(f"WARNING: Could not load user_config.json ({type(e).__name__}: {e}) - recreating with defaults.")
             self._create_default_configs()
             if self.dry_run:
                 user_cfg = {
                     "java_ram_min": "2G",
                     "java_ram_max": "4G",
+                    "java_version": "auto",
                     "backup_time": "03:00",
                     "backup_keep_days": 7,
                     "restart_time": "04:00",
@@ -182,6 +184,7 @@ class Config:
         user_defaults = {
             "java_ram_min": "2G",
             "java_ram_max": "4G",
+            "java_version": "auto",
             "backup_time": "03:00",
             "backup_keep_days": 7,
             "restart_time": "04:00",
@@ -269,6 +272,7 @@ class Config:
         # Apply user config
         self.JAVA_XMX = user_cfg['java_ram_max']
         self.JAVA_XMS = user_cfg['java_ram_min']
+        self.JAVA_VERSION = str(user_cfg.get('java_version', 'auto'))
         self.BACKUP_TIME = user_cfg['backup_time']
         self.BACKUP_RETENTION_DAYS = user_cfg['backup_keep_days']
         self.RESTART_TIME = user_cfg['restart_time']
@@ -316,7 +320,7 @@ class Config:
 
         self.RCON_PORT = 25575
         self.SERVER_JAR = "server.jar"
-        self.JAVA_PATH = "java"
+        self.JAVA_PATH = os.getenv("JAVA_PATH", user_cfg.get("java_path", "java"))
         self.RESTART_DELAY = 5
         self.CRASH_CHECK_INTERVAL = 30
         self.LOG_LINES_DEFAULT = 10
