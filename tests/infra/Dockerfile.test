@@ -1,9 +1,12 @@
 # Lightweight test image
 FROM python:3.11-slim
 
-# Install curl for playit download
+# Install curl, zstd, rsync, and openssh-client
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    zstd \
+    rsync \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Playit.gg binary directly (matching production with architecture auto-detection)

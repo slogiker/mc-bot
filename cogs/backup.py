@@ -133,7 +133,7 @@ class BackupCog(commands.Cog):
             try:
                 if not os.path.exists(directory):
                     return []
-                return [f for f in os.listdir(directory) if f.endswith('.zip')]
+                return [f for f in os.listdir(directory) if f.endswith('.tar.zst') or f.endswith('.zip')]
             except Exception as e:
                 logger.error(f"Failed to list backups in {directory}: {e}")
                 return []
@@ -209,7 +209,7 @@ class BackupCog(commands.Cog):
         files = []
         for directory in (backup_manager.custom_dir, backup_manager.auto_dir):
             try:
-                files.extend(f for f in os.listdir(directory) if f.endswith(".zip"))
+                files.extend(f for f in os.listdir(directory) if f.endswith(".tar.zst") or f.endswith(".zip"))
             except (FileNotFoundError, OSError):
                 pass
         files.sort(reverse=True)

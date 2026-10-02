@@ -12,7 +12,7 @@ LABEL description="Minecraft Discord Bot with customizable Java and Playit.gg"
 # Create directory for man pages and apt keyrings
 RUN mkdir -p /usr/share/man/man1 /etc/apt/keyrings
 
-# Install core utilities, Eclipse Adoptium repository, and specified Java version
+# Install core utilities, Eclipse Adoptium repository, NAS backup tools, and specified Java version
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     jq \
@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     tar \
     gzip \
+    zstd \
+    rsync \
+    openssh-client \
     && wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" > /etc/apt/sources.list.d/adoptium.list \
     && apt-get update \
