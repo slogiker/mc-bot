@@ -47,7 +47,7 @@ class BackupManager:
             timestamp = get_now().strftime('%Y-%m-%d_%H-%M')
             
             if custom_name:
-                filename = f"backup_custom_{timestamp}_{custom_name}.tar.zst"
+                filename = f"custom_backup-{custom_name}-{timestamp}.tar.zst"
                 dest_dir = self.custom_dir
             else:
                 filename = f"backup_auto_{timestamp}.tar.zst"
